@@ -1,9 +1,11 @@
 const express = require('express');
 const router = express.Router();
+const { registerUser, loginUser } = require('../controllers/userController');
 
-// Sample route - customize as needed
-router.get('/', (req, res) => {
-  res.send('User route working!');
-});
+// Route: POST /api/users/register
+router.post('/register', registerUser);
+
+// Route: POST /api/users/login
+router.post('/login', loginUser);
 
 module.exports = router;
