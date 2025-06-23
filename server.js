@@ -9,8 +9,14 @@ const orderRoutes = require('./routes/orders');
 
 const app = express();
 
+// ✅ Enable CORS for your Vercel frontend
+app.use(cors({
+  origin: 'https://my-frontend-ifyr.vercel.app',
+  methods: ['GET', 'POST'],
+  credentials: true
+}));
+
 // Middleware
-app.use(cors());
 app.use(express.json());
 
 // Routes
