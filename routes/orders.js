@@ -1,11 +1,9 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const { getOrders, createOrder } = require('../controllers/orderController'); // Import controller functions
+const { placeOrder, getUserOrders } = require("../controllers/orderController");
+const authMiddleware = require("../middlewares/authMiddleware");
 
-// GET all orders
-router.get('/', getOrders); // Example, you might want authentication for this later
-
-// POST create new order
-router.post('/', createOrder); // Example, requires user to be logged in later
+router.post("/", authMiddleware, placeOrder);
+router.get("/", authMiddleware, getUserOrders);
 
 module.exports = router;

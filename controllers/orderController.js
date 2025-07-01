@@ -1,43 +1,33 @@
-const Order = require('../models/Order'); // Make sure you have this model
+const Order = require("../models/Order");
 
-// @desc    Get all orders
-// @route   GET /api/orders
-// @access  Private/Admin (you'll need authentication middleware for this)
-exports.getOrders = async (req, res) => {
+exports.placeOrder = async (req, res) => {
+  const { items, totalAmount, shippingAddress } = req.body;
+
+  if (!items || !totalAmount || !shippingAddress) {
+    return res.status(400).json({ message: "All fields are required" });
+  }
+
   try {
-    const orders = await Order.find({}).populate('user', 'username email'); // Populates user info
-    res.json(orders);
+    const order = new Order({
+      user: req.user.id,
+      items,
+      totalAmount,
+      shippingAddress
+    });
+
+    const savedOrder = await order.save();
+    res.status(201).json(savedOrder);
+
   } catch (err) {
-    console.error('Error fetching orders:', err.message);
-    res.status(500).json({ message: 'Server error fetching orders' });
+    res.status(500).json({ message: "Server error while placing order" });
   }
 };
 
-// @desc    Create new order
-// @route   POST /api/orders
-// @access  Private (requires user to be logged in)
-exports.createOrder = async (req, res) => {
-  const { orderItems, shippingAddress, paymentMethod, itemsPrice, taxPrice, shippingPrice, totalPrice } = req.body;
-
-  if (orderItems && orderItems.length === 0) {
-    return res.status(400).json({ message: 'No order items' });
-  } else {
-    try {
-      const order = new Order({
-        user: req.user._id, // Assuming req.user is set by authentication middleware
-        orderItems,
-        shippingAddress,
-        paymentMethod,
-        itemsPrice,
-        taxPrice,
-        shippingPrice,
-        totalPrice
-      });
-      const createdOrder = await order.save();
-      res.status(201).json(createdOrder);
-    } catch (err) {
-      console.error('Error creating order:', err.message);
-      res.status(500).json({ message: 'Server error creating order' });
-    }
+exports.getUserOrders = async (req, res) => {
+  try {
+    const orders = await Order.find({ user: req.user.id }).sort({ createdAt: -1 });
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ message: "Failed to fetch orders" });
   }
 };
