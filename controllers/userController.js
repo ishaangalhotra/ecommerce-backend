@@ -1,13 +1,12 @@
-// controllers/userController.js
-const User = require('../models/User'); // Assuming your User model is at '../models/User.js'
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken'); // For handling JWT tokens
+const User = require('../models/User');
+const bcrypt = require('bcryptjs'); // Used by User model's pre-save hook
+const jwt = require('jsonwebtoken');
 
 // @desc    Register a new user
 // @route   POST /api/users/register
 // @access  Public
 exports.registerUser = async (req, res) => {
-  const { username, email, password } = req.body;
+  const { username, email, password } = req.body; // Expecting 'username', not 'name'
 
   // Basic validation
   if (!username || !email || !password) {
@@ -15,21 +14,16 @@ exports.registerUser = async (req, res) => {
   }
 
   try {
-    // Check for existing user
     let user = await User.findOne({ email });
     if (user) {
       return res.status(400).json({ message: 'User already exists' });
     }
 
-    // Hash password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    // Create new user
+    // Password hashing is handled by the pre-save hook in User model
     user = new User({
       username,
       email,
-      password: hashedPassword
+      password: password // The model's pre-save hook will hash this
     });
 
     await user.save();
@@ -37,7 +31,8 @@ exports.registerUser = async (req, res) => {
     // Generate JWT token (optional, but common for registration)
     const payload = {
       user: {
-        id: user.id
+        id: user.id,
+        role: user.role // Include role in token if you have it in model
       }
     };
 
@@ -46,17 +41,21 @@ exports.registerUser = async (req, res) => {
       process.env.JWT_SECRET, // Make sure JWT_SECRET is set in your .env or Render
       { expiresIn: '1h' }, // Token expires in 1 hour
       (err, token) => {
-        if (err) throw err;
+        if (err) {
+          console.error('JWT sign error:', err);
+          throw err;
+        }
         res.status(201).json({
           message: 'User registered successfully',
           token,
-          user: { id: user.id, username: user.username, email: user.email }
+          user: { id: user.id, username: user.username, email: user.email, role: user.role }
         });
       }
     );
 
   } catch (err) {
-    console.error('Error during user registration:', err.message);
+    console.error('Caught error in registerUser:', err.message);
+    console.error(err.stack); // Print full stack trace for debugging
     res.status(500).json({ message: 'Server error during registration' });
   }
 };
@@ -80,7 +79,7 @@ exports.loginUser = async (req, res) => {
     }
 
     // Compare password
-    const isMatch = await bcrypt.compare(password, user.password);
+    const isMatch = await user.matchPassword(password); // Using method from User model
     if (!isMatch) {
       return res.status(400).json({ message: 'Invalid Credentials' });
     }
@@ -88,7 +87,8 @@ exports.loginUser = async (req, res) => {
     // Generate JWT token
     const payload = {
       user: {
-        id: user.id
+        id: user.id,
+        role: user.role
       }
     };
 
@@ -101,7 +101,7 @@ exports.loginUser = async (req, res) => {
         res.json({
           message: 'Logged in successfully',
           token,
-          user: { id: user.id, username: user.username, email: user.email }
+          user: { id: user.id, username: user.username, email: user.email, role: user.role }
         });
       }
     );

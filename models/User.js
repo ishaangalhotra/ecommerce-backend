@@ -1,29 +1,28 @@
-// models/User.js
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs'); // For password hashing
+const bcrypt = require('bcryptjs');
 
 const UserSchema = new mongoose.Schema({
-  username: {
+  username: { // Changed from 'name' to 'username' for consistency
     type: String,
     required: true,
-    unique: true, // Ensures no two users have the same username
-    trim: true // Removes whitespace from both ends of a string
+    unique: true,
+    trim: true
   },
   email: {
     type: String,
     required: true,
-    unique: true, // Ensures no two users have the same email
-    match: [/.+@.+\..+/, 'Please use a valid email address'], // Basic email regex validation
-    lowercase: true // Stores emails in lowercase
+    unique: true,
+    match: [/.+@.+\..+/, 'Please use a valid email address'],
+    lowercase: true
   },
   password: {
     type: String,
     required: true,
-    minlength: [6, 'Password must be at least 6 characters long'] // Minimum password length
+    minlength: [6, 'Password must be at least 6 characters long']
   },
   role: {
     type: String,
-    enum: ['user', 'admin'], // Users can be 'user' or 'admin'
+    enum: ['user', 'admin'],
     default: 'user'
   },
   createdAt: {
@@ -34,7 +33,7 @@ const UserSchema = new mongoose.Schema({
 
 // Pre-save hook to hash password before saving to database
 UserSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) { // Only hash if the password has been modified (or is new)
+  if (!this.isModified('password')) {
     next();
   }
   const salt = await bcrypt.genSalt(10);

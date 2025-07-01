@@ -1,5 +1,4 @@
-// controllers/productController.js
-const Product = require('../models/Product'); // Assuming your Product model
+const Product = require('../models/Product');
 
 // @desc    Get all products
 // @route   GET /api/products
@@ -26,8 +25,8 @@ exports.getProductById = async (req, res) => {
     res.json(product);
   } catch (err) {
     console.error('Error fetching product by ID:', err.message);
-    if (err.kind === 'ObjectId') {
-      return res.status(400).json({ message: 'Invalid product ID' });
+    if (err.kind === 'ObjectId') { // Handle invalid ID format
+      return res.status(400).json({ message: 'Invalid product ID format' });
     }
     res.status(500).json({ message: 'Server error fetching product' });
   }

@@ -1,19 +1,18 @@
-// models/Order.js
 const mongoose = require('mongoose');
 
 const OrderSchema = new mongoose.Schema({
   user: {
-    type: mongoose.Schema.Types.ObjectId, // Links this order to a User document
+    type: mongoose.Schema.Types.ObjectId,
     required: true,
-    ref: 'User' // Refers to the 'User' model
+    ref: 'User'
   },
   orderItems: [
     {
       name: { type: String, required: true },
       qty: { type: Number, required: true },
-      imageUrl: { type: String, required: false }, // Use imageUrl from product model
+      imageUrl: { type: String, required: false }, // Using imageUrl for consistency
       price: { type: Number, required: true },
-      product: { // Links the order item to a Product document
+      product: {
         type: mongoose.Schema.Types.ObjectId,
         required: true,
         ref: 'Product'
@@ -30,7 +29,7 @@ const OrderSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  paymentResult: { // Details from payment gateway (e.g., PayPal, Stripe)
+  paymentResult: {
     id: { type: String },
     status: { type: String },
     update_time: { type: String },

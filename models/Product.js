@@ -15,9 +15,9 @@ const ProductSchema = new mongoose.Schema({
     required: true,
     default: 0
   },
-  imageUrl: { // Changed from 'image' to 'imageUrl' for clarity
+  imageUrl: { // Changed from 'image' to 'imageUrl' for clarity and consistency
     type: String,
-    required: false // Or true if every product must have an image
+    required: false
   },
   category: {
     type: String,
@@ -28,13 +28,13 @@ const ProductSchema = new mongoose.Schema({
     type: Number,
     required: true,
     default: 0,
-    min: 0 // Ensure stock doesn't go below 0
+    min: 0
   },
-  rating: { // Optional: for average rating from reviews
+  rating: {
     type: Number,
     default: 0
   },
-  numReviews: { // Optional: for number of reviews
+  numReviews: {
     type: Number,
     default: 0
   },

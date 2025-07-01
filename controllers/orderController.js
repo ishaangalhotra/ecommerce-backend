@@ -1,37 +1,30 @@
-// controllers/orderController.js
-// const Order = require('../models/Order'); // Assuming your Order model
+const Order = require('../models/Order'); // Make sure you have this model
 
 // @desc    Get all orders
 // @route   GET /api/orders
-// @access  Private/Admin (or public based on your app's needs)
+// @access  Private/Admin (you'll need authentication middleware for this)
 exports.getOrders = async (req, res) => {
-  // This is a placeholder; you'd fetch from a database
-  res.json({ message: "Get all orders route - to be implemented" });
-  /*
   try {
-    const orders = await Order.find({}).populate('user', 'username email'); // Example with population
+    const orders = await Order.find({}).populate('user', 'username email'); // Populates user info
     res.json(orders);
   } catch (err) {
     console.error('Error fetching orders:', err.message);
     res.status(500).json({ message: 'Server error fetching orders' });
   }
-  */
 };
 
 // @desc    Create new order
 // @route   POST /api/orders
 // @access  Private (requires user to be logged in)
 exports.createOrder = async (req, res) => {
-  // This is a placeholder; you'd create an order in the database
-  res.status(201).json({ message: "Create order route - to be implemented" });
-  /*
   const { orderItems, shippingAddress, paymentMethod, itemsPrice, taxPrice, shippingPrice, totalPrice } = req.body;
+
   if (orderItems && orderItems.length === 0) {
     return res.status(400).json({ message: 'No order items' });
   } else {
     try {
       const order = new Order({
-        user: req.user.id, // Assuming you have user ID from authentication middleware
+        user: req.user._id, // Assuming req.user is set by authentication middleware
         orderItems,
         shippingAddress,
         paymentMethod,
@@ -47,5 +40,4 @@ exports.createOrder = async (req, res) => {
       res.status(500).json({ message: 'Server error creating order' });
     }
   }
-  */
 };
