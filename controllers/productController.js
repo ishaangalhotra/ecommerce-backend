@@ -1,33 +1,36 @@
-const Product = require('../models/Product');
+const Product = require("../models/Product");
 
-// @desc    Get all products
-// @route   GET /api/products
-// @access  Public
-exports.getProducts = async (req, res) => {
+exports.getAllProducts = async (req, res) => {
   try {
-    const products = await Product.find({});
+    const products = await Product.find().sort({ createdAt: -1 });
     res.json(products);
   } catch (err) {
-    console.error('Error fetching products:', err.message);
-    res.status(500).json({ message: 'Server error fetching products' });
+    res.status(500).json({ message: "Failed to fetch products" });
   }
 };
 
-// @desc    Get product by ID
-// @route   GET /api/products/:id
-// @access  Public
-exports.getProductById = async (req, res) => {
+exports.createProduct = async (req, res) => {
+  if (req.user.role !== "seller") {
+    return res.status(403).json({ message: "Only sellers can upload products" });
+  }
+
+  const { name, description, price, image } = req.body;
+  if (!name || !price || !image) {
+    return res.status(400).json({ message: "Please provide all required fields" });
+  }
+
   try {
-    const product = await Product.findById(req.params.id);
-    if (!product) {
-      return res.status(404).json({ message: 'Product not found' });
-    }
-    res.json(product);
+    const product = new Product({
+      name,
+      description,
+      price,
+      image,
+      seller: req.user.id,
+    });
+
+    const saved = await product.save();
+    res.status(201).json(saved);
   } catch (err) {
-    console.error('Error fetching product by ID:', err.message);
-    if (err.kind === 'ObjectId') { // Handle invalid ID format
-      return res.status(400).json({ message: 'Invalid product ID format' });
-    }
-    res.status(500).json({ message: 'Server error fetching product' });
+    res.status(500).json({ message: "Product upload failed" });
   }
 };

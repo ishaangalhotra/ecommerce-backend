@@ -1,11 +1,9 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const { getProducts, getProductById } = require('../controllers/productController'); // Import controller functions
+const { getAllProducts, createProduct } = require("../controllers/productController");
+const authMiddleware = require("../middlewares/authMiddleware");
 
-// GET all products
-router.get('/', getProducts);
-
-// GET product by ID (if you need to fetch single products)
-router.get('/:id', getProductById);
+router.get("/", getAllProducts);
+router.post("/", authMiddleware, createProduct);
 
 module.exports = router;
