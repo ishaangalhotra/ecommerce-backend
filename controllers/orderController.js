@@ -1,150 +1,52 @@
-const Order = require('../models/Order');
-const Product = require('../models/Product'); // Needed to validate product details
-const asyncHandler = require('express-async-handler'); // For handling async errors
+// controllers/orderController.js
+const Order = require('../models/Order'); // Import the Order model
 
 // @desc    Create new order
 // @route   POST /api/orders
-// @access  Private (requires authentication)
-exports.createOrder = asyncHandler(async (req, res) => {
-  const {
-    orderItems,
-    shippingAddress,
-    paymentMethod,
-    // Frontend calculated prices, should ideally be re-validated on backend
-    itemsPrice,
-    taxPrice,
-    shippingPrice,
-    totalPrice,
-  } = req.body;
+// @access  Private
+const createOrder = async (req, res) => {
+  const { orderItems, shippingAddress, paymentMethod, itemsPrice, taxPrice, shippingPrice, totalPrice } = req.body;
 
-  if (!orderItems || orderItems.length === 0) {
-    res.status(400);
-    throw new Error('No order items');
+  if (orderItems && orderItems.length === 0) {
+    res.status(400).json({ message: 'No order items' });
+    return;
   } else {
-    // Validate order items and calculate prices on the server-side to prevent tampering
-    const itemIds = orderItems.map(x => x.product);
-    const itemsFromDB = await Product.find({ _id: { $in: itemIds } });
-
-    const validatedOrderItems = orderItems.map(item => {
-      const dbItem = itemsFromDB.find(p => p._id.toString() === item.product.toString());
-      if (!dbItem) {
-        res.status(404);
-        throw new Error(`Product not found: ${item.name}`);
-      }
-      // You might also want to check dbItem.countInStock here and decrement it
-      return {
-        name: dbItem.name,
-        qty: item.qty,
-        imageUrl: dbItem.imageUrl,
-        price: dbItem.price,
-        product: dbItem._id,
-      };
-    });
-
-    // Recalculate itemsPrice on the backend for security
-    const calculatedItemsPrice = validatedOrderItems.reduce(
-      (acc, item) => acc + item.price * item.qty,
-      0
-    );
-
-    // For a real app, you'd recalculate taxPrice, shippingPrice, totalPrice based on your own logic
-    // For now, we'll use the frontend provided values, but be aware of this for production.
-
     const order = new Order({
-      user: req.user.id, // User ID comes from the 'protect' middleware
-      orderItems: validatedOrderItems,
+      user: req.user._id, // Assuming req.user is populated by authMiddleware with the user object
+      orderItems,
       shippingAddress,
       paymentMethod,
-      itemsPrice: calculatedItemsPrice, // Use server-calculated price
+      itemsPrice,
       taxPrice,
       shippingPrice,
       totalPrice,
     });
 
-    const createdOrder = await order.save();
-    res.status(201).json(createdOrder);
+    try {
+      const createdOrder = await order.save();
+      res.status(201).json(createdOrder);
+    } catch (error) {
+      console.error('Error creating order:', error);
+      res.status(500).json({ message: 'Server Error: Could not create order' });
+    }
   }
-});
+};
 
 // @desc    Get logged in user orders
 // @route   GET /api/orders/myorders
-// @access  Private (requires authentication)
-exports.getMyOrders = asyncHandler(async (req, res) => {
-  // Find orders where the 'user' field matches the ID of the logged-in user
-  const orders = await Order.find({ user: req.user.id }).populate('user', 'username email');
-  res.json(orders);
-});
-
-// @desc    Get order by ID
-// @route   GET /api/orders/:id
-// @access  Private (requires authentication, or admin)
-exports.getOrderById = asyncHandler(async (req, res) => {
-  const order = await Order.findById(req.params.id).populate(
-    'user',
-    'username email'
-  );
-
-  if (order) {
-    // Ensure only the order owner or an admin can view the order
-    if (order.user._id.toString() === req.user.id.toString() || req.user.role === 'admin') {
-      res.json(order);
-    } else {
-      res.status(401);
-      throw new Error('Not authorized to view this order');
-    }
-  } else {
-    res.status(404);
-    throw new Error('Order not found');
+// @access  Private
+const getMyOrders = async (req, res) => {
+  try {
+    // Assuming req.user is populated by authMiddleware with the user object (e.g., req.user._id)
+    const orders = await Order.find({ user: req.user._id }).populate('user', 'username email');
+    res.json(orders);
+  } catch (error) {
+    console.error('Error fetching user orders:', error);
+    res.status(500).json({ message: 'Server Error: Could not fetch orders' });
   }
-});
+};
 
-// @desc    Update order to paid (for payment gateway integration)
-// @route   PUT /api/orders/:id/pay
-// @access  Private (requires authentication)
-exports.updateOrderToPaid = asyncHandler(async (req, res) => {
-  const order = await Order.findById(req.params.id);
-
-  if (order) {
-    order.isPaid = true;
-    order.paidAt = Date.now();
-    // You would typically get paymentResult details from a payment gateway callback
-    order.paymentResult = {
-      id: req.body.id,
-      status: req.body.status,
-      update_time: req.body.update_time,
-      email_address: req.body.email_address,
-    };
-
-    const updatedOrder = await order.save();
-    res.json(updatedOrder);
-  } else {
-    res.status(404);
-    throw new Error('Order not found');
-  }
-});
-
-// @desc    Update order to delivered (Admin only)
-// @route   PUT /api/orders/:id/deliver
-// @access  Private/Admin
-exports.updateOrderToDelivered = asyncHandler(async (req, res) => {
-  const order = await Order.findById(req.params.id);
-
-  if (order) {
-    order.isDelivered = true;
-    order.deliveredAt = Date.now();
-
-    const updatedOrder = await order.save();
-    res.json(updatedOrder);
-  } else {
-    res.status(404);
-    throw new Error('Order not found');
-  }
-});
-
-// @desc    Get all orders (for admin)
-// @route   GET /api/orders/all
-// @access  Private/Admin
-exports.getAllOrders = asyncHandler(async (req, res) => {
-  const orders = await Order.find({}).populate('user', 'id username');
-  res.json(orders);
-});
+module.exports = {
+  createOrder,
+  getMyOrders,
+};

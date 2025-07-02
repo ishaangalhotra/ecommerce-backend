@@ -1,32 +1,17 @@
+// routes/orders.js
 const express = require('express');
 const router = express.Router();
-const {
-  createOrder,
-  getMyOrders,
-  getOrderById,
-  updateOrderToPaid,
-  updateOrderToDelivered,
-  getAllOrders
-} = require('../controllers/orderController');
-const { protect, admin } = require('../middlewares/authMiddleware'); // Import middleware
+const { protect } = require('../middlewares/authMiddleware'); // Ensure this path is correct
+const { createOrder, getMyOrders } = require('../controllers/orderController'); // Import controller functions
 
-// @route   POST /api/orders - Create a new order (Protected)
-router.route('/').post(protect, createOrder);
+// Route: POST /api/orders
+// Description: Create a new order (protected, requires user to be logged in)
+router.post('/', protect, createOrder);
 
-// @route   GET /api/orders/myorders - Get logged in user's orders (Protected)
-router.route('/myorders').get(protect, getMyOrders);
+// Route: GET /api/orders/myorders
+// Description: Get all orders for the logged-in user (protected)
+router.get('/myorders', protect, getMyOrders);
 
-// @route   GET /api/orders/all - Get all orders (Protected, Admin only)
-router.route('/all').get(protect, admin, getAllOrders);
-
-// @route   GET /api/orders/:id - Get a specific order by ID (Protected)
-// @route   PUT /api/orders/:id/pay - Update order to paid (Protected)
-// @route   PUT /api/orders/:id/deliver - Update order to delivered (Protected, Admin only)
-router
-  .route('/:id')
-  .get(protect, getOrderById);
-
-router.route('/:id/pay').put(protect, updateOrderToPaid);
-router.route('/:id/deliver').put(protect, admin, updateOrderToDelivered);
+// You can add more routes here, e.g., for getting a single order by ID, updating order status (for admin), etc.
 
 module.exports = router;
