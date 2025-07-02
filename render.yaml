@@ -1,14 +1,15 @@
-# render.yaml
 services:
   - type: web
     name: ecommerce-backend
     env: node
     buildCommand: npm install
-    startCommand: npm start
+    startCommand: node server.js
     envVars:
       - key: MONGODB_URI
-        sync: false # Set this in Render dashboard for security
-      - key: JWT_SECRET # Used for authentication
-        sync: false # Set this in Render dashboard for security. Make sure to set a strong, random value.
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: FRONTEND_URL
+        value: https://your-frontend.com
       - key: PORT
-        value: 10000 # Make sure this matches your server.js
+        value: 10000
