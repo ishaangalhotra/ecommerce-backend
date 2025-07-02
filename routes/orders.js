@@ -8,7 +8,7 @@ const {
   updateOrderToDelivered,
   getAllOrders
 } = require('../controllers/orderController');
-const { protect, admin } = require('../middleware/authMiddleware'); // Import middleware
+const { protect, admin } = require('../middlewares/authMiddleware'); // Import middleware
 
 // @route   POST /api/orders - Create a new order (Protected)
 router.route('/').post(protect, createOrder);
