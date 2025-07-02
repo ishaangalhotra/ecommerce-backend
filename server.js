@@ -6,7 +6,6 @@ require('dotenv').config(); // Load environment variables from .env file
 const userRoutes = require('./routes/users');
 const productRoutes = require('./routes/products');
 const orderRoutes = require('./routes/orders');
-// If you implement other routes (e.g., admin routes), import them here
 
 const app = express();
 

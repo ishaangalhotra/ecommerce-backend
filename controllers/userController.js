@@ -1,7 +1,13 @@
 const User = require('../models/User');
-const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const asyncHandler = require('express-async-handler'); // For handling async errors
+
+// Helper function to generate JWT token
+const generateToken = (id, role) => {
+  return jwt.sign({ id, role }, process.env.JWT_SECRET, {
+    expiresIn: '1h', // Token expires in 1 hour
+  });
+};
 
 // @desc    Register a new user
 // @route   POST /api/users/register
@@ -32,7 +38,7 @@ exports.registerUser = asyncHandler(async (req, res) => {
 
     await user.save();
 
-    // Generate JWT token
+    // Generate JWT token (optional, but common for registration)
     const payload = {
       user: {
         id: user.id,

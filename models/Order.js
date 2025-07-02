@@ -66,10 +66,8 @@ const OrderSchema = new mongoose.Schema({
   deliveredAt: {
     type: Date,
   },
-  createdAt: {
-    type: Date,
-    default: Date.now,
-  },
+}, {
+  timestamps: true, // Automatically adds createdAt and updatedAt fields
 });
 
 module.exports = mongoose.model('Order', OrderSchema);

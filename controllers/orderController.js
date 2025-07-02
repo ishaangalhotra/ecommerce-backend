@@ -1,5 +1,5 @@
 const Order = require('../models/Order');
-const Product = require('../models/Product'); // Needed to check product stock/details
+const Product = require('../models/Product'); // Needed to validate product details
 const asyncHandler = require('express-async-handler'); // For handling async errors
 
 // @desc    Create new order
@@ -10,28 +10,26 @@ exports.createOrder = asyncHandler(async (req, res) => {
     orderItems,
     shippingAddress,
     paymentMethod,
-    itemsPrice, // Frontend calculated price, should be re-validated
+    // Frontend calculated prices, should ideally be re-validated on backend
+    itemsPrice,
     taxPrice,
     shippingPrice,
     totalPrice,
   } = req.body;
 
-  if (orderItems && orderItems.length === 0) {
+  if (!orderItems || orderItems.length === 0) {
     res.status(400);
     throw new Error('No order items');
   } else {
     // Validate order items and calculate prices on the server-side to prevent tampering
-    const itemsFromDB = await Product.find({
-      _id: {
-        $in: orderItems.map(x => x.product) // Get product IDs from the order items
-      }
-    });
+    const itemIds = orderItems.map(x => x.product);
+    const itemsFromDB = await Product.find({ _id: { $in: itemIds } });
 
     const validatedOrderItems = orderItems.map(item => {
       const dbItem = itemsFromDB.find(p => p._id.toString() === item.product.toString());
       if (!dbItem) {
         res.status(404);
-        throw new Error(`Product not found: ${item.name}`); // Use item.name for error message
+        throw new Error(`Product not found: ${item.name}`);
       }
       // You might also want to check dbItem.countInStock here and decrement it
       return {
@@ -49,18 +47,18 @@ exports.createOrder = asyncHandler(async (req, res) => {
       0
     );
 
-    // You would typically recalculate taxPrice, shippingPrice, totalPrice based on your business logic here
-    // For simplicity, using frontend provided values for now, but ideally recalculate all prices.
+    // For a real app, you'd recalculate taxPrice, shippingPrice, totalPrice based on your own logic
+    // For now, we'll use the frontend provided values, but be aware of this for production.
 
     const order = new Order({
-      user: req.user._id, // User ID comes from the 'protect' middleware
+      user: req.user.id, // User ID comes from the 'protect' middleware
       orderItems: validatedOrderItems,
       shippingAddress,
       paymentMethod,
       itemsPrice: calculatedItemsPrice, // Use server-calculated price
-      taxPrice, // Use frontend provided or recalculate
-      shippingPrice, // Use frontend provided or recalculate
-      totalPrice, // Use frontend provided or recalculate
+      taxPrice,
+      shippingPrice,
+      totalPrice,
     });
 
     const createdOrder = await order.save();
@@ -73,7 +71,7 @@ exports.createOrder = asyncHandler(async (req, res) => {
 // @access  Private (requires authentication)
 exports.getMyOrders = asyncHandler(async (req, res) => {
   // Find orders where the 'user' field matches the ID of the logged-in user
-  const orders = await Order.find({ user: req.user._id }).populate('user', 'username email');
+  const orders = await Order.find({ user: req.user.id }).populate('user', 'username email');
   res.json(orders);
 });
 
@@ -88,7 +86,7 @@ exports.getOrderById = asyncHandler(async (req, res) => {
 
   if (order) {
     // Ensure only the order owner or an admin can view the order
-    if (order.user._id.toString() === req.user._id.toString() || req.user.role === 'admin') {
+    if (order.user._id.toString() === req.user.id.toString() || req.user.role === 'admin') {
       res.json(order);
     } else {
       res.status(401);
@@ -100,7 +98,7 @@ exports.getOrderById = asyncHandler(async (req, res) => {
   }
 });
 
-// @desc    Update order to paid
+// @desc    Update order to paid (for payment gateway integration)
 // @route   PUT /api/orders/:id/pay
 // @access  Private (requires authentication)
 exports.updateOrderToPaid = asyncHandler(async (req, res) => {
@@ -125,7 +123,7 @@ exports.updateOrderToPaid = asyncHandler(async (req, res) => {
   }
 });
 
-// @desc    Update order to delivered
+// @desc    Update order to delivered (Admin only)
 // @route   PUT /api/orders/:id/deliver
 // @access  Private/Admin
 exports.updateOrderToDelivered = asyncHandler(async (req, res) => {

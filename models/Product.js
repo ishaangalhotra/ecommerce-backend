@@ -24,7 +24,7 @@ const ProductSchema = new mongoose.Schema({
     type: String,
     required: true // Making image URL required for product creation
   },
-  category: {
+  category: { // Optional: for product categories
     type: String,
     required: false,
     trim: true
@@ -35,18 +35,14 @@ const ProductSchema = new mongoose.Schema({
     default: 0,
     min: 0
   },
-  rating: {
+  rating: { // Optional: for average rating
     type: Number,
     default: 0
   },
-  numReviews: {
+  numReviews: { // Optional: number of reviews
     type: Number,
     default: 0
   },
-  createdAt: { // Using default timestamps from Mongoose schema options
-    type: Date,
-    default: Date.now
-  }
 }, {
   timestamps: true // Automatically adds createdAt and updatedAt fields
 });

@@ -23,7 +23,7 @@ exports.createProduct = asyncHandler(async (req, res) => {
 
   // Create new product instance
   const product = new Product({
-    user: req.user._id, // Assign the product to the logged-in seller/admin
+    user: req.user.id, // Assign the product to the logged-in seller/admin (req.user.id from protect middleware)
     name,
     description,
     price,
@@ -56,8 +56,8 @@ exports.deleteProduct = asyncHandler(async (req, res) => {
   const product = await Product.findById(req.params.id);
 
   if (product) {
-    // Optional: Only allow the owner or admin to delete
-    if (req.user.role === 'admin' || (req.user.role === 'seller' && product.user.toString() === req.user._id.toString())) {
+    // Only allow the owner or admin to delete
+    if (req.user.role === 'admin' || (req.user.role === 'seller' && product.user.toString() === req.user.id.toString())) {
       await Product.deleteOne({ _id: product._id }); // Use deleteOne for Mongoose 6+
       res.json({ message: 'Product removed' });
     } else {
@@ -80,7 +80,7 @@ exports.updateProduct = asyncHandler(async (req, res) => {
 
   if (product) {
     // Only allow the owner or admin to update
-    if (req.user.role === 'admin' || (req.user.role === 'seller' && product.user.toString() === req.user._id.toString())) {
+    if (req.user.role === 'admin' || (req.user.role === 'seller' && product.user.toString() === req.user.id.toString())) {
       product.name = name || product.name;
       product.description = description || product.description;
       product.price = price || product.price;
