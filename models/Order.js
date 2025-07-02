@@ -1,33 +1,75 @@
-const mongoose = require("mongoose");
+const mongoose = require('mongoose');
 
-const orderSchema = new mongoose.Schema({
+const OrderSchema = new mongoose.Schema({
   user: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
+    type: mongoose.Schema.Types.ObjectId, // Links this order to a User document
+    required: true,
+    ref: 'User' // Refers to the 'User' model
+  },
+  orderItems: [ // Array of items in the order
+    {
+      name: { type: String, required: true },
+      qty: { type: Number, required: true },
+      imageUrl: { type: String, required: false }, // Use imageUrl from product model
+      price: { type: Number, required: true },
+      product: { // Links the order item to a Product document
+        type: mongoose.Schema.Types.ObjectId,
+        required: true,
+        ref: 'Product'
+      },
+    },
+  ],
+  shippingAddress: {
+    address: { type: String, required: true },
+    city: { type: String, required: true },
+    postalCode: { type: String, required: true },
+    country: { type: String, required: true },
+  },
+  paymentMethod: {
+    type: String,
     required: true,
   },
-  items: [
-    {
-      productId: String,
-      name: String,
-      price: Number,
-      quantity: Number,
-    }
-  ],
-  totalAmount: {
+  paymentResult: { // Details from payment gateway (e.g., PayPal, Stripe)
+    id: { type: String },
+    status: { type: String },
+    update_time: { type: String },
+    email_address: { type: String },
+  },
+  taxPrice: {
     type: Number,
     required: true,
+    default: 0.0,
   },
-  shippingAddress: {
-    type: String,
+  shippingPrice: {
+    type: Number,
     required: true,
+    default: 0.0,
   },
-  status: {
-    type: String,
-    default: "Placed",
+  totalPrice: {
+    type: Number,
+    required: true,
+    default: 0.0,
   },
-}, {
-  timestamps: true
+  isPaid: {
+    type: Boolean,
+    required: true,
+    default: false,
+  },
+  paidAt: {
+    type: Date,
+  },
+  isDelivered: {
+    type: Boolean,
+    required: true,
+    default: false,
+  },
+  deliveredAt: {
+    type: Date,
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
 });
 
-module.exports = mongoose.model("Order", orderSchema);
+module.exports = mongoose.model('Order', OrderSchema);

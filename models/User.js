@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 
 const UserSchema = new mongoose.Schema({
-  username: { // Changed from 'name' to 'username' for consistency
+  username: {
     type: String,
     required: true,
     unique: true,
@@ -20,10 +20,10 @@ const UserSchema = new mongoose.Schema({
     required: true,
     minlength: [6, 'Password must be at least 6 characters long']
   },
-  role: {
+  role: { // Added role field
     type: String,
-    enum: ['user', 'admin'],
-    default: 'user'
+    enum: ['user', 'seller', 'admin'], // Possible roles
+    default: 'user', // Default role for new registrations
   },
   createdAt: {
     type: Date,
@@ -33,7 +33,7 @@ const UserSchema = new mongoose.Schema({
 
 // Pre-save hook to hash password before saving to database
 UserSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) {
+  if (!this.isModified('password')) { // Only hash if password is new or modified
     next();
   }
   const salt = await bcrypt.genSalt(10);
