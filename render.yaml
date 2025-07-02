@@ -9,6 +9,6 @@ services:
       - key: MONGODB_URI
         sync: false # Set this in Render dashboard for security
       - key: JWT_SECRET # Used for authentication
-        sync: false # Set this in Render dashboard for security
+        sync: false # Set this in Render dashboard for security. Make sure to set a strong, random value.
       - key: PORT
         value: 10000 # Make sure this matches your server.js
