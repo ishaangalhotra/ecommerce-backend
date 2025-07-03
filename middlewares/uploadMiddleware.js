@@ -1,15 +1,22 @@
-// middlewares/uploadMiddleware.js
 const multer = require('multer');
 const path = require('path');
-const createHttpError = require('http-errors');
+const ErrorResponse = require('../utils/errorResponse');
+const { v4: uuidv4 } = require('uuid');
+const fs = require('fs');
+
+// Ensure upload directory exists
+const uploadDir = 'uploads/';
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
 
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'uploads/');
+  destination: (req, file, cb) => {
+    cb(null, uploadDir);
   },
-  filename: function (req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, `${uuidv4()}${ext}`);
   }
 });
 
@@ -21,13 +28,37 @@ const fileFilter = (req, file, cb) => {
   if (mimetype && extname) {
     return cb(null, true);
   }
-  cb(createHttpError(400, 'Only .jpg, .jpeg, .png and .webp formats allowed'));
+  cb(new ErrorResponse('Only images (JPEG, PNG, WEBP) are allowed', 400));
 };
 
-const upload = multer({
-  storage: storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-  fileFilter: fileFilter
+const limits = {
+  fileSize: 5 * 1024 * 1024, // 5MB
+  files: 5 // Max 5 files
+};
+
+const upload = multer({ 
+  storage, 
+  fileFilter, 
+  limits 
 });
 
-module.exports = upload;
+// Dynamic field-based upload
+exports.uploadImages = (fieldName, maxCount = 1) => 
+  upload.array(fieldName, maxCount);
+
+// Single file upload with validation
+exports.uploadSingleImage = (fieldName) => 
+  upload.single(fieldName);
+
+// PDF upload configuration (for invoices etc.)
+exports.uploadPDF = multer({
+  storage,
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'application/pdf') {
+      cb(null, true);
+    } else {
+      cb(new ErrorResponse('Only PDF files are allowed', 400));
+    }
+  },
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB
+}).single('document');

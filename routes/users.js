@@ -8,22 +8,32 @@ const {
   getUsers,
   getUserById,
   updateUser,
-  deleteUser
+  deleteUser,
+  logoutUser,
+  forgotPassword,
+  resetPassword
 } = require('../controllers/userController');
 const { protect, authorize } = require('../middlewares/authMiddleware');
 
 // Public routes
 router.post('/register', registerUser);
 router.post('/login', loginUser);
+router.post('/logout', logoutUser); // New logout route
+router.post('/forgotpassword', forgotPassword); // New password reset
+router.put('/resetpassword/:resettoken', resetPassword); // New password reset
 
 // Protected user routes
-router.get('/profile', protect, getUserProfile);
-router.put('/profile', protect, updateUserProfile);
+router.route('/profile')
+  .get(protect, getUserProfile)
+  .put(protect, updateUserProfile);
 
 // Admin routes
-router.get('/', protect, authorize('admin'), getUsers);
-router.get('/:id', protect, authorize('admin'), getUserById);
-router.put('/:id', protect, authorize('admin'), updateUser);
-router.delete('/:id', protect, authorize('admin'), deleteUser);
+router.route('/')
+  .get(protect, authorize('admin'), getUsers);
+
+router.route('/:id')
+  .get(protect, authorize('admin'), getUserById)
+  .put(protect, authorize('admin'), updateUser)
+  .delete(protect, authorize('admin'), deleteUser);
 
 module.exports = router;
