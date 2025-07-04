@@ -8,7 +8,7 @@ dotenv.config();
 connectDB();
 
 const authRoutes = require('./routes/auth');
-const productRoutes =require('./routes/products');
+const productRoutes = require('./routes/products');
 const orderRoutes = require('./routes/orders');
 
 const app = express();
