@@ -6,7 +6,7 @@ const jwt = require('jsonwebtoken');
 // Generate JWT Token
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRE || '1h'
+    expiresIn: process.env.JWT_EXPIRE || '30d'
   });
 };
 
@@ -15,10 +15,6 @@ const generateToken = (id) => {
 // @access  Public
 exports.registerUser = asyncHandler(async (req, res, next) => {
   const { username, email, password } = req.body;
-
-  if (!username || !email || !password) {
-    return next(new ErrorResponse('Please provide all fields', 400));
-  }
 
   const userExists = await User.findOne({ email });
   if (userExists) {
@@ -29,42 +25,33 @@ exports.registerUser = asyncHandler(async (req, res, next) => {
 
   res.status(201).json({
     success: true,
-    data: {
-      _id: user._id,
+    token: generateToken(user._id),
+    user: {
+      id: user._id,
       username: user.username,
-      email: user.email,
-      token: generateToken(user._id)
+      email: user.email
     }
   });
 });
 
-// @desc    Authenticate user
+// @desc    Login user
 // @route   POST /api/users/login
 // @access  Public
 exports.loginUser = asyncHandler(async (req, res, next) => {
   const { email, password } = req.body;
 
-  if (!email || !password) {
-    return next(new ErrorResponse('Please provide email and password', 400));
-  }
-
   const user = await User.findOne({ email }).select('+password');
-  if (!user) {
-    return next(new ErrorResponse('Invalid credentials', 401));
-  }
-
-  const isMatch = await user.matchPassword(password);
-  if (!isMatch) {
+  if (!user || !(await user.matchPassword(password))) {
     return next(new ErrorResponse('Invalid credentials', 401));
   }
 
   res.status(200).json({
     success: true,
-    data: {
-      _id: user._id,
+    token: generateToken(user._id),
+    user: {
+      id: user._id,
       username: user.username,
-      email: user.email,
-      token: generateToken(user._id)
+      email: user.email
     }
   });
 });
@@ -73,10 +60,10 @@ exports.loginUser = asyncHandler(async (req, res, next) => {
 // @route   GET /api/users/profile
 // @access  Private
 exports.getUserProfile = asyncHandler(async (req, res, next) => {
-  const user = await User.findById(req.user._id);
+  const user = await User.findById(req.user.id);
   res.status(200).json({
     success: true,
-    data: user
+    user
   });
 });
 
@@ -84,7 +71,7 @@ exports.getUserProfile = asyncHandler(async (req, res, next) => {
 // @route   PUT /api/users/profile
 // @access  Private
 exports.updateUserProfile = asyncHandler(async (req, res, next) => {
-  const user = await User.findById(req.user._id);
+  const user = await User.findById(req.user.id);
 
   user.username = req.body.username || user.username;
   user.email = req.body.email || user.email;
@@ -96,11 +83,11 @@ exports.updateUserProfile = asyncHandler(async (req, res, next) => {
 
   res.status(200).json({
     success: true,
-    data: {
-      _id: user._id,
+    token: generateToken(user._id),
+    user: {
+      id: user._id,
       username: user.username,
-      email: user.email,
-      token: generateToken(user._id)
+      email: user.email
     }
   });
 });

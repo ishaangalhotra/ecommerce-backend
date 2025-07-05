@@ -1,20 +1,5 @@
-# Dependency directories
 node_modules/
-
-# Environment variables
 .env
-
-# Uploaded files
-/uploads/
-
-# Logs
-*.log
+uploads/
 logs/
 
-# IDE files
-.vscode/
-.idea/
-
-# OS generated files
-.DS_Store
-Thumbs.db

@@ -6,7 +6,7 @@ const asyncHandler = require('../middleware/async');
 // @desc    Create order
 // @route   POST /api/orders
 // @access  Private
-exports.createOrder = asyncHandler(async (req, res, next) => {
+exports.addOrderItems = asyncHandler(async (req, res, next) => {
   const { orderItems, shippingAddress, paymentMethod } = req.body;
 
   if (!orderItems || orderItems.length === 0) {
@@ -56,4 +56,30 @@ exports.createOrder = asyncHandler(async (req, res, next) => {
   });
 });
 
-// [Other order methods remain the same as your existing file]
+// @desc    Get order by ID
+// @route   GET /api/orders/:id
+// @access  Private
+exports.getOrderById = asyncHandler(async (req, res, next) => {
+  const order = await Order.findById(req.params.id).populate('user', 'name email');
+
+  if (!order) {
+    return next(new ErrorResponse('Order not found', 404));
+  }
+
+  res.status(200).json({
+    success: true,
+    data: order
+  });
+});
+
+// @desc    Get logged in user orders
+// @route   GET /api/orders/myorders
+// @access  Private
+exports.getMyOrders = asyncHandler(async (req, res, next) => {
+  const orders = await Order.find({ user: req.user._id });
+  res.status(200).json({
+    success: true,
+    count: orders.length,
+    data: orders
+  });
+});

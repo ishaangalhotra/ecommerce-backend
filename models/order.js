@@ -1,61 +1,46 @@
 const mongoose = require('mongoose');
+const Product = require('./Product');
 
 const orderItemSchema = new mongoose.Schema({
-  name: { 
-    type: String, 
-    required: [true, 'Product name is required'] 
-  },
-  qty: { 
-    type: Number, 
-    required: [true, 'Quantity is required'],
-    min: [1, 'Quantity must be at least 1']
-  },
-  image: { 
-    type: String, 
-    required: [true, 'Product image is required'] 
-  },
-  price: { 
-    type: Number, 
-    required: [true, 'Product price is required'],
-    min: [0, 'Price must be at least 0']
-  },
   product: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Product',
-    required: [true, 'Product reference is required']
-  }
+    required: true
+  },
+  name: {
+    type: String,
+    required: true
+  },
+  quantity: {
+    type: Number,
+    required: true,
+    min: 1
+  },
+  price: {
+    type: Number,
+    required: true,
+    min: 0
+  },
+  image: String
 });
 
 const orderSchema = new mongoose.Schema({
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: [true, 'User reference is required']
+    required: true
   },
-  orderItems: [orderItemSchema],
+  items: [orderItemSchema],
   shippingAddress: {
-    address: { 
-      type: String, 
-      required: [true, 'Address is required'] 
-    },
-    city: { 
-      type: String, 
-      required: [true, 'City is required'] 
-    },
-    postalCode: { 
-      type: String, 
-      required: [true, 'Postal code is required'] 
-    },
-    country: { 
-      type: String, 
-      required: [true, 'Country is required'] 
-    }
+    address: { type: String, required: true },
+    city: { type: String, required: true },
+    postalCode: { type: String, required: true },
+    country: { type: String, required: true }
   },
   paymentMethod: {
     type: String,
-    required: [true, 'Payment method is required'],
-    enum: ['Credit Card', 'PayPal', 'COD'],
-    default: 'COD'
+    required: true,
+    enum: ['Stripe', 'PayPal', 'COD']
   },
   paymentResult: {
     id: String,
@@ -101,23 +86,19 @@ const orderSchema = new mongoose.Schema({
     default: 'Processing'
   }
 }, {
-  timestamps: true,
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
+  timestamps: true
 });
 
-// Update product stock when order is created
-orderSchema.pre('save', async function(next) {
-  if (!this.isModified('orderItems')) return next();
-  
-  await Promise.all(
-    this.orderItems.map(async item => {
-      const product = await mongoose.model('Product').findById(item.product);
-      product.stock -= item.qty;
+// Add methods for order processing
+orderSchema.methods.updateStock = async function() {
+  const order = this;
+  for (const item of order.items) {
+    const product = await Product.findById(item.product);
+    if (product) {
+      product.countInStock -= item.quantity;
       await product.save();
-    })
-  );
-  next();
-});
+    }
+  }
+};
 
 module.exports = mongoose.model('Order', orderSchema);
