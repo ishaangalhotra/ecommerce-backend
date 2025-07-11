@@ -49,7 +49,11 @@ const envVarsSchema = Joi.object({
   SMTP_PORT: Joi.number().optional(),
   SMTP_USERNAME: Joi.string().optional(),
   SMTP_PASSWORD: Joi.string().optional(),
-  EMAIL_FROM: Joi.string().email().optional(),
+  EMAIL_FROM: Joi.when('SMTP_HOST', {
+    is: Joi.exist(),
+    then: Joi.string().email().required(),
+    otherwise: Joi.string().optional()
+  }),
 
   // Monitoring & Logging
   SENTRY_DSN: Joi.string().uri().allow('').optional(),
@@ -73,9 +77,7 @@ const { value: envVars, error } = envVarsSchema.validate(process.env, {
 });
 
 if (error) {
-  const errorMessages = error.details.map(detail => {
-    return `${detail.message}`;
-  }).join('\n  ');
+  const errorMessages = error.details.map(detail => `${detail.message}`).join('\n  ');
   throw new Error(`Config validation error:\n  ${errorMessages}`);
 }
 
@@ -184,8 +186,3 @@ module.exports = {
     rateLimiting: envVars.ENABLE_RATE_LIMITING
   }
 };
-EMAIL_FROM: Joi.when('SMTP_HOST', {
-  is: Joi.exist(),
-  then: Joi.string().email().required(),
-  otherwise: Joi.string().optional()
-}),
