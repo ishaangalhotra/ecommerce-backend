@@ -1,79 +1,127 @@
 const jwt = require('jsonwebtoken');
-const { OperationalError, Unauthorized, Forbidden } = require('./error');
+const { ErrorResponse } = require('./error');
 const User = require('../models/User');
 const redis = require('../utils/redis');
 const logger = require('../utils/logger');
+const config = require('../config/config');
 
+// Custom error classes
+class Unauthorized extends ErrorResponse {
+  constructor(message = 'Authentication required', details = null) {
+    super(message, 401, details);
+  }
+}
+class Forbidden extends ErrorResponse {
+  constructor(message = 'Access forbidden', details = null) {
+    super(message, 403, details);
+  }
+}
+
+// Token verification
 const verifyToken = async (token) => {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET, {
+    const decoded = jwt.verify(token, config.jwt.secret, {
       algorithms: ['HS256'],
       clockTolerance: 15,
-      issuer: process.env.JWT_ISSUER,
-      audience: process.env.JWT_AUDIENCE
+      issuer: config.jwt.issuer,
+      audience: config.jwt.audience,
     });
 
     if (!decoded?.sub || !decoded?.jti) {
       throw new Unauthorized('Invalid token structure');
     }
 
-    // Redis token revocation check
-    if (await redis.get(`auth:revoked:${decoded.jti}`)) {
+    if (redis.client && (await redis.client.get(`auth:revoked:${decoded.jti}`))) {
       throw new Unauthorized('Token revoked');
     }
 
     return decoded;
   } catch (err) {
     logger.warn(`Token verification failed: ${err.message}`);
+    if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
+      throw new Unauthorized(err.message);
+    }
     throw err;
   }
 };
 
-exports.authenticate = async (req, res, next) => {
+// Middleware to protect routes
+const protect = async (req, res, next) => {
   try {
-    const token = req.cookies?.token || 
-                 req.headers['authorization']?.replace('Bearer ', '');
-
-    if (!token) throw new Unauthorized('Authentication required');
-
-    req.tokenPayload = await verifyToken(token);
-    req.user = await User.findById(req.tokenPayload.sub)
-      .select('+passwordChangedAt')
-      .lean();
-
-    if (!req.user) throw new Unauthorized('User not found');
-    if (req.tokenPayload.iat < new Date(req.user.passwordChangedAt) / 1000) {
-      throw new Unauthorized('Password changed - please reauthenticate');
+    let token;
+    if (req.cookies && req.cookies.token) {
+      token = req.cookies.token;
+    } else if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+      token = req.headers.authorization.split(' ')[1];
     }
 
-    // Security headers
+    if (!token) {
+      throw new Unauthorized('Authentication required: No token provided');
+    }
+
+    req.tokenPayload = await verifyToken(token);
+
+    const user = await User.findById(req.tokenPayload.sub).select('+passwordChangedAt');
+    if (!user) {
+      throw new Unauthorized('User not found');
+    }
+
+    if (user.passwordChangedAt && req.tokenPayload.iat < (user.passwordChangedAt.getTime() / 1000)) {
+      throw new Unauthorized('Password changed. Please log in again.');
+    }
+
+    req.user = user;
+    req.userId = user._id;
+
     res.set({
-      'X-Authenticated-User': req.user._id,
+      'X-Authenticated-User': user._id.toString(),
       'X-Auth-Expires': new Date(req.tokenPayload.exp * 1000).toISOString()
     });
 
     next();
   } catch (err) {
-    // Clear invalid token cookie
-    res.clearCookie('token', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      domain: process.env.COOKIE_DOMAIN
-    });
+    if (req.cookies?.token) {
+      res.clearCookie('token', {
+        httpOnly: true,
+        secure: config.isProduction,
+        sameSite: config.isProduction ? 'none' : 'lax',
+        domain: config.cookie?.domain || 'localhost'
+      });
+    }
     next(err);
   }
 };
 
-exports.authorize = (roles = []) => (req, res, next) => {
-  if (!req.user) throw new Unauthorized();
-  if (roles.length && !roles.includes(req.user.role)) {
-    throw new Forbidden('Insufficient permissions');
+// Middleware to restrict to certain roles
+const restrictTo = (...roles) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Not authenticated' });
+    }
+    if (!roles.includes(req.user.role)) {
+      return res.status(403).json({ message: 'Access denied: insufficient permissions' });
+    }
+    next();
+  };
+};
+
+// Alternative role-based middleware
+const authorize = (...roles) => (req, res, next) => {
+  if (!req.user) {
+    throw new Unauthorized('Authorization required');
   }
+
+  if (!roles.includes(req.user.role)) {
+    throw new Forbidden(`User role '${req.user.role}' is not authorized to access this route.`);
+  }
+
   next();
 };
 
-exports.invalidateToken = async (jti) => {
-  const expiresIn = Math.floor((req.tokenPayload.exp - Date.now() / 1000));
-  await redis.set(`auth:revoked:${jti}`, '1', 'EX', expiresIn);
+module.exports = {
+  protect,
+  restrictTo,
+  authorize,
+  Unauthorized,
+  Forbidden
 };

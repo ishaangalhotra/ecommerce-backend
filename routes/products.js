@@ -9,13 +9,21 @@ const {
 } = require('../controllers/productController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 
+// Public routes
 router.route('/')
-  .get(getProducts)
-  .post(protect, authorize('seller', 'admin'), createProduct);
+  .get(getProducts);
 
 router.route('/:id')
-  .get(getProductById)
-  .put(protect, authorize('seller', 'admin'), updateProduct)
-  .delete(protect, authorize('seller', 'admin'), deleteProduct);
+  .get(getProductById);
+
+// Protected routes (require authentication and authorization)
+router.use(protect);
+
+router.route('/')
+  .post(authorize('seller', 'admin'), createProduct);
+
+router.route('/:id')
+  .put(authorize('seller', 'admin'), updateProduct)
+  .delete(authorize('seller', 'admin'), deleteProduct);
 
 module.exports = router;

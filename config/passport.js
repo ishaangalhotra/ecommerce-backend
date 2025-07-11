@@ -1,29 +1,27 @@
-const passport = require('passport');
-const JwtStrategy = require('passport-jwt').Strategy;
-const ExtractJwt = require('passport-jwt').ExtractJwt;
+// config/passport.js
+
+const { Strategy: JwtStrategy, ExtractJwt } = require('passport-jwt');
+const User = require('../models/User');
 const config = require('./config');
-const User = require('../models/User'); // Adjust path if your User model is elsewhere
 
-// JWT Strategy Options
-const opts = {
-  jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-  secretOrKey: config.jwt.secret,
-  issuer: config.jwt.issuer || 'MyStore',
-  audience: config.jwt.audience || 'MyStore-Client'
+module.exports = function (passport) {
+  const opts = {
+    jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+    secretOrKey: config.jwt.secret
+  };
+
+  passport.use(
+    new JwtStrategy(opts, async (jwt_payload, done) => {
+      try {
+        const user = await User.findById(jwt_payload.id);
+        if (user) {
+          return done(null, user);
+        } else {
+          return done(null, false);
+        }
+      } catch (err) {
+        return done(err, false);
+      }
+    })
+  );
 };
-
-// JWT Strategy
-passport.use(new JwtStrategy(opts, async (jwt_payload, done) => {
-  try {
-    const user = await User.findById(jwt_payload.sub);
-    if (user) {
-      return done(null, user);
-    }
-    return done(null, false);
-  } catch (err) {
-    return done(err, false);
-  }
-}));
-
-// Initialize Passport
-module.exports = passport;

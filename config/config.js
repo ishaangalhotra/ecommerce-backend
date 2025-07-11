@@ -30,14 +30,8 @@ const envVarsSchema = Joi.object({
   JWT_COOKIE_EXPIRES_DAYS: Joi.number().integer().min(1).default(90),
 
   // OAuth Providers
-  GOOGLE_CLIENT_ID: Joi.string().when('ENABLE_GOOGLE_OAUTH', {
-    is: Joi.valid('true', '1', true),
-    then: Joi.string().required()
-  }),
-  GOOGLE_CLIENT_SECRET: Joi.string().when('ENABLE_GOOGLE_OAUTH', {
-    is: Joi.valid('true', '1', true),
-    then: Joi.string().required()
-  }),
+  GOOGLE_CLIENT_ID: Joi.string().optional(),
+  GOOGLE_CLIENT_SECRET: Joi.string().optional(),
   FACEBOOK_APP_ID: Joi.string().optional(),
   FACEBOOK_APP_SECRET: Joi.string().optional(),
 
@@ -49,7 +43,7 @@ const envVarsSchema = Joi.object({
   CSRF_SECRET: Joi.string().min(32).default(() => require('crypto').randomBytes(32).toString('hex')),
 
   // Services
-  REDIS_URL: Joi.string().uri({ scheme: ['redis'] }).optional(),
+  REDIS_URL: Joi.string().uri().allow('').optional(),
   REDIS_TTL_SECONDS: Joi.number().default(86400),
   SMTP_HOST: Joi.string().optional(),
   SMTP_PORT: Joi.number().optional(),
@@ -58,7 +52,7 @@ const envVarsSchema = Joi.object({
   EMAIL_FROM: Joi.string().email().optional(),
 
   // Monitoring & Logging
-  SENTRY_DSN: Joi.string().uri().optional(),
+  SENTRY_DSN: Joi.string().uri().allow('').optional(),
   LOG_LEVEL: Joi.string()
     .valid('error', 'warn', 'info', 'http', 'verbose', 'debug', 'silly')
     .default('info'),
@@ -68,8 +62,8 @@ const envVarsSchema = Joi.object({
   ENABLE_GOOGLE_OAUTH: Joi.boolean().default(false),
   ENABLE_RATE_LIMITING: Joi.boolean().default(true)
 })
-.unknown()
-.prefs({ errors: { label: 'key' } });
+  .unknown()
+  .prefs({ errors: { label: 'key' } });
 
 // Validate environment variables
 const { value: envVars, error } = envVarsSchema.validate(process.env, {

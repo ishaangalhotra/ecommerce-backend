@@ -139,4 +139,38 @@ exports.updateUserRole = asyncHandler(async (req, res, next) => {
   }
 
   res.status(200).json({ success: true, data: user });
+});\// @desc    Get all products
+// @route   GET /api/v1/admin/products
+// @access  Private/Admin
+exports.getAllProducts = asyncHandler(async (req, res) => {
+  const products = await Product.find().populate('seller', 'name email');
+  res.status(200).json({
+    success: true,
+    count: products.length,
+    products
+  });
+});
+
+// @desc    Update product status (active/inactive)
+// @route   PUT /api/v1/admin/products/:id
+// @access  Private/Admin
+exports.updateProductStatus = asyncHandler(async (req, res, next) => {
+  const { status } = req.body;
+  const validStatuses = ['active', 'inactive'];
+
+  if (!validStatuses.includes(status)) {
+    return next(new ErrorResponse(`Invalid status: ${status}`, 400));
+  }
+
+  const product = await Product.findByIdAndUpdate(
+    req.params.id,
+    { status },
+    { new: true, runValidators: true }
+  );
+
+  if (!product) {
+    return next(new ErrorResponse(`Product not found with id ${req.params.id}`, 404));
+  }
+
+  res.status(200).json({ success: true, data: product });
 });

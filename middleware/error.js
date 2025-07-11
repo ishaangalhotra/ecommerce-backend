@@ -1,27 +1,40 @@
 const logger = require('../utils/logger');
-const { NODE_ENV } = require('../config');
+const config = require('../config/config'); // Assuming config.js exports NODE_ENV and other settings
 
+/**
+ * @class ErrorResponse
+ * @extends Error
+ * @description Custom error class for operational errors.
+ */
 class ErrorResponse extends Error {
   constructor(message, statusCode, details = null) {
     super(message);
     this.statusCode = statusCode;
-    this.details = details;
-    this.isOperational = true;
+    this.details = details; // Can be used to pass additional error context (e.g., validation errors)
+    this.isOperational = true; // Flag for known, handled errors
     Error.captureStackTrace(this, this.constructor);
   }
 }
 
+/**
+ * @function errorHandler
+ * @description Global error handling middleware for Express.
+ * @param {Error} err - The error object.
+ * @param {Object} req - Express request object.
+ * @param {Object} res - Express response object.
+ * @param {Function} next - Express next middleware function.
+ */
 const errorHandler = (err, req, res, next) => {
   let error = { ...err };
   error.message = err.message;
-  error.stack = err.stack;
+  error.stack = config.isDevelopment ? err.stack : undefined; // Only show stack in dev
 
   // Log to console for development
-  if (NODE_ENV === 'development') {
+  if (config.isDevelopment) {
     console.error('❌ Error Stack:', err.stack);
   }
 
-  // Log to file/winston for production
+  // Log to Winston for all environments (especially production)
   logger.error(`${err.statusCode || 500} - ${err.message} - ${req.originalUrl} - ${req.method} - ${req.ip}`);
 
   // Handle specific error types
@@ -60,18 +73,24 @@ const errorHandler = (err, req, res, next) => {
       error = new ErrorResponse(`Invalid ${err.path}: ${err.value}`, 400);
       break;
 
-    // Default to internal server error
+    // Multer errors (file upload errors)
+    case err.name === 'MulterError':
+      error = new ErrorResponse(`File upload error: ${err.message}`, 400);
+      break;
+
+    // Default to internal server error if not an operational error
     default:
-      if (!(err instanceof ErrorResponse)) {  // <-- This was missing a closing parenthesis
-        // Mask non-operational errors in production
-        const message = NODE_ENV === 'production' && !err.isOperational 
-          ? 'Something went wrong' 
+      // If it's not a custom ErrorResponse, or if it's an unexpected error,
+      // mask the message in production for non-operational errors.
+      if (!(err instanceof ErrorResponse) || !err.isOperational) {
+        const message = config.isProduction && !err.isOperational
+          ? 'Something went wrong on our server'
           : err.message;
         
         error = new ErrorResponse(
           message,
           err.statusCode || 500,
-          NODE_ENV === 'development' ? err.stack : undefined
+          config.isDevelopment ? err.stack : undefined // Show stack only in dev
         );
       }
   }
@@ -80,12 +99,9 @@ const errorHandler = (err, req, res, next) => {
   res.status(error.statusCode || 500).json({
     success: false,
     error: error.message,
-    ...(error.details && { details: error.details }),
-    ...(NODE_ENV === 'development' && { stack: error.stack })
+    details: error.details, // Include specific error details (e.g., validation msgs)
+    stack: error.stack // Include stack only in development
   });
 };
 
-module.exports = {
-  ErrorResponse,
-  errorHandler
-};
+module.exports = { ErrorResponse, errorHandler };

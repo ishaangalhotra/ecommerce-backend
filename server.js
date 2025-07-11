@@ -3,217 +3,208 @@ const express = require('express');
 const mongoose = require('mongoose');
 const helmet = require('helmet');
 const cors = require('cors');
-const path = require('path'); // Required for serving static files
+const path = require('path');
 const cookieParser = require('cookie-parser');
 const compression = require('compression');
 const { createServer } = require('http');
-const xss = require('xss-clean'); // For XSS protection
+const xss = require('xss-clean');
 const morgan = require('morgan');
 const passport = require('passport');
-const rateLimit = require('express-rate-limit'); // For rate limiting
-const { ApolloServer } = require('apollo-server-express');
+const rateLimit = require('express-rate-limit');
 const { createTerminus } = require('@godaddy/terminus');
-const Sentry = require('@sentry/node');
-const Tracing = require('@sentry/tracing'); // For Sentry tracing integrations
+const { createLogger, format, transports } = require('winston');
 
 // Local Modules
-const logger = require('./utils/logger');
+const config = require('./config/config');
 const { errorHandler } = require('./middleware/error');
 const passportConfig = require('./config/passport');
-const typeDefs = require('./graphql/schema');
-const resolvers = require('./graphql/resolvers');
-const config = require('./config'); // Ensure your config module is correctly imported here
 
-// --- REMOVED THE CONFLICTING MANUAL ENV VALIDATION BLOCK ---
-// The following block has been removed, as config.js handles validation:
-/*
-const requiredEnvVars = ['MONGO_URI', 'COOKIE_SECRET', 'CORS_ORIGINS'];
-requiredEnvVars.forEach(varName => {
-  if (!process.env[varName]) {
-    logger.error(`❌ Missing required environment variable: ${varName}`);
-    process.exit(1);
-  }
-});
-*/
-// -------------------------------------------------------------
-
-// Constants
-const PORT = config.port; // Use port from validated config
-const isProduction = config.isProduction; // Use isProduction from validated config
+// Routes
+const authRoutes = require('./routes/auth');
+const userRoutes = require('./routes/users');
+const productRoutes = require('./routes/products');
+const orderRoutes = require('./routes/orders');
+const sellerRoutes = require('./routes/seller');
+const adminRoutes = require('./routes/admin');
+const cartRoutes = require('./routes/cart');
+const wishlistRoutes = require('./routes/wishlist');
+const adminProductRoutes = require('./routes/adminProducts');
 
 // Initialize Express
 const app = express();
 const httpServer = createServer(app);
 
-// ==================== Sentry Initialization ====================
-if (process.env.SENTRY_DSN) { // Still use process.env here as Sentry init needs raw DSN
-  Sentry.init({
-    dsn: process.env.SENTRY_DSN,
-    environment: config.env, // Use env from config
-    integrations: [
-      new Sentry.Integrations.Http({ tracing: true }),
-      new Sentry.Integrations.Express({ app }),
-      new Tracing.Integrations.Mongo({ mongoose }) // Assuming this is correct from your snippet
-    ],
-    tracesSampleRate: 1.0,
-  });
-  app.use(Sentry.Handlers.requestHandler());
-  app.use(Sentry.Handlers.tracingHandler());
+// ==================== Winston Logger Setup ====================
+const logger = createLogger({
+  level: process.env.LOG_LEVEL || 'info',
+  format: format.combine(
+    format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+    format.errors({ stack: true }),
+    format.splat(),
+    format.json()
+  ),
+  transports: [
+    new transports.File({ filename: 'logs/error.log', level: 'error' }),
+    new transports.File({ filename: 'logs/combined.log' })
+  ]
+});
+
+if (process.env.NODE_ENV !== 'production') {
+  logger.add(new transports.Console({
+    format: format.combine(
+      format.colorize(),
+      format.printf(info => `${info.timestamp} ${info.level}: ${info.message}`)
+    )
+  }));
 }
 
-// ==================== Global Middleware ====================
-app.use(express.json()); // For parsing application/json
-app.use(express.urlencoded({ extended: true })); // For parsing application/x-www-form-urlencoded
-app.use(cookieParser(config.security.cookieSecret)); // Use config for secret
+// ==================== Environment Validation ====================
+const requiredEnvVars = ['MONGODB_URI', 'COOKIE_SECRET', 'JWT_SECRET'];
+requiredEnvVars.forEach(env => {
+  if (!process.env[env]) {
+    logger.error(`❌ Missing required environment variable: ${env}`);
+    process.exit(1);
+  }
+});
+
+// ==================== Database Connection ====================
+const connectDB = async () => {
+  try {
+    await mongoose.connect(process.env.MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 5000
+    });
+    logger.info('✅ MongoDB Connected');
+  } catch (err) {
+    logger.error('❌ MongoDB Connection Error:', err);
+    process.exit(1);
+  }
+};
+connectDB();
+
+// ==================== Middleware ====================
+app.use(express.json({ limit: '10kb' }));
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser(process.env.COOKIE_SECRET));
 app.use(compression());
-app.use(xss()); // XSS clean middleware
+app.use(xss());
+app.use(morgan('dev', { stream: { write: message => logger.http(message.trim()) } }));
 
-// Helmet for security headers
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      // Add other CSP directives based on your frontend and third-party scripts.
-      // Example for React/Vue development server:
-      // connectSrc: ["'self'", config.frontendUrl, "ws://localhost:3000"],
-      // scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"], // Be careful with 'unsafe-inline' and 'unsafe-eval' in production
-      // styleSrc: ["'self'", "'unsafe-inline'"],
-      // imgSrc: ["'self'", "data:"],
-    },
-  },
-}));
-app.use(morgan(isProduction ? 'combined' : 'dev'));
+// Security Headers
+app.use(helmet());
+app.use(helmet.permittedCrossDomainPolicies());
+app.use(helmet.referrerPolicy({ policy: 'same-origin' }));
 
-// CORS setup
+// Enhanced CORS Configuration
+const allowedOrigins = process.env.FRONTEND_URLS 
+  ? process.env.FRONTEND_URLS.split(',') 
+  : ['http://localhost:3000'];
+
 app.use(cors({
-  origin: config.security.cors.origin, // Use config for CORS origins
-  methods: config.security.cors.methods,
-  allowedHeaders: config.security.cors.allowedHeaders,
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  exposedHeaders: ['Authorization'],
+  maxAge: 86400
 }));
 
-// Rate Limiting (using config)
-if (config.features.rateLimiting) {
-  const limiter = rateLimit({
-    windowMs: config.security.rateLimit.windowMs,
-    max: config.security.rateLimit.max,
-    message: 'Too many requests from this IP, please try again after some time.',
-    headers: true, // Send X-RateLimit-* headers
-  });
-  app.use('/api/', limiter); // Apply to all API routes
-}
+// Rate Limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: 'Too many requests from this IP, please try again later'
+});
+app.use('/api/', limiter);
 
-// Passport initialization
+// Passport Authentication
 app.use(passport.initialize());
-passportConfig(passport); // Pass passport object to config
+passportConfig(passport);
 
-// Serve static files (assuming 'public' for frontend build)
-// Adjust 'public' to your actual frontend build directory if different (e.g., 'build', 'dist')
+// Static Files
 app.use(express.static(path.join(__dirname, 'public')));
 
+// ==================== API Routes ====================
+app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/products', productRoutes);
+app.use('/api/orders', orderRoutes);
+app.use('/api/seller', sellerRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/cart', cartRoutes);
+app.use('/api/wishlist', wishlistRoutes);
+app.use('/api/admin/products', adminProductRoutes);
 
-// ==================== Routes ====================
-// Example routes (uncomment and add your actual route imports)
-// app.use('/api/v1/auth', require('./routes/authRoutes'));
-// app.use('/api/v1/users', require('./routes/userRoutes'));
-// app.use('/api/v1/products', require('./routes/productRoutes'));
-// app.use('/api/v1/orders', require('./routes/orderRoutes'));
+// Health Check
+app.get('/health', (req, res) => res.status(200).json({ status: 'OK' }));
 
-// GraphQL
-const apolloServer = new ApolloServer({
-  typeDefs,
-  resolvers,
-  context: ({ req, res }) => ({ req, res, config, logger }), // Pass config and logger to GraphQL context
-  formatError: (error) => {
-    logger.error('GraphQL Error:', error);
-    if (process.env.SENTRY_DSN) {
-      Sentry.captureException(error);
-    }
-    return error;
-  },
-  plugins: [{
-    async serverWillStart() {
-      // Connect to MongoDB using config's URI (MONGODB_URI)
-      try {
-        await mongoose.connect(config.db.uri, config.db.options);
-        logger.info('Connected to MongoDB Atlas'); // Or just "Connected to MongoDB"
-      } catch (err) {
-        logger.error('Error connecting to MongoDB:', err);
-        process.exit(1); // Exit if DB connection fails, as it's critical
-      }
-      return {
-        async serverWillStop() {
-          // Disconnect from MongoDB on server stop
-          await mongoose.disconnect();
-          logger.info('Disconnected from MongoDB Atlas');
-        }
-      };
-    }
-  }]
-});
-
-// For frontend routing (if using a single-page application and serving from backend)
-// This should be placed after all API routes
+// SPA Fallback
 app.get('*', (req, res) => {
-  res.sendFile(path.resolve(__dirname, 'public', 'index.html'));
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Fallback for any unhandled routes/requests
-app.use((req, res) => {
-  res.status(404).json({ error: 'Not Found' });
-});
-
-// Centralized error handling
+// Error Handling
 app.use(errorHandler);
 
-// ==================== Server Startup ====================
-async function startServer() {
-  await apolloServer.start();
-  apolloServer.applyMiddleware({
-    app,
-    path: '/graphql',
-    cors: false // Apollo Server's CORS is disabled, global CORS middleware handles it
-  });
+// ==================== Server Setup ====================
+const PORT = process.env.PORT || 3000;
+process.title = 'mystore-backend';
 
-  createTerminus(httpServer, {
-    signals: ['SIGTERM', 'SIGINT'], // Listen for these signals for graceful shutdown
-    timeout: 10000, // Timeout for graceful shutdown
-    healthChecks: { '/health': () => Promise.resolve() }, // Basic health check endpoint
-    onSignal: async () => {
-      logger.info('🛑 Shutting down...');
-      // Perform cleanup operations before shutting down
-      await Promise.all([
-        mongoose.connection.close(), // Close MongoDB connection
-        apolloServer.stop(), // Stop Apollo Server
-        process.env.SENTRY_DSN ? Sentry.close(2000) : Promise.resolve() // Close Sentry if active
-      ]);
-    },
-    onShutdown: () => logger.info('✅ Clean shutdown complete')
-  });
-
-  httpServer.listen(PORT, () => {
-    logger.info(`🚀 Server running on port ${PORT}`);
-    logger.info(`🚀 GraphQL: http://localhost:${PORT}${apolloServer.graphqlPath}`);
-  });
-}
-
-// Call startServer to begin the application
-startServer();
-
-// ==================== Process Handlers ====================
-// Catch unhandled promise rejections
-process.on('unhandledRejection', (err) => {
-  logger.error('Unhandled Rejection:', err);
-  if (process.env.SENTRY_DSN) Sentry.captureException(err);
-  // It's good practice to exit for unhandled rejections in production to prevent unexpected state
-  // process.exit(1);
+// Server event listeners
+httpServer.on('error', (error) => {
+  if (error.code === 'EADDRINUSE') {
+    logger.error(`❌ Port ${PORT} is already in use`);
+  } else {
+    logger.error('❌ Server error:', error);
+  }
+  process.exit(1);
 });
 
-// Catch uncaught exceptions
+httpServer.on('listening', () => {
+  const addr = httpServer.address();
+  logger.info(`✅ Server listening on http://localhost:${addr.port}`);
+  logger.info(`✅ Also accessible on http://0.0.0.0:${addr.port}`);
+  logger.info(`🚀 Environment: ${process.env.NODE_ENV || 'development'}`);
+});
+
+// Graceful shutdown setup
+createTerminus(httpServer, {
+  signals: ['SIGINT', 'SIGTERM'],
+  healthChecks: { '/health': () => Promise.resolve() },
+  onSignal: async () => {
+    logger.info('🛑 Server is starting cleanup...');
+    await Promise.all([
+      mongoose.connection.close(false),
+      new Promise(resolve => httpServer.close(resolve))
+    ]);
+    logger.info('🔌 Connections closed gracefully');
+  },
+  onShutdown: () => logger.info('👋 Server is shutting down'),
+  logger: (msg, err) => logger.error(err ? `❌ ${msg}: ${err}` : `ℹ️ ${msg}`)
+});
+
+// Start the server
+httpServer.listen(PORT, '0.0.0.0');
+
+// ==================== Process Event Handlers ====================
+process.on('unhandledRejection', (err) => {
+  logger.error('⚠️ Unhandled Rejection:', err);
+});
+
 process.on('uncaughtException', (err) => {
-  logger.error('Uncaught Exception:', err);
-  if (process.env.SENTRY_DSN) Sentry.captureException(err);
-  // Must exit for uncaught exceptions, as the application is in an unstable state
+  logger.error('⚠️ Uncaught Exception:', err);
   process.exit(1);
 });
 
