@@ -184,3 +184,8 @@ module.exports = {
     rateLimiting: envVars.ENABLE_RATE_LIMITING
   }
 };
+EMAIL_FROM: Joi.when('SMTP_HOST', {
+  is: Joi.exist(),
+  then: Joi.string().email().required(),
+  otherwise: Joi.string().optional()
+}),
