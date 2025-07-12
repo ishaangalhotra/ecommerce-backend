@@ -1,6 +1,6 @@
 const Cart = require('../models/Cart');
 const Product = require('../models/Product');
-const asyncHandler = require('../middleware/asyncHandler');
+const asyncHandler = require('../middleware/asyncHandlerHandler');
 const ErrorResponse = require('../utils/errorResponse');
 
 // @desc    Get user's cart

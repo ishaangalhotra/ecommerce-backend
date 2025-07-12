@@ -1,4 +1,4 @@
-const asyncHandler = require('../middleware/asyncHandler');
+const asyncHandler = require('../middleware/asyncHandlerHandler');
 const Product = require('../models/Product');
 const logger = require('../utils/logger');
 const { NotFoundError } = require('../utils/errors');
