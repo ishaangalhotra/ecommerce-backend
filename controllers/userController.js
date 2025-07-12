@@ -1,7 +1,7 @@
 // userController.js
 const User = require('../models/User');
 const ErrorResponse = require('../utils/errorResponse');
-const asyncHandler = require('../middleware/asynchandler');
+const asyncHandler = require('../middleware/asyncHandler');
 const { sendTokenResponse } = require('../utils/auth'); // Import shared token sending utility
 const config = require('../config/config'); // Import config
 
