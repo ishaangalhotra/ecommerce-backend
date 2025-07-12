@@ -2,7 +2,7 @@
 const Wishlist = require('../models/Wishlist');
 const Product = require('../models/Product');
 const ErrorResponse = require('../utils/errorResponse');
-const asyncHandler = require('../middleware/asyncHandlerHandler');
+const asyncHandler = require('../middleware/asyncHandler');
 const mongoose = require('mongoose'); // Needed for isValidObjectId
 
 // @desc    Toggle product in wishlist (add if not present, remove if present)
