@@ -7,12 +7,14 @@ const path = require('path');
 const cookieParser = require('cookie-parser');
 const compression = require('compression');
 const { createServer } = require('http');
-const xss = require('xss-clean');
+// const xss = require('xss-clean'); // ❌ Deprecated
 const morgan = require('morgan');
 const passport = require('passport');
 const rateLimit = require('express-rate-limit');
 const { createTerminus } = require('@godaddy/terminus');
 const { createLogger, format, transports } = require('winston');
+// const { ApolloServer } = require('@apollo/server');
+// const { expressMiddleware } = require('@apollo/server/express4');
 
 // Local Modules
 const config = require('./config/config');
@@ -88,7 +90,7 @@ app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser(process.env.COOKIE_SECRET));
 app.use(compression());
-app.use(xss());
+// app.use(xss()); // ❌ Removed deprecated global XSS filter
 app.use(morgan('dev', { stream: { write: message => logger.http(message.trim()) } }));
 
 // Security Headers
@@ -103,9 +105,7 @@ const allowedOrigins = process.env.FRONTEND_URLS
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
