@@ -1,5 +1,5 @@
 const Product = require('../models/Product');
-const asyncHandler = require('../middleware/asynchandler');
+const asyncHandler = require('../middleware/asyncHandler');
 const ErrorResponse = require('../utils/errorResponse');
 
 // @desc    Get all products

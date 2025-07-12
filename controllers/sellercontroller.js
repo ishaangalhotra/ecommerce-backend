@@ -1,6 +1,6 @@
 const Product = require('../models/Product');
 const Order = require('../models/Order');
-const asyncHandler = require('express-async-handler');
+const asyncHandler = require('express-async-Handler');
 const logger = require('../utils/logger');
 const { deleteImage } = require('../utils/cloudinary'); // If using cloud storage
 

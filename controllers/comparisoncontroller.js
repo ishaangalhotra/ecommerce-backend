@@ -1,6 +1,6 @@
 const Product = require('../models/Product');
 const ErrorResponse = require('../utils/errorResponse');
-const asyncHandler = require('../middleware/async');
+const asyncHandler = require('../middleware/asyncHandler');
 
 // @desc    Compare products
 // @route   GET /api/compare?ids=id1,id2,id3

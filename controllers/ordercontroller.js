@@ -1,6 +1,6 @@
 const Order = require('../models/Order');
 const Cart = require('../models/Cart');
-const asyncHandler = require('../middleware/async');
+const asyncHandler = require('../middleware/asyncHandler');
 const ErrorResponse = require('../utils/errorResponse');
 
 // @desc    Get all orders
