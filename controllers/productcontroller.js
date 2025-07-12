@@ -1,86 +1,118 @@
-const Product = require('../models/Product');
 const asyncHandler = require('../middleware/asyncHandler');
-const ErrorResponse = require('../utils/errorResponse');
+const Product = require('../models/Product');
+const logger = require('../utils/logger');
+const { NotFoundError } = require('../utils/errors');
+const { body, validationResult } = require('express-validator');
 
-// @desc    Get all products
-// @route   GET /api/v1/products
-// @access  Public
-exports.getProducts = asyncHandler(async (req, res) => {
-  // Advanced filtering, sorting, pagination
-  const { search, category, minPrice, maxPrice, sort, page = 1, limit = 10 } = req.query;
-
-  let query = {};
-  if (search) query.name = { $regex: search, $options: 'i' };
-  if (category) query.category = category;
-  if (minPrice || maxPrice) {
-    query.price = {};
-    if (minPrice) query.price.$gte = Number(minPrice);
-    if (maxPrice) query.price.$lte = Number(maxPrice);
+// Validation middleware
+exports.validateProduct = [
+  body('name').notEmpty().trim().withMessage('Name is required'),
+  body('price').isFloat({ gt: 0 }).withMessage('Valid price required'),
+  body('category').notEmpty().withMessage('Category is required'),
+  (req, res, next) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ 
+        success: false,
+        errors: errors.array() 
+      });
+    }
+    next();
   }
+];
 
-  const total = await Product.countDocuments(query);
-  const products = await Product.find(query)
-    .sort(sort || '-createdAt')
-    .skip((page - 1) * limit)
-    .limit(Number(limit));
+// Get all products with pagination
+exports.getProducts = asyncHandler(async (req, res) => {
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 10;
+  const skip = (page - 1) * limit;
+
+  const [products, total] = await Promise.all([
+    Product.find()
+      .skip(skip)
+      .limit(limit)
+      .select('name price category'), // Only select needed fields
+    Product.countDocuments()
+  ]);
+
+  logger.info('Fetched products', { 
+    count: products.length,
+    page,
+    limit 
+  });
 
   res.status(200).json({
     success: true,
     count: products.length,
     total,
-    data: products,
+    pages: Math.ceil(total / limit),
+    currentPage: page,
+    data: products
   });
 });
 
-// @desc    Get single product
-// @route   GET /api/v1/products/:id
-// @access  Public
-exports.getProductById = asyncHandler(async (req, res, next) => {
-  const product = await Product.findById(req.params.id);
+// Get single product with security filtering
+exports.getProduct = asyncHandler(async (req, res) => {
+  const product = await Product.findById(req.params.id)
+    .select('-__v -createdAt -updatedAt'); // Exclude unnecessary fields
 
   if (!product) {
-    return next(new ErrorResponse(`Product not found with id of ${req.params.id}`, 404));
+    throw new NotFoundError('Product not found');
   }
+
+  logger.info('Fetched product', { productId: req.params.id });
 
   res.status(200).json({
     success: true,
-    data: product
+    data: {
+      id: product._id,
+      name: product.name,
+      price: product.price,
+      category: product.category,
+      description: product.description
+      // Only expose what's needed
+    }
   });
 });
 
-// @desc    Create product
-// @route   POST /api/v1/products
-// @access  Private/Admin
+// Create product (with validation middleware)
 exports.createProduct = asyncHandler(async (req, res) => {
-  // Add user to req.body
-  req.body.user = req.user.id;
-
   const product = await Product.create(req.body);
+  
+  logger.info('Product created', { 
+    productId: product._id,
+    createdBy: req.user?.id 
+  });
 
   res.status(201).json({
     success: true,
-    data: product
+    data: {
+      id: product._id,
+      name: product.name,
+      price: product.price
+    }
   });
 });
 
-// @desc    Update product
-// @route   PUT /api/v1/products/:id
-// @access  Private/Admin
-exports.updateProduct = asyncHandler(async (req, res, next) => {
-  let product = await Product.findById(req.params.id);
+// Update product
+exports.updateProduct = asyncHandler(async (req, res) => {
+  const product = await Product.findByIdAndUpdate(
+    req.params.id,
+    req.body,
+    { 
+      new: true,
+      runValidators: true,
+      select: 'name price category description' // Return only these fields
+    }
+  );
 
   if (!product) {
-    return next(new ErrorResponse(`Product not found with id of ${req.params.id}`, 404));
+    throw new NotFoundError('Product not found');
   }
 
-  // Make sure user is product owner or admin
-  if (product.user.toString() !== req.user.id && req.user.role !== 'admin') {
-    return next(new ErrorResponse(`User ${req.user.id} is not authorized to update this product`, 401));
-  }
-
-  product = await Product.findByIdAndUpdate(req.params.id, req.body, {
-    new: true,
-    runValidators: true
+  logger.info('Product updated', { 
+    productId: req.params.id,
+    updatedBy: req.user?.id 
   });
 
   res.status(200).json({
@@ -89,25 +121,21 @@ exports.updateProduct = asyncHandler(async (req, res, next) => {
   });
 });
 
-// @desc    Delete product
-// @route   DELETE /api/v1/products/:id
-// @access  Private/Admin
-exports.deleteProduct = asyncHandler(async (req, res, next) => {
-  const product = await Product.findById(req.params.id);
+// Delete product
+exports.deleteProduct = asyncHandler(async (req, res) => {
+  const product = await Product.findByIdAndDelete(req.params.id);
 
   if (!product) {
-    return next(new ErrorResponse(`Product not found with id of ${req.params.id}`, 404));
+    throw new NotFoundError('Product not found');
   }
 
-  // Make sure user is product owner or admin
-  if (product.user.toString() !== req.user.id && req.user.role !== 'admin') {
-    return next(new ErrorResponse(`User ${req.user.id} is not authorized to delete this product`, 401));
-  }
-
-  await product.remove();
+  logger.info('Product deleted', { 
+    productId: req.params.id,
+    deletedBy: req.user?.id 
+  });
 
   res.status(200).json({
     success: true,
-    data: {}
+    data: null
   });
 });
