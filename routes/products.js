@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const {
   getProducts,
-  getProductById,
+  getProduct,
   createProduct,
   updateProduct,
   deleteProduct
@@ -14,7 +14,7 @@ router.route('/')
   .get(getProducts);
 
 router.route('/:id')
-  .get(getProductById);
+  .get(getProduct);
 
 // Protected routes (require authentication and authorization)
 router.use(protect);

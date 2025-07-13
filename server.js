@@ -18,7 +18,7 @@ const { createLogger, format, transports } = require('winston');
 
 // Local Modules
 const config = require('./config/config');
-const { errorHandler } = require('./middleware/error');
+const { errorHandler } = require('./utils/error');
 const passportConfig = require('./config/passport');
 
 // Routes

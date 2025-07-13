@@ -1,7 +1,7 @@
 const asyncHandler = require('../middleware/asyncHandler');
 const Product = require('../models/Product');
 const logger = require('../utils/logger');
-const { NotFoundError } = require('../utils/errors');
+const { NotFoundError } = require('../utils/error');
 const { body, validationResult } = require('express-validator');
 
 // Validation middleware
