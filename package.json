@@ -1,63 +1,240 @@
 {
-  "name": "mystore-backend",
-  "version": "1.0.0",
-  "description": "Backend for MyStore e-commerce application",
+  "name": "quicklocal-backend",
+  "version": "2.0.0",
+  "description": "High-performance backend API for QuickLocal Marketplace - Ultra-fast 20-minute local delivery platform with real-time tracking",
   "main": "server.js",
+  "author": "QuickLocal Engineering Team <engineering@quicklocal.com>",
+  "license": "MIT",
+  "private": true,
+  "keywords": [
+    "quicklocal",
+    "hyperlocal",
+    "instant-delivery",
+    "marketplace",
+    "express",
+    "mongodb",
+    "redis",
+    "real-time",
+    "microservices",
+    "serverless-ready"
+  ],
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "start": "cross-env NODE_ENV=production node --enable-source-maps server.js",
+    "dev": "cross-env NODE_ENV=development nodemon --inspect server.js",
+    "debug": "cross-env NODE_ENV=development node --inspect-brk server.js",
+    "prod": "NODE_ENV=production PM2_HOME=.pm2 pm2-runtime start ecosystem.config.js",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest --coverage --detectOpenHandles --forceExit",
+    "test:watch": "jest --watch",
+    "test:unit": "jest --testPathPattern=tests/unit --runInBand",
+    "test:integration": "jest --testPathPattern=tests/integration --runInBand",
+    "test:e2e": "jest --testPathPattern=tests/e2e --runInBand",
+    "test:ci": "CI=true npm test",
+    "lint": "eslint . --ext .js --ignore-path .gitignore",
+    "lint:fix": "eslint . --ext .js --fix",
+    "format": "prettier --write . && npm run lint:fix",
+    "validate": "npm run lint && npm run test",
+    "logs": "tail -f logs/combined.log",
+    "logs:error": "tail -f logs/error.log",
+    "logs:access": "tail -f logs/access.log",
+    "db:migrate": "node --enable-source-maps migrations/index.js",
+    "db:rollback": "node --enable-source-maps migrations/rollback.js",
+    "db:seed": "NODE_ENV=development node --enable-source-maps scripts/seed.js",
+    "db:reset": "npm run db:rollback && npm run db:migrate && npm run db:seed",
+    "db:backup": "node scripts/backup.js",
+    "db:restore": "node scripts/restore.js",
+    "docker:build": "docker build -t quicklocal-backend .",
+    "docker:run": "docker run -p 3000:3000 --env-file .env quicklocal-backend",
+    "docker:dev": "docker-compose -f docker-compose.dev.yml up",
+    "docker:prod": "docker-compose -f docker-compose.prod.yml up -d",
+    "pm2:start": "pm2 start ecosystem.config.js",
+    "pm2:stop": "pm2 stop ecosystem.config.js",
+    "pm2:restart": "pm2 restart ecosystem.config.js",
+    "pm2:logs": "pm2 logs",
+    "pm2:monit": "pm2 monit",
+    "security:audit": "npm audit --audit-level critical",
+    "security:check": "npx audit-ci --config audit-ci.json",
+    "security:fix": "npm audit fix",
+    "security:snyk": "npx snyk test",
+    "docs:generate": "swagger-jsdoc -d swaggerDef.js -o public/swagger.json ./routes/*.js",
+    "docs:serve": "swagger-ui-serve public/swagger.json",
+    "docs:deploy": "npm run docs:generate && cp public/swagger.json ../docs/api/",
+    "metrics": "curl http://localhost:3000/metrics",
+    "health": "curl -f http://localhost:3000/health || exit 1",
+    "status": "curl -s http://localhost:3000/health | jq",
+    "setup": "npm install && npm run db:migrate && npm run db:seed",
+    "setup:dev": "npm install && npm run db:reset && npm run docs:generate",
+    "setup:prod": "npm ci --only=production && npm run db:migrate",
+    "build": "npm run validate && npm run docs:generate",
+    "deploy": "npm run build && npm run setup:prod",
+    "clean": "rm -rf node_modules coverage dist logs/*.log",
+    "clean:logs": "rm -rf logs/*.log",
+    "clean:cache": "npm cache clean --force",
+    "precommit": "lint-staged",
+    "prepush": "npm run validate",
+    "postinstall": "npm run security:audit"
   },
   "dependencies": {
-    "@apollo/server": "^4.12.2",
-    "@godaddy/terminus": "^4.12.1",
-    "@sentry/node": "^9.35.0",
-    "@sentry/tracing": "^7.120.3",
-    "@types/redis": "^4.0.10",
-    "base64-url": "^2.3.3",
+    "@sentry/node": "^7.77.0",
+    "@sentry/tracing": "^7.77.0",
+    "agenda": "^5.0.0",
     "bcryptjs": "^2.4.3",
-    "bullmq": "^5.56.1",
-    "cloudinary": "^2.7.0",
-    "compression": "^1.8.0",
-    "connect-redis": "^6.1.3",
-    "cookie-parser": "^1.4.7",
+    "bullmq": "^5.2.0",
+    "cloudinary": "^1.41.0",
+    "compression": "^1.7.4",
+    "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
-    "csrf-tokens": "^1.0.4",
-    "dotenv": "^16.6.1",
-    "express": "^4.21.2",
-    "express-async-handler": "^1.2.0",
-    "express-csrf": "^0.3.4",
-    "express-fileupload": "^1.5.1",
+    "dayjs": "^1.11.10",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
     "express-mongo-sanitize": "^2.2.0",
-    "express-rate-limit": "^7.5.1",
-    "express-session": "^1.18.1",
-    "express-validator": "^7.2.1",
-    "graphql": "^16.11.0",
-    "helmet": "^8.1.0",
-    "helmet-csp": "^4.0.0",
+    "express-rate-limit": "^7.1.5",
+    "express-validator": "^7.0.1",
+    "helmet": "^7.1.0",
     "hpp": "^0.2.3",
-    "joi": "^17.13.3",
+    "joi": "^17.11.0",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^7.8.7",
+    "lodash": "^4.17.21",
+    "mongoose": "^8.0.3",
     "morgan": "^1.10.0",
-    "multer": "^2.0.1",
-    "nodemailer": "^7.0.5",
+    "multer": "^1.4.5-lts.1",
+    "node-cron": "^3.0.3",
+    "nodemailer": "^6.9.7",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
     "passport-jwt": "^4.0.1",
-    "rate-limit-redis": "^4.2.1",
-    "redis": "^4.7.1",
-    "request-ip": "^3.3.0",
-    "response-time": "^2.3.3",
-    "sanitize-filename": "^1.6.3",
+    "redis": "^4.6.10",
+    "response-time": "^2.3.2",
     "slugify": "^1.6.6",
-    "uid-safe": "^2.1.5",
-    "uuid": "^11.1.0",
-    "validator": "^13.15.15",
-    "winston": "^3.17.0",
-    "winston-daily-rotate-file": "^5.0.0",
-    "xss": "^1.0.15"
+    "socket.io": "^4.7.5",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.0",
+    "uuid": "^9.0.1",
+    "validator": "^13.11.0",
+    "winston": "^3.11.0",
+    "winston-daily-rotate-file": "^4.7.1",
+    "xss": "^1.0.14"
   },
   "devDependencies": {
-    "nodemon": "^3.1.10"
+    "@faker-js/faker": "^8.3.1",
+    "@types/express": "^4.17.21",
+    "@types/jest": "^29.5.8",
+    "@types/node": "^20.10.5",
+    "cross-env": "^7.0.3",
+    "eslint": "^8.55.0",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "^2.29.0",
+    "eslint-plugin-jest": "^27.6.0",
+    "eslint-plugin-security": "^1.7.1",
+    "husky": "^8.0.3",
+    "jest": "^29.7.0",
+    "lint-staged": "^15.2.0",
+    "mongodb-memory-server": "^9.1.1",
+    "nodemon": "^3.0.2",
+    "prettier": "^3.1.1",
+    "supertest": "^6.3.3"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "setupFilesAfterEnv": [
+      "<rootDir>/tests/setup.js"
+    ],
+    "testMatch": [
+      "**/tests/**/*.test.js",
+      "**/tests/**/*.spec.js"
+    ],
+    "collectCoverageFrom": [
+      "**/*.js",
+      "!**/node_modules/**",
+      "!**/tests/**",
+      "!**/coverage/**",
+      "!server.js",
+      "!ecosystem.config.js"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "branches": 80,
+        "functions": 85,
+        "lines": 85,
+        "statements": 85
+      }
+    },
+    "testTimeout": 30000
+  },
+  "eslintConfig": {
+    "env": {
+      "node": true,
+      "es2021": true,
+      "jest": true
+    },
+    "extends": [
+      "airbnb-base",
+      "prettier"
+    ],
+    "plugins": [
+      "security",
+      "jest"
+    ],
+    "rules": {
+      "no-console": "warn",
+      "no-unused-vars": "error",
+      "security/detect-object-injection": "warn",
+      "import/no-extraneous-dependencies": [
+        "error",
+        {
+          "devDependencies": [
+            "**/*.test.js",
+            "**/*.spec.js"
+          ]
+        }
+      ]
+    }
+  },
+  "prettier": {
+    "semi": true,
+    "trailingComma": "es5",
+    "singleQuote": true,
+    "printWidth": 100,
+    "tabWidth": 2,
+    "useTabs": false
+  },
+  "lint-staged": {
+    "*.js": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md}": [
+      "prettier --write"
+    ]
+  },
+  "nodemonConfig": {
+    "ignore": [
+      "node_modules/",
+      "logs/",
+      "tests/",
+      "public/",
+      "uploads/"
+    ],
+    "ext": "js,json",
+    "env": {
+      "NODE_ENV": "development"
+    },
+    "delay": "1000"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/quicklocal/quicklocal-backend.git"
+  },
+  "bugs": {
+    "url": "https://github.com/quicklocal/quicklocal-backend/issues"
+  },
+  "homepage": "https://quicklocal.com",
+  "volta": {
+    "node": "18.19.0",
+    "npm": "10.2.3"
   }
 }

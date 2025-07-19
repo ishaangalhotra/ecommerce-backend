@@ -1,0 +1,1385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Advanced Product Management System</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+</head>
+<body class="bg-gray-50">
+  <div class="container mx-auto px-4 py-8">
+    <!-- Header Section -->
+    <header class="mb-8">
+      <h1 class="text-3xl font-bold text-gray-800">Product Management</h1>
+      <p class="text-gray-600">Manage your inventory, products, and sales</p>
+    </header>
+
+    <!-- Stats Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+      <div class="bg-white rounded-lg shadow p-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-gray-500">Total Products</p>
+            <h3 class="text-2xl font-bold" id="totalProducts">0</h3>
+          </div>
+          <div class="bg-blue-100 p-3 rounded-full">
+            <i class="fas fa-boxes text-blue-600 text-xl"></i>
+          </div>
+        </div>
+      </div>
+      
+      <div class="bg-white rounded-lg shadow p-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-gray-500">Active Products</p>
+            <h3 class="text-2xl font-bold" id="activeProducts">0</h3>
+          </div>
+          <div class="bg-green-100 p-3 rounded-full">
+            <i class="fas fa-check-circle text-green-600 text-xl"></i>
+          </div>
+        </div>
+      </div>
+      
+      <div class="bg-white rounded-lg shadow p-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-gray-500">Out of Stock</p>
+            <h3 class="text-2xl font-bold" id="outOfStock">0</h3>
+          </div>
+          <div class="bg-red-100 p-3 rounded-full">
+            <i class="fas fa-exclamation-triangle text-red-600 text-xl"></i>
+          </div>
+        </div>
+      </div>
+      
+      <div class="bg-white rounded-lg shadow p-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-gray-500">Low Stock</p>
+            <h3 class="text-2xl font-bold" id="lowStock">0</h3>
+          </div>
+          <div class="bg-yellow-100 p-3 rounded-full">
+            <i class="fas fa-exclamation text-yellow-600 text-xl"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <div class="bg-white rounded-lg shadow overflow-hidden mb-8">
+      <!-- Toolbar -->
+      <div class="px-6 py-4 border-b border-gray-200 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div class="flex items-center space-x-2">
+          <div class="relative">
+            <input type="text" id="globalSearch" placeholder="Search products..." 
+                   class="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-full md:w-64">
+            <i class="fas fa-search absolute left-3 top-3 text-gray-400"></i>
+          </div>
+          <button id="resetFilters" class="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg">
+            <i class="fas fa-sync-alt mr-2"></i> Reset
+          </button>
+        </div>
+        
+        <div class="flex items-center space-x-2">
+          <button id="bulkActions" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">
+            <i class="fas fa-tasks mr-2"></i> Bulk Actions
+          </button>
+          <button id="addProductBtn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
+            <i class="fas fa-plus mr-2"></i> Add Product
+          </button>
+        </div>
+      </div>
+      
+      <!-- Filter Section -->
+      <div class="px-6 py-4 border-b border-gray-200 bg-gray-50">
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div>
+            <label for="categoryFilter" class="block text-sm font-medium text-gray-700 mb-1">Category</label>
+            <select id="categoryFilter" class="w-full border border-gray-300 rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+              <option value="">All Categories</option>
+              <option value="fruits">Fruits</option>
+              <option value="vegetables">Vegetables</option>
+              <option value="dairy">Dairy</option>
+              <option value="bakery">Bakery</option>
+              <option value="groceries">Groceries</option>
+              <option value="meat">Meat</option>
+            </select>
+          </div>
+          
+          <div>
+            <label for="statusFilter" class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+            <select id="statusFilter" class="w-full border border-gray-300 rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+              <option value="">All Statuses</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="out_of_stock">Out of Stock</option>
+              <option value="low_stock">Low Stock</option>
+            </select>
+          </div>
+          
+          <div>
+            <label for="sellerFilter" class="block text-sm font-medium text-gray-700 mb-1">Seller</label>
+            <select id="sellerFilter" class="w-full border border-gray-300 rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+              <option value="">All Sellers</option>
+              <option value="seller1">Fresh Fruits Store</option>
+              <option value="seller2">Local Bakery</option>
+              <option value="seller3">Vegetable Market</option>
+              <option value="seller4">Dairy Farm</option>
+            </select>
+          </div>
+          
+          <div>
+            <label for="minPrice" class="block text-sm font-medium text-gray-700 mb-1">Min Price</label>
+            <div class="relative">
+              <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <span class="text-gray-500">₹</span>
+              </div>
+              <input type="number" id="minPrice" placeholder="0" 
+                     class="pl-8 w-full border border-gray-300 rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+            </div>
+          </div>
+          
+          <div>
+            <label for="maxPrice" class="block text-sm font-medium text-gray-700 mb-1">Max Price</label>
+            <div class="relative">
+              <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <span class="text-gray-500">₹</span>
+              </div>
+              <input type="number" id="maxPrice" placeholder="Any" 
+                     class="pl-8 w-full border border-gray-300 rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm">
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Results Info -->
+      <div class="px-6 py-3 border-b border-gray-200 bg-gray-50 text-sm text-gray-600 flex justify-between items-center">
+        <div id="filterResults">Showing all products</div>
+        <div class="flex items-center space-x-4">
+          <div class="flex items-center">
+            <span class="mr-2">Items per page:</span>
+            <select id="itemsPerPage" class="border border-gray-300 rounded-md py-1 px-2 focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm">
+              <option value="10">10</option>
+              <option value="25" selected>25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+          </div>
+          <div>
+            Showing <span id="showingFrom">1</span>-<span id="showingTo">10</span> of <span id="totalItems">0</span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Products Table -->
+      <div class="overflow-x-auto">
+        <table class="min-w-full divide-y divide-gray-200">
+          <thead class="bg-gray-50">
+            <tr>
+              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <input type="checkbox" id="selectAll" class="rounded">
+              </th>
+              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" data-sort="name">
+                <div class="flex items-center">
+                  Product
+                  <i class="fas fa-sort ml-1 text-gray-400"></i>
+                </div>
+              </th>
+              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" data-sort="category">
+                <div class="flex items-center">
+                  Category
+                  <i class="fas fa-sort ml-1 text-gray-400"></i>
+                </div>
+              </th>
+              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" data-sort="price">
+                <div class="flex items-center">
+                  Price
+                  <i class="fas fa-sort ml-1 text-gray-400"></i>
+                </div>
+              </th>
+              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" data-sort="stock">
+                <div class="flex items-center">
+                  Stock
+                  <i class="fas fa-sort ml-1 text-gray-400"></i>
+                </div>
+              </th>
+              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" data-sort="seller">
+                <div class="flex items-center">
+                  Seller
+                  <i class="fas fa-sort ml-1 text-gray-400"></i>
+                </div>
+              </th>
+              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" data-sort="sales">
+                <div class="flex items-center">
+                  Sales
+                  <i class="fas fa-sort ml-1 text-gray-400"></i>
+                </div>
+              </th>
+              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer" data-sort="status">
+                <div class="flex items-center">
+                  Status
+                  <i class="fas fa-sort ml-1 text-gray-400"></i>
+                </div>
+              </th>
+              <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="productsTableBody" class="bg-white divide-y divide-gray-200">
+            <!-- Products will be rendered here -->
+          </tbody>
+        </table>
+      </div>
+      
+      <!-- Pagination -->
+      <div class="px-6 py-4 border-t border-gray-200 bg-gray-50 flex flex-col md:flex-row md:items-center md:justify-between">
+        <div class="flex items-center mb-4 md:mb-0">
+          <button id="prevPage" class="px-3 py-1 border border-gray-300 rounded-l-md bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+            <i class="fas fa-chevron-left"></i>
+          </button>
+          <div id="pageNumbers" class="flex">
+            <!-- Page numbers will be rendered here -->
+          </div>
+          <button id="nextPage" class="px-3 py-1 border border-gray-300 rounded-r-md bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+            <i class="fas fa-chevron-right"></i>
+          </button>
+        </div>
+        
+        <div class="flex items-center space-x-2">
+          <span class="text-sm text-gray-700">Go to page</span>
+          <input type="number" id="jumpToPage" min="1" class="w-16 border border-gray-300 rounded-md py-1 px-2 focus:outline-none focus:ring-1 focus:ring-blue-500 text-sm">
+          <button id="jumpButton" class="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm">Go</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Category Distribution Chart -->
+    <div class="bg-white rounded-lg shadow p-6 mb-8">
+      <h2 class="text-lg font-semibold text-gray-800 mb-4">Category Distribution</h2>
+      <div class="h-64">
+        <canvas id="categoryChart"></canvas>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Product Modal -->
+  <div id="productModal" class="fixed inset-0 z-50 hidden overflow-y-auto">
+    <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+      <div class="fixed inset-0 transition-opacity" aria-hidden="true">
+        <div class="absolute inset-0 bg-gray-500 opacity-75"></div>
+      </div>
+      
+      <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+      
+      <div class="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full">
+        <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
+          <div class="sm:flex sm:items-start">
+            <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+              <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg leading-6 font-medium text-gray-900" id="modalTitle">Add New Product</h3>
+                <button id="closeModal" class="text-gray-400 hover:text-gray-500">
+                  <i class="fas fa-times"></i>
+                </button>
+              </div>
+              
+              <form id="productForm" class="mt-2">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <!-- Left Column -->
+                  <div class="md:col-span-2">
+                    <div class="mb-4">
+                      <label for="productName" class="block text-sm font-medium text-gray-700 mb-1">Product Name *</label>
+                      <input type="text" id="productName" class="w-full border border-gray-300 rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    </div>
+                    
+                    <div class="mb-4">
+                      <label for="productDescription" class="block text-sm font-medium text-gray-700 mb-1">Description *</label>
+                      <textarea id="productDescription" rows="4" class="w-full border border-gray-300 rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"></textarea>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                      <div>
+                        <label for="productCategory" class="block text-sm font-medium text-gray-700 mb-1">Category *</label>
+                        <select id="productCategory" class="w-full border border-gray-300 rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                          <option value="fruits">Fruits</option>
+                          <option value="vegetables">Vegetables</option>
+                          <option value="dairy">Dairy</option>
+                          <option value="bakery">Bakery</option>
+                          <option value="groceries">Groceries</option>
+                          <option value="meat">Meat</option>
+                        </select>
+                      </div>
+                      
+                      <div>
+                        <label for="productStatus" class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                        <select id="productStatus" class="w-full border border-gray-300 rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                          <option value="active">Active</option>
+                          <option value="inactive">Inactive</option>
+                          <option value="draft">Draft</option>
+                          <option value="out_of_stock">Out of Stock</option>
+                          <option value="low_stock">Low Stock</option>
+                        </select>
+                      </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label for="productPrice" class="block text-sm font-medium text-gray-700 mb-1">Price (₹) *</label>
+                        <input type="number" id="productPrice" step="0.01" class="w-full border border-gray-300 rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                      </div>
+                      
+                      <div>
+                        <label for="productStock" class="block text-sm font-medium text-gray-700 mb-1">Stock Quantity *</label>
+                        <input type="number" id="productStock" class="w-full border border-gray-300 rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <!-- Right Column -->
+                  <div class="md:col-span-1">
+                    <div class="mb-4">
+                      <label for="productSKU" class="block text-sm font-medium text-gray-700 mb-1">SKU *</label>
+                      <div class="flex">
+                        <input type="text" id="productSKU" class="flex-1 border border-gray-300 rounded-l-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" readonly>
+                        <button type="button" onclick="productManager.generateSKU()" class="bg-gray-200 hover:bg-gray-300 px-3 rounded-r-md border border-l-0 border-gray-300">
+                          <i class="fas fa-sync-alt"></i>
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                      <label for="productSeller" class="block text-sm font-medium text-gray-700 mb-1">Seller *</label>
+                      <select id="productSeller" class="w-full border border-gray-300 rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        <option value="seller1">Fresh Fruits Store</option>
+                        <option value="seller2">Local Bakery</option>
+                        <option value="seller3">Vegetable Market</option>
+                        <option value="seller4">Dairy Farm</option>
+                      </select>
+                    </div>
+                    
+                    <div class="mb-4">
+                      <label class="block text-sm font-medium text-gray-700 mb-1">Main Image</label>
+                      <div id="mainImagePlaceholder" class="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:border-gray-400 transition-colors">
+                        <div id="mainImageUpload" class="space-y-1">
+                          <i class="fas fa-image text-3xl text-gray-400"></i>
+                          <p class="text-sm text-gray-600">Click to upload</p>
+                          <p class="text-xs text-gray-500">PNG, JPG up to 2MB</p>
+                        </div>
+                      </div>
+                      <input type="file" id="mainImageInput" accept="image/*" class="hidden">
+                      <div id="mainImagePreview" class="hidden mt-2 relative">
+                        <img id="mainImageDisplay" src="" class="w-full h-40 object-contain rounded-lg border border-gray-200">
+                        <button id="removeMainImage" type="button" class="absolute top-2 right-2 bg-red-500 text-white rounded-full w-8 h-8 flex items-center justify-center hover:bg-red-600">
+                          <i class="fas fa-times"></i>
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                      <label class="block text-sm font-medium text-gray-700 mb-1">Additional Images</label>
+                      <div class="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center cursor-pointer hover:border-gray-400 transition-colors">
+                        <div id="additionalImageUpload" class="space-y-1">
+                          <i class="fas fa-images text-3xl text-gray-400"></i>
+                          <p class="text-sm text-gray-600">Click to upload</p>
+                          <p class="text-xs text-gray-500">PNG, JPG up to 2MB</p>
+                        </div>
+                      </div>
+                      <input type="file" id="additionalImageInput" accept="image/*" multiple class="hidden">
+                      <div id="additionalImagesPreview" class="grid grid-cols-3 gap-2 mt-2"></div>
+                    </div>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+        
+        <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+          <button type="button" id="saveProductBtn" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm">
+            Save Product
+          </button>
+          <button type="button" id="cancelBtn" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    class ProductManager {
+      constructor() {
+        this.products = [];
+        this.filteredProducts = [];
+        this.currentPage = 1;
+        this.itemsPerPage = 25;
+        this.sortBy = 'name';
+        this.sortOrder = 'asc';
+        this.filters = {};
+        this.editingProduct = null;
+        
+        this.init();
+      }
+      
+      init() {
+        this.generateMockData();
+        this.setupEventListeners();
+        this.applyFilters();
+        this.initializeChart();
+      }
+      
+      setupEventListeners() {
+        // Search and filter inputs
+        document.getElementById('globalSearch').addEventListener('input', 
+          this.debounce(() => this.applyFilters(), 500)
+        );
+        
+        ['categoryFilter', 'statusFilter', 'sellerFilter'].forEach(id => {
+          document.getElementById(id).addEventListener('change', () => this.applyFilters());
+        });
+        
+        // Price range
+        ['minPrice', 'maxPrice'].forEach(id => {
+          document.getElementById(id).addEventListener('input', 
+            this.debounce(() => this.applyFilters(), 800)
+          );
+        });
+        
+        // Reset filters
+        document.getElementById('resetFilters').addEventListener('click', () => {
+          this.resetFilters();
+        });
+        
+        // Add product
+        document.getElementById('addProductBtn').addEventListener('click', () => {
+          this.openProductModal();
+        });
+        
+        // Modal controls
+        document.getElementById('closeModal').addEventListener('click', () => {
+          this.closeProductModal();
+        });
+        
+        document.getElementById('cancelBtn').addEventListener('click', () => {
+          this.closeProductModal();
+        });
+        
+        // Form submission
+        document.getElementById('productForm').addEventListener('submit', (e) => {
+          e.preventDefault();
+          this.saveProduct();
+        });
+        
+        // Image upload handlers
+        this.setupImageUpload();
+        
+        // Bulk actions
+        document.getElementById('bulkActions').addEventListener('click', () => {
+          this.showBulkActions();
+        });
+        
+        // Select all
+        document.getElementById('selectAll').addEventListener('change', (e) => {
+          this.selectAllProducts(e.target.checked);
+        });
+        
+        // Pagination
+        document.getElementById('prevPage').addEventListener('click', () => {
+          if (this.currentPage > 1) {
+            this.currentPage--;
+            this.renderProducts();
+          }
+        });
+        
+        document.getElementById('nextPage').addEventListener('click', () => {
+          const totalPages = Math.ceil(this.filteredProducts.length / this.itemsPerPage);
+          if (this.currentPage < totalPages) {
+            this.currentPage++;
+            this.renderProducts();
+          }
+        });
+        
+        // Items per page
+        document.getElementById('itemsPerPage').addEventListener('change', (e) => {
+          this.itemsPerPage = parseInt(e.target.value);
+          this.currentPage = 1;
+          this.renderProducts();
+        });
+        
+        // Sort functionality
+        document.addEventListener('click', (e) => {
+          if (e.target.closest('[data-sort]')) {
+            const sortField = e.target.closest('[data-sort]').dataset.sort;
+            this.toggleSort(sortField);
+          }
+        });
+        
+        // Jump to page
+        document.getElementById('jumpButton').addEventListener('click', () => {
+          const page = parseInt(document.getElementById('jumpToPage').value);
+          const totalPages = Math.ceil(this.filteredProducts.length / this.itemsPerPage);
+          
+          if (page >= 1 && page <= totalPages) {
+            this.currentPage = page;
+            this.renderProducts();
+          } else {
+            this.showNotification(`Please enter a page number between 1 and ${totalPages}`, 'error');
+          }
+        });
+      }
+      
+      setupImageUpload() {
+        // Main image upload
+        const mainImageUpload = document.getElementById('mainImageUpload');
+        const mainImageInput = document.getElementById('mainImageInput');
+        const mainImagePreview = document.getElementById('mainImagePreview');
+        const mainImageDisplay = document.getElementById('mainImageDisplay');
+        const mainImagePlaceholder = document.getElementById('mainImagePlaceholder');
+        
+        mainImageUpload.addEventListener('click', () => {
+          mainImageInput.click();
+        });
+        
+        mainImageInput.addEventListener('change', (e) => {
+          const file = e.target.files[0];
+          if (file) {
+            if (file.size > 2 * 1024 * 1024) {
+              this.showNotification('Image size should be less than 2MB', 'error');
+              return;
+            }
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              mainImageDisplay.src = e.target.result;
+              mainImagePreview.classList.remove('hidden');
+              mainImagePlaceholder.classList.add('hidden');
+            };
+            reader.readAsDataURL(file);
+          }
+        });
+        
+        document.getElementById('removeMainImage').addEventListener('click', (e) => {
+          e.stopPropagation();
+          mainImagePreview.classList.add('hidden');
+          mainImagePlaceholder.classList.remove('hidden');
+          mainImageInput.value = '';
+        });
+        
+        // Additional images upload
+        const additionalImageUpload = document.getElementById('additionalImageUpload');
+        const additionalImageInput = document.getElementById('additionalImageInput');
+        
+        additionalImageUpload.addEventListener('click', () => {
+          additionalImageInput.click();
+        });
+        
+        additionalImageInput.addEventListener('change', (e) => {
+          this.handleAdditionalImages(e.target.files);
+        });
+      }
+      
+      handleAdditionalImages(files) {
+        const preview = document.getElementById('additionalImagesPreview');
+        
+        Array.from(files).forEach(file => {
+          if (file.size > 2 * 1024 * 1024) {
+            this.showNotification('Image size should be less than 2MB', 'error');
+            return;
+          }
+          
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const imageDiv = document.createElement('div');
+            imageDiv.className = 'relative group';
+            imageDiv.innerHTML = `
+              <img src="${e.target.result}" class="w-full h-20 object-cover rounded border-2 border-gray-200">
+              <button type="button" class="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity" onclick="this.parentElement.remove()">
+                <i class="fas fa-times text-xs"></i>
+              </button>
+            `;
+            preview.appendChild(imageDiv);
+          };
+          reader.readAsDataURL(file);
+        });
+      }
+      
+      generateMockData() {
+        const categories = ['fruits', 'vegetables', 'dairy', 'bakery', 'groceries', 'meat'];
+        const sellers = [
+          { id: 'seller1', name: 'Fresh Fruits Store' },
+          { id: 'seller2', name: 'Local Bakery' },
+          { id: 'seller3', name: 'Vegetable Market' },
+          { id: 'seller4', name: 'Dairy Farm' }
+        ];
+        
+        const productNames = {
+          fruits: ['Fresh Apples', 'Ripe Bananas', 'Sweet Oranges', 'Fresh Grapes', 'Strawberries', 'Mangoes'],
+          vegetables: ['Fresh Tomatoes', 'Green Onions', 'Fresh Carrots', 'Leafy Spinach', 'Bell Peppers', 'Broccoli'],
+          dairy: ['Fresh Milk', 'Greek Yogurt', 'Farm Cheese', 'Fresh Butter', 'Cottage Cheese', 'Heavy Cream'],
+          bakery: ['Fresh Bread', 'Croissants', 'Chocolate Cake', 'Cookies', 'Bagels', 'Muffins'],
+          groceries: ['Rice Pack', 'Cooking Oil', 'Spice Mix', 'Pasta', 'Cereals', 'Flour'],
+          meat: ['Chicken Breast', 'Fresh Fish', 'Mutton Curry Cut', 'Eggs', 'Prawns', 'Lamb Chops']
+        };
+        
+        this.products = [];
+        
+        for (let i = 1; i <= 150; i++) {
+          const category = categories[Math.floor(Math.random() * categories.length)];
+          const seller = sellers[Math.floor(Math.random() * sellers.length)];
+          const names = productNames[category];
+          const name = names[Math.floor(Math.random() * names.length)];
+          const price = Math.floor(Math.random() * 500) + 50;
+          const stock = Math.floor(Math.random() * 100);
+          
+          let status = 'active';
+          if (stock === 0) status = 'out_of_stock';
+          else if (stock < 10) status = 'low_stock';
+          
+          this.products.push({
+            id: `PRD-${String(i).padStart(4, '0')}`,
+            name: `${name} - Premium Quality`,
+            category,
+            price,
+            comparePrice: Math.floor(price * 1.2),
+            stock,
+            seller: seller.name,
+            sellerId: seller.id,
+            status,
+            sku: `SKU-${String(i).padStart(6, '0')}`,
+            description: `High quality ${name.toLowerCase()} sourced from local ${seller.name.toLowerCase()}. Fresh, organic, and delivered within 20 minutes.`,
+            image: `https://picsum.photos/300/300?random=${i}`,
+            sales: Math.floor(Math.random() * 200),
+            rating: (Math.random() * 2 + 3).toFixed(1),
+            createdAt: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000),
+            featured: Math.random() > 0.8,
+            tags: ['organic', 'fresh', 'local'].slice(0, Math.floor(Math.random() * 3) + 1)
+          });
+        }
+        
+        this.filteredProducts = [...this.products];
+      }
+      
+      initializeChart() {
+        const ctx = document.getElementById('categoryChart');
+        if (!ctx) return;
+        
+        const categoryData = this.getCategoryDistribution();
+        
+        new Chart(ctx, {
+          type: 'doughnut',
+          data: {
+            labels: Object.keys(categoryData),
+            datasets: [{
+              data: Object.values(categoryData),
+              backgroundColor: [
+                '#3B82F6', '#10B981', '#F59E0B', '#EF4444', 
+                '#8B5CF6', '#06B6D4', '#84CC16'
+              ],
+              borderWidth: 0
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                position: 'bottom',
+                labels: {
+                  usePointStyle: true,
+                  padding: 15,
+                  font: { size: 11 }
+                }
+              },
+              tooltip: {
+                callbacks: {
+                  label: function(context) {
+                    const label = context.label || '';
+                    const value = context.raw || 0;
+                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                    const percentage = Math.round((value / total) * 100);
+                    return `${label}: ${value} (${percentage}%)`;
+                  }
+                }
+              }
+            }
+          }
+        });
+      }
+      
+      getCategoryDistribution() {
+        const distribution = {};
+        this.products.forEach(product => {
+          distribution[product.category] = (distribution[product.category] || 0) + 1;
+        });
+        return distribution;
+      }
+      
+      renderProducts() {
+        const tbody = document.getElementById('productsTableBody');
+        const startIndex = (this.currentPage - 1) * this.itemsPerPage;
+        const endIndex = startIndex + this.itemsPerPage;
+        const paginatedProducts = this.filteredProducts.slice(startIndex, endIndex);
+        
+        tbody.innerHTML = paginatedProducts.map(product => `
+          <tr class="table-row hover:bg-gray-50">
+            <td class="px-6 py-4 whitespace-nowrap">
+              <input type="checkbox" class="product-checkbox rounded" value="${product.id}">
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+              <div class="flex items-center">
+                <img src="${product.image}" alt="${product.name}" class="w-12 h-12 rounded-lg object-cover mr-4 shadow-sm">
+                <div>
+                  <div class="font-medium text-gray-900 hover:text-blue-600 cursor-pointer" onclick="productManager.viewProduct('${product.id}')">
+                    ${product.name}
+                    ${product.featured ? '<span class="ml-2 text-yellow-500"><i class="fas fa-star text-xs"></i></span>' : ''}
+                  </div>
+                  <div class="text-sm text-gray-500">SKU: ${product.sku}</div>
+                  <div class="text-xs text-gray-400">⭐ ${product.rating} • ${product.sales} sales</div>
+                </div>
+              </div>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+              <span class="category-chip inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium text-white" style="background-color: ${this.getCategoryColor(product.category)}">
+                ${this.getCategoryIcon(product.category)} ${this.formatCategoryName(product.category)}
+              </span>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+              <div class="font-semibold text-gray-900">₹${product.price.toLocaleString()}</div>
+              ${product.comparePrice ? `<div class="text-sm text-gray-500 line-through">₹${product.comparePrice.toLocaleString()}</div>` : ''}
+              <div class="text-xs ${product.price > product.comparePrice ? 'text-red-600' : 'text-green-600'}">
+                ${product.comparePrice ? `Discount: ${Math.round(((product.comparePrice - product.price) / product.comparePrice) * 100)}%` : ''}
+              </div>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+              <div class="flex items-center">
+                <span class="text-sm font-medium text-gray-900 mr-2">${product.stock}</span>
+                ${this.getStockIndicator(product.stock)}
+              </div>
+              <div class="text-xs text-gray-500 mt-1">
+                ${product.stock < 10 ? '⚠️ Low stock' : product.stock > 50 ? '✅ Good stock' : '📦 Available'}
+              </div>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+              <div class="text-sm font-medium text-gray-900">${product.seller}</div>
+              <div class="text-xs text-gray-500">${product.sellerId}</div>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+              <div class="flex items-center space-x-2">
+                <div class="w-16 bg-gray-200 rounded-full h-2">
+                  <div class="bg-green-500 h-2 rounded-full" style="width: ${Math.min(product.sales, 100)}%"></div>
+                </div>
+                <span class="text-xs text-gray-600">${product.sales}</span>
+              </div>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap">
+              ${this.getStatusBadge(product.status)}
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+              <div class="flex items-center space-x-2 justify-end">
+                <button onclick="productManager.viewProduct('${product.id}')" class="text-blue-600 hover:text-blue-900 transition-colors p-1" title="View">
+                  <i class="fas fa-eye"></i>
+                </button>
+                <button onclick="productManager.editProduct('${product.id}')" class="text-green-600 hover:text-green-900 transition-colors p-1" title="Edit">
+                  <i class="fas fa-edit"></i>
+                </button>
+                <button onclick="productManager.duplicateProduct('${product.id}')" class="text-purple-600 hover:text-purple-900 transition-colors p-1" title="Duplicate">
+                  <i class="fas fa-copy"></i>
+                </button>
+                <button onclick="productManager.deleteProduct('${product.id}')" class="text-red-600 hover:text-red-900 transition-colors p-1" title="Delete">
+                  <i class="fas fa-trash"></i>
+                </button>
+              </div>
+            </td>
+          </tr>
+        `).join('');
+        
+        this.updatePagination();
+        this.updateDisplayInfo();
+        this.updateSortIndicators();
+      }
+      
+      formatCategoryName(category) {
+        return category.charAt(0).toUpperCase() + category.slice(1);
+      }
+      
+      getCategoryColor(category) {
+        const colors = {
+          fruits: '#EF4444',     // Red
+          vegetables: '#10B981', // Green
+          dairy: '#3B82F6',     // Blue
+          bakery: '#F59E0B',    // Yellow
+          groceries: '#8B5CF6',  // Purple
+          meat: '#F97316'       // Orange
+        };
+        return colors[category] || '#6B7280';
+      }
+      
+      getCategoryIcon(category) {
+        const icons = {
+          fruits: '🍎',
+          vegetables: '🥕',
+          dairy: '🥛',
+          bakery: '🍞',
+          groceries: '🛒',
+          meat: '🥩'
+        };
+        return icons[category] || '📦';
+      }
+      
+      getStockIndicator(stock) {
+        if (stock === 0) {
+          return '<span class="bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs font-medium">Out</span>';
+        } else if (stock < 10) {
+          return '<span class="bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-xs font-medium">Low</span>';
+        }
+        return '<span class="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs font-medium">✓ Stock</span>';
+      }
+      
+      getStatusBadge(status) {
+        const badges = {
+          active: '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">✅ Active</span>',
+          inactive: '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">⏸️ Inactive</span>',
+          out_of_stock: '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">❌ Out of Stock</span>',
+          low_stock: '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">⚠️ Low Stock</span>',
+          draft: '<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">📝 Draft</span>'
+        };
+        
+        return badges[status] || badges.active;
+      }
+      
+      updateSortIndicators() {
+        document.querySelectorAll('[data-sort]').forEach(header => {
+          const icon = header.querySelector('i');
+          if (header.dataset.sort === this.sortBy) {
+            icon.className = this.sortOrder === 'asc' ? 'fas fa-sort-up ml-1' : 'fas fa-sort-down ml-1';
+            icon.classList.remove('text-gray-400');
+            icon.classList.add('text-blue-600');
+          } else {
+            icon.className = 'fas fa-sort ml-1 text-gray-400';
+          }
+        });
+      }
+      
+      updatePagination() {
+        const totalPages = Math.ceil(this.filteredProducts.length / this.itemsPerPage);
+        const pageNumbers = document.getElementById('pageNumbers');
+        
+        let paginationHTML = '';
+        const maxVisiblePages = 5;
+        let startPage = Math.max(1, this.currentPage - Math.floor(maxVisiblePages / 2));
+        let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+        
+        // Adjust if we're at the end
+        if (endPage - startPage + 1 < maxVisiblePages) {
+          startPage = Math.max(1, endPage - maxVisiblePages + 1);
+        }
+        
+        // First page button
+        if (startPage > 1) {
+          paginationHTML += `
+            <button onclick="productManager.goToPage(1)" 
+                    class="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50">
+              1
+            </button>
+            ${startPage > 2 ? '<span class="px-2">...</span>' : ''}
+          `;
+        }
+        
+        // Page buttons
+        for (let i = startPage; i <= endPage; i++) {
+          const isActive = i === this.currentPage;
+          paginationHTML += `
+            <button onclick="productManager.goToPage(${i})" 
+                    class="px-3 py-1 border border-gray-300 rounded ${isActive ? 'bg-blue-600 text-white' : 'hover:bg-gray-50'}">
+              ${i}
+            </button>
+          `;
+        }
+        
+        // Last page button
+        if (endPage < totalPages) {
+          paginationHTML += `
+            ${endPage < totalPages - 1 ? '<span class="px-2">...</span>' : ''}
+            <button onclick="productManager.goToPage(${totalPages})" 
+                    class="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50">
+              ${totalPages}
+            </button>
+          `;
+        }
+        
+        pageNumbers.innerHTML = paginationHTML;
+        
+        // Update prev/next buttons
+        document.getElementById('prevPage').disabled = this.currentPage <= 1;
+        document.getElementById('nextPage').disabled = this.currentPage >= totalPages;
+      }
+      
+      updateDisplayInfo() {
+        const startIndex = (this.currentPage - 1) * this.itemsPerPage + 1;
+        const endIndex = Math.min(this.currentPage * this.itemsPerPage, this.filteredProducts.length);
+        
+        document.getElementById('showingFrom').textContent = startIndex.toLocaleString();
+        document.getElementById('showingTo').textContent = endIndex.toLocaleString();
+        document.getElementById('totalItems').textContent = this.filteredProducts.length.toLocaleString();
+        document.getElementById('totalCount').textContent = this.filteredProducts.length.toLocaleString();
+      }
+      
+      goToPage(page) {
+        this.currentPage = page;
+        this.renderProducts();
+      }
+      
+      applyFilters() {
+        this.filters = {
+          category: document.getElementById('categoryFilter').value,
+          status: document.getElementById('statusFilter').value,
+          seller: document.getElementById('sellerFilter').value,
+          minPrice: parseFloat(document.getElementById('minPrice').value) || 0,
+          maxPrice: parseFloat(document.getElementById('maxPrice').value) || Infinity,
+          search: document.getElementById('globalSearch').value.toLowerCase()
+        };
+        
+        this.filteredProducts = this.products.filter(product => {
+          const matchesCategory = !this.filters.category || product.category === this.filters.category;
+          const matchesStatus = !this.filters.status || product.status === this.filters.status;
+          const matchesSeller = !this.filters.seller || product.sellerId === this.filters.seller;
+          const matchesPrice = product.price >= this.filters.minPrice && product.price <= this.filters.maxPrice;
+          const matchesSearch = !this.filters.search || 
+            product.name.toLowerCase().includes(this.filters.search) ||
+            product.sku.toLowerCase().includes(this.filters.search) ||
+            product.seller.toLowerCase().includes(this.filters.search) ||
+            product.category.toLowerCase().includes(this.filters.search);
+          
+          return matchesCategory && matchesStatus && matchesSeller && matchesPrice && matchesSearch;
+        });
+        
+        this.sortProducts();
+        this.currentPage = 1;
+        this.renderProducts();
+        this.updateFilterResults();
+      }
+      
+      updateFilterResults() {
+        const total = this.products.length;
+        const filtered = this.filteredProducts.length;
+        const filterResults = document.getElementById('filterResults');
+        
+        if (total === filtered) {
+          filterResults.textContent = `Showing all ${total.toLocaleString()} products`;
+        } else {
+          filterResults.textContent = `Showing ${filtered.toLocaleString()} of ${total.toLocaleString()} products (filtered)`;
+        }
+      }
+      
+      resetFilters() {
+        document.getElementById('categoryFilter').value = '';
+        document.getElementById('statusFilter').value = '';
+        document.getElementById('sellerFilter').value = '';
+        document.getElementById('minPrice').value = '';
+        document.getElementById('maxPrice').value = '';
+        document.getElementById('globalSearch').value = '';
+        
+        this.applyFilters();
+      }
+      
+      handleSearch(query) {
+        this.filters.search = query.toLowerCase();
+        this.applyFilters();
+      }
+      
+      toggleSort(field) {
+        if (this.sortBy === field) {
+          this.sortOrder = this.sortOrder === 'asc' ? 'desc' : 'asc';
+        } else {
+          this.sortBy = field;
+          this.sortOrder = 'asc';
+        }
+        
+        this.sortProducts();
+        this.renderProducts();
+      }
+      
+      sortProducts() {
+        this.filteredProducts.sort((a, b) => {
+          let aValue = a[this.sortBy];
+          let bValue = b[this.sortBy];
+          
+          // Special handling for dates
+          if (this.sortBy === 'createdAt') {
+            aValue = new Date(aValue).getTime();
+            bValue = new Date(bValue).getTime();
+          }
+          
+          // Special handling for strings
+          if (typeof aValue === 'string') {
+            aValue = aValue.toLowerCase();
+            bValue = bValue.toLowerCase();
+          }
+          
+          let result;
+          if (aValue < bValue) result = -1;
+          else if (aValue > bValue) result = 1;
+          else result = 0;
+          
+          return this.sortOrder === 'desc' ? -result : result;
+        });
+      }
+      
+      openProductModal(product = null) {
+        this.editingProduct = product;
+        const modal = document.getElementById('productModal');
+        const title = document.getElementById('modalTitle');
+        
+        // Reset image previews
+        document.getElementById('mainImagePreview').classList.add('hidden');
+        document.getElementById('mainImagePlaceholder').classList.remove('hidden');
+        document.getElementById('mainImageInput').value = '';
+        document.getElementById('additionalImagesPreview').innerHTML = '';
+        
+        if (product) {
+          title.textContent = 'Edit Product';
+          this.populateForm(product);
+        } else {
+          title.textContent = 'Add New Product';
+          document.getElementById('productForm').reset();
+          this.generateSKU();
+        }
+        
+        modal.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+      }
+      
+      closeProductModal() {
+        const modal = document.getElementById('productModal');
+        modal.classList.add('hidden');
+        document.body.style.overflow = 'auto';
+        this.editingProduct = null;
+      }
+      
+      generateSKU() {
+        const sku = `SKU-${Date.now().toString().slice(-6)}`;
+        document.getElementById('productSKU').value = sku;
+      }
+      
+      populateForm(product) {
+        document.getElementById('productName').value = product.name;
+        document.getElementById('productSKU').value = product.sku;
+        document.getElementById('productCategory').value = product.category;
+        document.getElementById('productDescription').value = product.description;
+        document.getElementById('productPrice').value = product.price;
+        document.getElementById('productStock').value = product.stock;
+        document.getElementById('productSeller').value = product.sellerId;
+        document.getElementById('productStatus').value = product.status;
+        
+        // Set main image preview if editing
+        if (product.image) {
+          document.getElementById('mainImageDisplay').src = product.image;
+          document.getElementById('mainImagePreview').classList.remove('hidden');
+          document.getElementById('mainImagePlaceholder').classList.add('hidden');
+        }
+      }
+      
+      saveProduct() {
+        const formData = this.getFormData();
+        
+        if (!this.validateForm(formData)) {
+          return;
+        }
+        
+        if (this.editingProduct) {
+          this.updateProduct(formData);
+        } else {
+          this.createProduct(formData);
+        }
+        
+        this.closeProductModal();
+        this.applyFilters();
+        this.updateStats();
+      }
+      
+      getFormData() {
+        return {
+          name: document.getElementById('productName').value,
+          sku: document.getElementById('productSKU').value,
+          category: document.getElementById('productCategory').value,
+          description: document.getElementById('productDescription').value,
+          price: parseFloat(document.getElementById('productPrice').value),
+          stock: parseInt(document.getElementById('productStock').value),
+          sellerId: document.getElementById('productSeller').value,
+          status: document.getElementById('productStatus').value
+        };
+      }
+      
+      validateForm(data) {
+        const errors = [];
+        
+        if (!data.name) errors.push('Product name is required');
+        if (!data.sku) errors.push('SKU is required');
+        if (!data.category) errors.push('Category is required');
+        if (!data.description) errors.push('Description is required');
+        if (isNaN(data.price) || data.price <= 0) errors.push('Price must be greater than 0');
+        if (isNaN(data.stock) || data.stock < 0) errors.push('Stock cannot be negative');
+        
+        if (errors.length > 0) {
+          this.showNotification(errors.join('<br>'), 'error');
+          return false;
+        }
+        
+        return true;
+      }
+      
+      createProduct(data) {
+        const newProduct = {
+          ...data,
+          id: `PRD-${String(this.products.length + 1).padStart(4, '0')}`,
+          seller: document.getElementById('productSeller').options[document.getElementById('productSeller').selectedIndex].text,
+          image: document.getElementById('mainImageDisplay').src || `https://picsum.photos/300/300?random=${this.products.length + 1}`,
+          sales: 0,
+          rating: '5.0',
+          createdAt: new Date(),
+          featured: false,
+          tags: [],
+          comparePrice: Math.round(data.price * 1.2) // Add compare price
+        };
+        
+        this.products.unshift(newProduct);
+        this.showNotification('Product created successfully!', 'success');
+      }
+      
+      updateProduct(data) {
+        const index = this.products.findIndex(p => p.id === this.editingProduct.id);
+        if (index !== -1) {
+          const updatedProduct = { 
+            ...this.products[index], 
+            ...data,
+            image: document.getElementById('mainImageDisplay').src || this.products[index].image
+          };
+          this.products[index] = updatedProduct;
+          this.showNotification('Product updated successfully!', 'success');
+        }
+      }
+      
+      viewProduct(productId) {
+        const product = this.products.find(p => p.id === productId);
+        if (product) {
+          const message = `
+            <strong>${product.name}</strong><br>
+            <div class="grid grid-cols-2 gap-2 mt-2">
+              <div>SKU: ${product.sku}</div>
+              <div>Price: ₹${product.price}</div>
+              <div>Stock: ${product.stock}</div>
+              <div>Status: ${product.status}</div>
+              <div class="col-span-2">${product.description}</div>
+            </div>
+          `;
+          this.showNotification(message, 'info', 10000);
+        }
+      }
+      
+      editProduct(productId) {
+        const product = this.products.find(p => p.id === productId);
+        if (product) {
+          this.openProductModal(product);
+        }
+      }
+      
+      duplicateProduct(productId) {
+        const product = this.products.find(p => p.id === productId);
+        if (product) {
+          const duplicate = {
+            ...product,
+            id: `PRD-${String(this.products.length + 1).padStart(4, '0')}`,
+            name: `${product.name} (Copy)`,
+            sku: `SKU-${Date.now().toString().slice(-6)}`,
+            createdAt: new Date(),
+            sales: 0
+          };
+          
+          this.products.unshift(duplicate);
+          this.applyFilters();
+          this.showNotification('Product duplicated successfully!', 'success');
+        }
+      }
+      
+      deleteProduct(productId) {
+        if (confirm('Are you sure you want to delete this product? This action cannot be undone.')) {
+          this.products = this.products.filter(p => p.id !== productId);
+          this.applyFilters();
+          this.updateStats();
+          this.showNotification('Product deleted successfully!', 'success');
+        }
+      }
+      
+      selectAllProducts(checked) {
+        document.querySelectorAll('.product-checkbox').forEach(checkbox => {
+          checkbox.checked = checked;
+        });
+      }
+      
+      showBulkActions() {
+        const selectedProducts = Array.from(document.querySelectorAll('.product-checkbox:checked'));
+        
+        if (selectedProducts.length === 0) {
+          this.showNotification('Please select products first', 'warning');
+          return;
+        }
+        
+        // Create a modal for bulk actions
+        const modalHTML = `
+          <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+              <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-medium">Bulk Actions (${selectedProducts.length} selected)</h3>
+                <button onclick="this.parentElement.parentElement.parentElement.remove()" class="text-gray-500 hover:text-gray-700">
+                  <i class="fas fa-times"></i>
+                </button>
+              </div>
+              
+              <div class="space-y-4">
+                <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Action</label>
+                  <select id="bulkActionSelect" class="w-full border border-gray-300 rounded-md py-2 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="activate">Activate Products</option>
+                    <option value="deactivate">Deactivate Products</option>
+                    <option value="delete">Delete Products</option>
+                  </select>
+                </div>
+                
+                <div class="flex justify-end space-x-3 pt-4">
+                  <button onclick="this.parentElement.parentElement.parentElement.remove()" class="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">
+                    Cancel
+                  </button>
+                  <button onclick="productManager.executeBulkAction()" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+                    Apply
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+        
+        const modalDiv = document.createElement('div');
+        modalDiv.innerHTML = modalHTML;
+        document.body.appendChild(modalDiv);
+      }
+      
+      executeBulkAction() {
+        const selectedProducts = Array.from(document.querySelectorAll('.product-checkbox:checked')).map(cb => cb.value);
+        const action = document.getElementById('bulkActionSelect').value;
+        
+        switch (action) {
+          case 'activate':
+            selectedProducts.forEach(id => {
+              const product = this.products.find(p => p.id === id);
+              if (product) product.status = 'active';
+            });
+            break;
+          case 'deactivate':
+            selectedProducts.forEach(id => {
+              const product = this.products.find(p => p.id === id);
+              if (product) product.status = 'inactive';
+            });
+            break;
+          case 'delete':
+            if (confirm(`Are you sure you want to delete ${selectedProducts.length} products? This action cannot be undone.`)) {
+              this.products = this.products.filter(p => !selectedProducts.includes(p.id));
+            } else {
+              return;
+            }
+            break;
+        }
+        
+        // Remove the modal
+        document.querySelector('.fixed.inset-0').remove();
+        
+        this.applyFilters();
+        this.updateStats();
+        this.showNotification(`Bulk action completed for ${selectedProducts.length} products!`, 'success');
+      }
+      
+      updateStats() {
+        const total = this.products.length;
+        const active = this.products.filter(p => p.status === 'active').length;
+        const outOfStock = this.products.filter(p => p.stock === 0).length;
+        const lowStock = this.products.filter(p => p.stock > 0 && p.stock < 10).length;
+        
+        document.getElementById('totalProducts').textContent = total.toLocaleString();
+        document.getElementById('activeProducts').textContent = active.toLocaleString();
+        document.getElementById('outOfStock').textContent = outOfStock.toLocaleString();
+        document.getElementById('lowStock').textContent = lowStock.toLocaleString();
+      }
+      
+      showNotification(message, type = 'info', duration = 5000) {
+        // Remove any existing notifications
+        document.querySelectorAll('.notification').forEach(el => el.remove());
+        
+        const notification = document.createElement('div');
+        notification.className = `notification fixed top-4 right-4 z-50 px-6 py-4 rounded-lg shadow-lg text-white transition-all duration-300 transform translate-x-full max-w-sm`;
+        
+        const colors = {
+          success: 'bg-green-600',
+          error: 'bg-red-600',
+          info: 'bg-blue-600',
+          warning: 'bg-yellow-600'
+        };
+        
+        const icons = {
+          success: 'fas fa-check-circle',
+          error: 'fas fa-exclamation-circle',
+          info: 'fas fa-info-circle',
+          warning: 'fas fa-exclamation-triangle'
+        };
+        
+        notification.classList.add(colors[type]);
+        notification.innerHTML = `
+          <div class="flex items-start">
+            <i class="${icons[type]} mr-3 mt-0.5"></i>
+            <div class="flex-1">${message}</div>
+            <button class="ml-4 text-white hover:text-gray-200" onclick="this.parentElement.parentElement.remove()">
+              <i class="fas fa-times"></i>
+            </button>
+          </div>
+        `;
+        
+        document.body.appendChild(notification);
+        
+        // Animate in
+        setTimeout(() => {
+          notification.classList.remove('translate-x-full');
+        }, 100);
+        
+        // Auto-dismiss after duration
+        setTimeout(() => {
+          if (document.body.contains(notification)) {
+            notification.classList.add('translate-x-full');
+            setTimeout(() => {
+              document.body.removeChild(notification);
+            }, 300);
+          }
+        }, duration);
+      }
+      
+      debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+          const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+          };
+          clearTimeout(timeout);
+          timeout = setTimeout(later, wait);
+        };
+      }
+    }
+    
+    // Initialize when DOM is loaded
+    let productManager;
+    document.addEventListener('DOMContentLoaded', () => {
+      productManager = new ProductManager();
+      
+      // Expose to global scope for button onclick handlers
+      window.productManager = productManager;
+    });
+  </script>
+</body>
+</html>

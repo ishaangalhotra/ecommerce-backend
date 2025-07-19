@@ -57,3 +57,44 @@ const orderSchema = new mongoose.Schema(
 orderSchema.index({ user: 1, status: 1 }); // Compound index
 
 module.exports = mongoose.model("Order", orderSchema);
+const mongoose = require('mongoose');
+const geoSchema = new mongoose.Schema({
+  type: {
+    type: String,
+    default: 'Point',
+    enum: ['Point']
+  },
+  coordinates: [Number], // [lng, lat]
+  address: String,
+  timestamp: { type: Date, default: Date.now }
+});
+
+const orderSchema = new mongoose.Schema({
+  // ... existing order fields ...
+  delivery: {
+    agent: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'assigned', 'picked', 'enroute', 'delivered', 'failed'],
+      default: 'pending'
+    },
+    history: [{
+      status: String,
+      timestamp: { type: Date, default: Date.now },
+      location: geoSchema,
+      notes: String
+    }],
+    expectedDelivery: Date,
+    actualDelivery: Date,
+    distance: Number // in meters
+  }
+}, { timestamps: true });
+
+// Geo index for location queries
+orderSchema.index({ 'delivery.history.location': '2dsphere' });
+
+module.exports = mongoose.model('Order', orderSchema);
