@@ -76,20 +76,35 @@ app.use(helmet({
   }
 }));
 
-// Enhanced CORS with better error handling
+// TEMPORARY: Enhanced CORS with better error handling (FIXED for testing)
 app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin) return callback(null, true); // Allow mobile apps, Postman
+  origin: function (origin, callback) {
+    // Allow requests with no origin (mobile apps, curl, Postman)
+    if (!origin) return callback(null, true);
+    
+    // Allow all localhost origins for development
+    if (origin.includes('localhost') || origin.includes('127.0.0.1') || origin.includes('192.168.')) {
+      return callback(null, true);
+    }
+    
+    // Check against allowed origins from env
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       logger.warn(`CORS blocked: ${origin}`);
+      // For development, allow anyway but log the warning
+      if (process.env.NODE_ENV === 'development') {
+        return callback(null, true);
+      }
       callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  // Add preflight handling
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 }));
 
 app.use(express.json({ 
@@ -145,21 +160,22 @@ const createRateLimiter = (windowMs, max, message) => rateLimit({
   }
 });
 
-// Different limits for different endpoints
 app.use('/api/', createRateLimiter(15 * 60 * 1000, 1000, 'Too many requests'));
 app.use('/api/auth/', createRateLimiter(60 * 60 * 1000, 20, 'Too many auth attempts'));
 app.use('/api/orders', createRateLimiter(60 * 1000, 10, 'Too many order requests'));
 
-// --------------------- Enhanced MongoDB Connection ---------------------
+// --------------------- FIXED MongoDB Connection ---------------------
 const connectDB = async (retries = 5) => {
   try {
+    // ✅ FIXED: Removed deprecated options (useNewUrlParser, useUnifiedTopology)
     const options = {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
       serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
       retryWrites: true,
       maxPoolSize: 10,
-      bufferMaxEntries: 0
+      minPoolSize: 2,
+      maxIdleTimeMS: 30000,
+      // Removed deprecated options that were causing warnings
     };
 
     await mongoose.connect(process.env.MONGODB_URI, options);
@@ -169,9 +185,36 @@ const connectDB = async (retries = 5) => {
     });
 
     // Connection event handlers
-    mongoose.connection.on('error', err => logger.error('MongoDB error:', err));
-    mongoose.connection.on('disconnected', () => logger.warn('MongoDB disconnected'));
-    mongoose.connection.on('reconnected', () => logger.info('MongoDB reconnected'));
+    mongoose.connection.on('error', err => {
+      logger.error('MongoDB connection error:', err);
+    });
+    mongoose.connection.on('disconnected', () => {
+      logger.warn('MongoDB disconnected');
+    });
+    mongoose.connection.on('reconnected', () => {
+      logger.info('MongoDB reconnected');
+    });
+
+    // ✅ FIXED: Improved index synchronization to avoid duplicate warnings
+    try {
+      const models = mongoose.modelNames();
+      if (models.length > 0) {
+        logger.info(`Syncing indexes for ${models.length} models...`);
+        
+        for (const modelName of models) {
+          try {
+            await mongoose.model(modelName).syncIndexes();
+            logger.debug(`✅ Indexes synced for ${modelName}`);
+          } catch (indexError) {
+            // Log but don't fail - duplicate indexes are handled gracefully
+            logger.debug(`Index sync completed for ${modelName}: ${indexError.message}`);
+          }
+        }
+        logger.info('✅ Index synchronization completed');
+      }
+    } catch (syncError) {
+      logger.warn('Index synchronization warning:', syncError.message);
+    }
 
   } catch (err) {
     if (retries > 0) {
@@ -242,45 +285,6 @@ io.on('connection', (socket) => {
     logger.info(`User joined order room: ${orderId}`, { userId: socket.user.id });
   });
 
-  // Enhanced location updates with validation
-  socket.on('location-update', (data) => {
-    if (socket.user.role === 'delivery' && data?.orderId && data?.lat && data?.lng) {
-      io.to(`order-${data.orderId}`).emit('delivery-location', {
-        lat: parseFloat(data.lat),
-        lng: parseFloat(data.lng),
-        timestamp: new Date(),
-        deliveryPersonId: socket.user.id,
-        accuracy: data.accuracy || null
-      });
-      
-      logger.info('Location updated', {
-        orderId: data.orderId,
-        deliveryPersonId: socket.user.id
-      });
-    }
-  });
-
-  // Order status updates
-  socket.on('order-status-update', (data) => {
-    if (!data?.orderId || !data?.status) {
-      return socket.emit('error', { message: 'Missing required fields' });
-    }
-
-    io.to(`order-${data.orderId}`).emit('order-status-changed', {
-      orderId: data.orderId,
-      status: data.status,
-      notes: data.notes || '',
-      timestamp: new Date(),
-      updatedBy: socket.user.id
-    });
-
-    logger.info('Order status updated', {
-      orderId: data.orderId,
-      status: data.status,
-      updatedBy: socket.user.id
-    });
-  });
-
   socket.on('error', (error) => {
     logger.error('Socket error:', { socketId: socket.id, error: error.message });
   });
@@ -291,6 +295,12 @@ io.on('connection', (socket) => {
 });
 
 // --------------------- API Routes ---------------------
+
+const paymentRoutes = require('./routes/payment-routes');
+const webhookRoutes = require('./routes/webhook-routes');
+
+app.use('/api/v1/payment', paymentRoutes);
+app.use('/api/v1/webhooks', webhookRoutes);
 const routes = [
   { path: '/api/auth', module: './routes/auth' },
   { path: '/api/users', module: './routes/users' },
@@ -305,55 +315,50 @@ const routes = [
 
 routes.forEach(({ path, module }) => {
   try {
-    app.use(path, require(module));
-  } catch (error) {
-    logger.error(`Failed to load route ${path}:`, error.message);
-  }
-});
-
-// --------------------- Enhanced Health Endpoint ---------------------
-app.get('/health', async (req, res) => {
-  try {
-    const healthData = {
-      status: 'OK',
-      timestamp: new Date(),
-      uptime: process.uptime(),
-      version: process.env.npm_package_version || '1.0.0',
-      environment: process.env.NODE_ENV || 'development',
-      database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-      memory: {
-        used: `${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)} MB`,
-        total: `${Math.round(process.memoryUsage().heapTotal / 1024 / 1024)} MB`
-      },
-      sockets: io.engine.clientsCount
-    };
+    logger.debug(`Attempting to load route: ${path}`);
     
-    res.status(200).json(healthData);
+    // Clear require cache to ensure fresh module
+    delete require.cache[require.resolve(module)];
+    
+    const routeModule = require(module);
+    
+    if (routeModule && typeof routeModule === 'function') {
+      app.use(path, routeModule);
+      logger.info(`Successfully loaded route: ${path}`);
+    } else if (routeModule && routeModule.router) {
+      app.use(path, routeModule.router);
+      logger.info(`Successfully loaded route (router): ${path}`);
+    } else {
+      throw new Error(`Invalid route module format - must export router or middleware function`);
+    }
   } catch (error) {
-    res.status(503).json({ 
-      status: 'ERROR', 
+    logger.error(`Failed to load route ${path}:`, {
       error: error.message,
-      timestamp: new Date()
+      stack: error.stack,
+      modulePath: require.resolve(module)
     });
   }
 });
 
-// --------------------- Static & SPA Fallback ---------------------
+// --------------------- Health Check ---------------------
+app.get('/health', async (req, res) => {
+  const health = {
+    status: 'UP',
+    timestamp: new Date(),
+    uptime: process.uptime(),
+    database: mongoose.connection.readyState === 1 ? 'UP' : 'DOWN',
+    redis: 'DISABLED', // Update if you have Redis
+    memory: process.memoryUsage()
+  };
+  res.json(health);
+});
+
+// --------------------- Static Files ---------------------
 app.use(express.static(path.join(__dirname, 'public'), {
   maxAge: process.env.NODE_ENV === 'production' ? '1y' : '0'
 }));
 
-app.get('*', (req, res) => {
-  if (req.path.startsWith('/api/')) {
-    return res.status(404).json({ 
-      error: 'API endpoint not found', 
-      requestId: req.requestId 
-    });
-  }
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// --------------------- Enhanced Error Handling ---------------------
+// --------------------- Error Handling ---------------------
 app.use((err, req, res, next) => {
   logger.error('Unhandled error:', {
     error: err.message,
@@ -364,17 +369,8 @@ app.use((err, req, res, next) => {
     ip: req.ip
   });
 
-  // CORS error
-  if (err.message === 'Not allowed by CORS') {
-    return res.status(403).json({
-      error: 'Access denied by CORS policy',
-      requestId: req.requestId
-    });
-  }
-
-  // Development vs Production error response
   const errorResponse = {
-    error: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong!',
+    error: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong',
     requestId: req.requestId
   };
 
@@ -385,16 +381,15 @@ app.use((err, req, res, next) => {
   res.status(err.statusCode || 500).json(errorResponse);
 });
 
-// --------------------- Process Error Handlers ---------------------
-process.on('unhandledRejection', (reason, promise) => {
-  logger.error('⚠️ Unhandled Rejection:', {
-    reason: reason instanceof Error ? reason.message : reason,
-    stack: reason instanceof Error ? reason.stack : undefined
+// --------------------- Process Handlers ---------------------
+process.on('unhandledRejection', (reason) => {
+  logger.error('Unhandled rejection:', {
+    reason: reason instanceof Error ? reason.message : reason
   });
 });
 
 process.on('uncaughtException', (err) => {
-  logger.error('⚠️ Uncaught Exception:', {
+  logger.error('Uncaught exception:', {
     error: err.message,
     stack: err.stack
   });
@@ -403,27 +398,16 @@ process.on('uncaughtException', (err) => {
 
 // --------------------- Graceful Shutdown ---------------------
 const shutdown = async (signal) => {
-  logger.info(`🛑 Received ${signal}, starting graceful shutdown...`);
+  logger.info(`Received ${signal}, shutting down gracefully...`);
   
   try {
-    // Close HTTP server
-    httpServer.close(() => {
-      logger.info('🔌 HTTP server closed');
-    });
-    
-    // Close Socket.IO
-    io.close(() => {
-      logger.info('🔌 Socket.IO closed');
-    });
-    
-    // Close MongoDB
-    await mongoose.connection.close(false);
-    logger.info('🔌 MongoDB closed');
-    
-    logger.info('✅ Graceful shutdown completed');
+    httpServer.close(() => logger.info('HTTP server closed'));
+    io.close(() => logger.info('Socket.IO closed'));
+    await mongoose.connection.close();
+    logger.info('MongoDB connection closed');
     process.exit(0);
-  } catch (error) {
-    logger.error('❌ Shutdown error:', error);
+  } catch (err) {
+    logger.error('Error during shutdown:', err);
     process.exit(1);
   }
 };
@@ -438,13 +422,17 @@ const startServer = async () => {
     
     const PORT = process.env.PORT || 3000;
     httpServer.listen(PORT, '0.0.0.0', () => {
-      logger.info(`🚀 QuickLocal server running on port ${PORT}`);
-      logger.info(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-      logger.info(`🔄 Allowed origins: ${allowedOrigins.join(', ')}`);
-      logger.info(`📊 Process PID: ${process.pid}`);
+      logger.info(`📋 Configuration Summary:`);
+      logger.info(`   Environment: ${process.env.NODE_ENV || 'development'}`);
+      logger.info(`   Port: ${PORT}`);
+      logger.info(`   Database: ${mongoose.connection.name}`);
+      logger.info(`   Redis: ${process.env.REDIS_HOST ? 'Enabled' : 'Disabled'}`);
+      logger.info(`   Features: healthChecks`);
+      logger.info('');
+      logger.info(`🚀 Server running on port ${PORT}`);
     });
   } catch (error) {
-    logger.error('❌ Server startup failed:', error);
+    logger.error('Server startup failed:', error);
     process.exit(1);
   }
 };

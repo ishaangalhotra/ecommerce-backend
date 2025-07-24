@@ -86,7 +86,7 @@ const verifyToken = async (token, options = {}) => {
         }
 
         // Check token cache for known malicious tokens
-        if (redis.client) {
+        if (redis?.client) {
             try {
                 const isMalicious = await redis.client.get(`auth:malicious:${tokenFingerprint}`);
                 if (isMalicious) {
@@ -100,13 +100,16 @@ const verifyToken = async (token, options = {}) => {
             }
         }
 
-        // Verify token with enhanced options
-        const decoded = jwt.verify(token, config.jwt.secret, {
+        // Use fallback JWT secret if config is not available
+        const jwtSecret = config?.jwt?.secret || process.env.JWT_SECRET;
+        
+        // Verify token with enhanced options (with fallbacks)
+        const decoded = jwt.verify(token, jwtSecret, {
             algorithms: ['HS256'],
             clockTolerance: 15,
-            issuer: config.jwt.issuer,
-            audience: options.audience || config.jwt.audience,
-            maxAge: options.maxAge || config.jwt.expiresIn || '24h',
+            issuer: config?.jwt?.issuer,
+            audience: options.audience || config?.jwt?.audience,
+            maxAge: options.maxAge || config?.jwt?.expiresIn || '24h',
             complete: false,
             ignoreExpiration: false,
             ignoreNotBefore: false,
@@ -114,7 +117,7 @@ const verifyToken = async (token, options = {}) => {
         });
 
         // Enhanced token claims validation
-        const requiredClaims = ['sub', 'jti', 'iat', 'exp'];
+        const requiredClaims = ['sub', 'iat', 'exp'];
         const missingClaims = requiredClaims.filter(claim => !decoded[claim]);
         
         if (missingClaims.length > 0) {
@@ -131,8 +134,8 @@ const verifyToken = async (token, options = {}) => {
             throw new TokenExpiredError('Token has expired');
         }
 
-        // Check token revocation with cache fallback
-        if (redis.client) {
+        // Check token revocation with cache fallback (if jti exists)
+        if (decoded.jti && redis?.client) {
             try {
                 const isRevoked = await redis.client.get(`auth:revoked:${decoded.jti}`);
                 if (isRevoked) {
@@ -165,9 +168,7 @@ const verifyToken = async (token, options = {}) => {
             tokenLength: token?.length || 0,
             tokenPrefix: token?.substring(0, 8) || '',
             fingerprint: tokenFingerprint,
-            timestamp: new Date().toISOString(),
-            ip: req?.ip,
-            userAgent: req?.get('User-Agent')
+            timestamp: new Date().toISOString()
         });
 
         // Convert JWT library errors to our custom errors
@@ -200,7 +201,7 @@ const protect = (options = {}) => {
         permissions = [],
         checkIp = false,
         checkUserAgent = false,
-        sessionCheck = true
+        sessionCheck = false // Set to false by default for compatibility
     } = options;
 
     return async (req, res, next) => {
@@ -269,8 +270,8 @@ const protect = (options = {}) => {
             req.tokenSource = tokenSource;
 
             // Enhanced user lookup with caching and freshness check
-            const userCacheKey = `user:${req.tokenPayload.sub}`;
-            let user = await getUserWithCache(req.tokenPayload.sub, userCacheKey);
+            const userCacheKey = `user:${req.tokenPayload.sub || req.tokenPayload.id}`;
+            let user = await getUserWithCache(req.tokenPayload.sub || req.tokenPayload.id, userCacheKey);
 
             if (!user) {
                 throw new UnauthorizedError('User account not found');
@@ -310,8 +311,8 @@ const protect = (options = {}) => {
                 }
             }
 
-            // Session validation
-            if (sessionCheck && user.sessionId !== req.tokenPayload.sessionId) {
+            // Session validation (optional)
+            if (sessionCheck && user.sessionId && user.sessionId !== req.tokenPayload.sessionId) {
                 throw new UnauthorizedError('Session invalidated');
             }
 
@@ -322,9 +323,12 @@ const protect = (options = {}) => {
                 userId: user._id,
                 tokenSource,
                 tokenPayload: req.tokenPayload,
-                roles: user.roles || [],
+                roles: user.roles || [user.role],
                 permissions: user.permissions || []
             };
+
+            // Also set req.user for backward compatibility
+            req.user = user;
 
             // Update response headers
             setAuthHeaders(res, user, req.tokenPayload, tokenSource);
@@ -368,7 +372,7 @@ const protect = (options = {}) => {
 async function getUserWithCache(userId, cacheKey) {
     let user;
     
-    if (redis.client) {
+    if (redis?.client) {
         try {
             const cachedUser = await redis.client.get(cacheKey);
             if (cachedUser) {
@@ -397,10 +401,10 @@ async function getUserWithCache(userId, cacheKey) {
 
     if (!user) {
         user = await User.findById(userId)
-            .select('+passwordChangedAt +isActive +accountLocked +sessionId +lastLoginAt +lastKnownIp +lastKnownUserAgent +roles +permissions')
+            .select('-password +passwordChangedAt +isActive +accountLocked +sessionId +lastLoginAt +lastKnownIp +lastKnownUserAgent +roles +permissions')
             .lean();
 
-        if (user && redis.client) {
+        if (user && redis?.client) {
             try {
                 await redis.client.setex(cacheKey, 300, JSON.stringify(user));
             } catch (cacheError) {
@@ -438,7 +442,7 @@ function validatePasswordRecency(user, tokenIat) {
 function setAuthHeaders(res, user, tokenPayload, tokenSource) {
     const headers = {
         'X-Authenticated-User': user._id.toString(),
-        'X-Auth-Expires': new Date(tokenPayload.exp * 1000).toISOString(),
+        'X-Auth-Expires': new Date((tokenPayload.exp || Date.now() / 1000 + 3600) * 1000).toISOString(),
         'X-Auth-Source': tokenSource,
         'X-Request-ID': res.locals.requestId || crypto.randomUUID(),
         'X-User-Role': user.role || 'none'
@@ -455,9 +459,9 @@ function setAuthHeaders(res, user, tokenPayload, tokenSource) {
 function clearAuthCookie(res) {
     res.clearCookie('token', {
         httpOnly: true,
-        secure: config.isProduction,
-        sameSite: config.isProduction ? 'none' : 'lax',
-        domain: config.cookie?.domain,
+        secure: config?.isProduction || process.env.NODE_ENV === 'production',
+        sameSite: config?.isProduction ? 'none' : 'lax',
+        domain: config?.cookie?.domain,
         path: '/'
     });
 }
@@ -466,17 +470,20 @@ function clearAuthCookie(res) {
 const authorize = (roles = [], permissions = []) => {
     return (req, res, next) => {
         try {
-            if (!req.auth?.isAuthenticated) {
+            if (!req.user && !req.auth?.isAuthenticated) {
                 throw new UnauthorizedError('Authentication required');
             }
 
-            if (roles.length > 0 && !roles.includes(req.auth.user.role)) {
+            const user = req.user || req.auth?.user;
+            const userPermissions = req.auth?.permissions || user?.permissions || [];
+
+            if (roles.length > 0 && !roles.includes(user.role)) {
                 throw new ForbiddenError(`Required roles: ${roles.join(', ')}`);
             }
 
             if (permissions.length > 0) {
                 const missingPermissions = permissions.filter(
-                    p => !req.auth.permissions.includes(p)
+                    p => !userPermissions.includes(p)
                 );
                 if (missingPermissions.length > 0) {
                     throw new ForbiddenError(`Missing permissions: ${missingPermissions.join(', ')}`);
@@ -507,6 +514,14 @@ const createAuthRateLimit = (options = {}) => {
             return `${req.ip}:${req.body?.email || 'unknown'}`;
         },
         handler = (req, res) => {
+            // Log when rate limit is reached
+            logger.warn('Rate limit reached', {
+                ip: req.ip,
+                identifier: req.body?.email || 'unknown',
+                path: req.path,
+                timestamp: new Date().toISOString()
+            });
+            
             res.status(429).json({
                 success: false,
                 error: message,
@@ -523,15 +538,8 @@ const createAuthRateLimit = (options = {}) => {
         keyGenerator,
         handler,
         standardHeaders: true,
-        legacyHeaders: false,
-        onLimitReached: (req) => {
-            logger.warn('Rate limit reached', {
-                ip: req.ip,
-                identifier: req.body?.email || 'unknown',
-                path: req.path,
-                timestamp: new Date().toISOString()
-            });
-        }
+        legacyHeaders: false
+        // Removed deprecated onLimitReached - moved logic to handler
     });
 };
 
@@ -545,12 +553,12 @@ const validateRefreshToken = async (req, res, next) => {
         }
 
         req.refreshTokenPayload = await verifyToken(refreshToken, { 
-            audience: config.jwt.refreshAudience,
-            maxAge: config.jwt.refreshExpiresIn || '7d'
+            audience: config?.jwt?.refreshAudience,
+            maxAge: config?.jwt?.refreshExpiresIn || '7d'
         });
 
         // Additional refresh token validation
-        if (req.refreshTokenPayload.type !== 'refresh') {
+        if (req.refreshTokenPayload.type && req.refreshTokenPayload.type !== 'refresh') {
             throw new UnauthorizedError('Invalid token type');
         }
 
@@ -567,7 +575,7 @@ const revokeToken = async (req, res, next) => {
             throw new UnauthorizedError('No valid token to revoke');
         }
 
-        if (redis.client) {
+        if (redis?.client) {
             const ttl = req.auth.tokenPayload.exp - Math.floor(Date.now() / 1000);
             if (ttl > 0) {
                 await redis.client.setex(
@@ -584,6 +592,71 @@ const revokeToken = async (req, res, next) => {
     }
 };
 
+// Check permission middleware - Enhanced version
+const checkPermission = (permission) => {
+    return (req, res, next) => {
+        try {
+            if (!req.user && !req.auth?.isAuthenticated) {
+                throw new UnauthorizedError('Authentication required');
+            }
+
+            const user = req.user || req.auth?.user;
+            
+            // Enhanced role-based permission system
+            const rolePermissions = {
+                'super_admin': ['*'], // All permissions
+                'admin': [
+                    'user:view:all', 'user:create', 'user:update', 'user:delete',
+                    'user:manage:roles', 'profile:view:all', 'address:view:all', 
+                    'order:view:all'
+                ],
+                'regional_manager': [
+                    'profile:view:own', 'profile:update:own',
+                    'address:manage:own', 'order:view:own'
+                ],
+                'seller': [
+                    'profile:view:own', 'profile:update:own', 
+                    'address:manage:own', 'order:view:own'
+                ],
+                'customer': [
+                    'profile:view:own', 'profile:update:own', 
+                    'address:manage:own', 'order:view:own'
+                ],
+                'moderator': [
+                    'profile:view:own', 'profile:update:own',
+                    'address:manage:own', 'order:view:own'
+                ],
+                'delivery_agent': [
+                    'profile:view:own', 'profile:update:own',
+                    'address:manage:own', 'order:view:own'
+                ],
+                'support': [
+                    'profile:view:own', 'profile:update:own',
+                    'address:manage:own', 'order:view:own'
+                ]
+            };
+
+            const userPermissions = user.permissions || rolePermissions[user.role] || [];
+            
+            if (userPermissions.includes('*') || userPermissions.includes(permission)) {
+                return next();
+            }
+
+            throw new ForbiddenError('Insufficient permissions');
+        } catch (err) {
+            next(err);
+        }
+    };
+};
+
+// Create default auth limiter instance
+const authLimiter = createAuthRateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 5, // 5 attempts per window
+    message: 'Too many authentication attempts, please try again later.',
+    skipSuccessfulRequests: true
+});
+
 module.exports = {
     protect,
     authorize,
@@ -591,6 +664,8 @@ module.exports = {
     optionalAuth,
     validateRefreshToken,
     createAuthRateLimit,
+    authLimiter, // Export default rate limiter
+    checkPermission, // Export permission checker
     revokeToken,
     verifyToken,
     // Error classes

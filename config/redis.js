@@ -270,7 +270,7 @@ class RedisManager extends EventEmitter {
     async connectWithTimeout(connectPromises) {
         const timeout = config.redis?.connectTimeout || 10000;
         const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error(`Redis connection timed out after ${timeout}ms`)), timeout;
+            setTimeout(() => reject(new Error(`Redis connection timed out after ${timeout}ms`)), timeout);
         });
 
         await Promise.race([

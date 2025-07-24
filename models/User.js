@@ -2,429 +2,343 @@ const mongoose = require('mongoose');
 const validator = require('validator');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
+const { v4: uuidv4 } = require('uuid');
 
-const userSchema = new mongoose.Schema({
-  // Basic Information
+/**
+ * FIXED User Model - No Duplicate Indexes
+ */
+
+const UserSchema = new mongoose.Schema({
+  // Unique Identifiers - REMOVED index definitions from field level
+  uuid: {
+    type: String,
+    default: uuidv4,
+    // REMOVED: index: true, unique: true (will be defined in schema.index())
+    immutable: true
+  },
+  email: {
+    type: String,
+    required: [true, 'Email is required'],
+    // REMOVED: unique: true, index: true (will be defined in schema.index())
+    lowercase: true,
+    trim: true,
+    validate: {
+      validator: validator.isEmail,
+      message: 'Please provide a valid email'
+    }
+  },
+  phone: {
+    type: String,
+    // REMOVED: unique: true (will be defined in schema.index())
+    sparse: true,
+    validate: {
+      validator: function(v) {
+        return !v || validator.isMobilePhone(v, 'en-IN');
+      },
+      message: 'Please provide a valid Indian phone number'
+    }
+  },
+
+  // Authentication & Security
+  password: {
+    type: String,
+    required: [true, 'Password is required'],
+    minlength: [12, 'Password must be at least 12 characters'],
+    select: false
+  },
+  passwordChangedAt: Date,
+  passwordResetToken: String,
+  passwordResetExpires: Date,
+  
+  // Email Verification
+  emailVerificationToken: String,
+  emailVerificationExpires: Date,
+  verifiedAt: Date,
+  
+  // Security tracking
+  loginAttempts: {
+    type: Number,
+    default: 0
+  },
+  lockUntil: Date,
+  loginHistory: [{
+    ip: String,
+    userAgent: String,
+    location: String,
+    timestamp: {
+      type: Date,
+      default: Date.now
+    }
+  }],
+
+  // Personal Information
   name: {
     type: String,
-    required: [true, 'Please tell us your name'],
+    required: [true, 'Name is required'],
     trim: true,
     maxlength: [50, 'Name cannot exceed 50 characters'],
     minlength: [2, 'Name must be at least 2 characters']
   },
-  
-  email: {
-    type: String,
-    required: [true, 'Please provide your email'],
-    unique: true,
-    lowercase: true,
-    validate: [validator.isEmail, 'Please provide a valid email'],
-    index: true
-  },
-  
-  phone: {
-    type: String,
+  dateOfBirth: {
+    type: Date,
     validate: {
-      validator: function(v) {
-        return !v || validator.isMobilePhone(v);
+      validator: function(dob) {
+        if (!dob) return true;
+        const age = (new Date() - dob) / (365.25 * 24 * 60 * 60 * 1000);
+        return age >= 13 && age <= 120;
       },
-      message: 'Please provide a valid phone number'
-    },
-    sparse: true
+      message: 'Must be between 13-120 years old'
+    }
   },
-
-  // Authentication
-  password: {
+  gender: {
     type: String,
-    required: [true, 'Please provide a password'],
-    minlength: [8, 'Password must be at least 8 characters'],
-    select: false,
-    validate: {
-      validator: function(pass) {
-        return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/.test(pass);
-      },
-      message: 'Password must contain uppercase, lowercase, number, and special character'
+    enum: {
+      values: ['male', 'female', 'other', 'prefer_not_to_say'],
+      message: 'Gender must be male, female, other, or prefer_not_to_say'
     }
   },
 
-  // User Role & Status
-  role: {
-    type: String,
-    enum: {
-      values: ['user', 'seller', 'admin'],
-      message: 'Role must be either user, seller, or admin'
-    },
-    default: 'user'
+  // Wallet & Finance
+  walletBalance: {
+    type: Number,
+    default: 0,
+    min: 0
   },
 
-  active: {
+  // Addresses
+  addresses: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Address'
+  }],
+
+  // Account Status
+  isActive: {
     type: Boolean,
-    default: true,
-    select: false
+    default: true
   },
-
   isVerified: {
     type: Boolean,
     default: false
   },
-
-  // Profile Information
-  avatar: {
-    public_id: {
-      type: String,
-      default: null
-    },
-    url: {
-      type: String,
-      default: null
-    }
+  isDeleted: {
+    type: Boolean,
+    default: false,
+    select: false
   },
+  deletedAt: Date,
 
-  // Address Information
-  addresses: [{
-    type: {
-      type: String,
-      enum: ['home', 'work', 'other'],
-      default: 'home'
-    },
-    street: {
-      type: String,
-      required: true,
-      trim: true
-    },
-    city: {
-      type: String,
-      required: true,
-      trim: true
-    },
-    state: {
-      type: String,
-      required: true,
-      trim: true
-    },
-    zipCode: {
-      type: String,
-      required: true,
-      trim: true
-    },
-    country: {
-      type: String,
-      required: true,
-      trim: true,
-      default: 'India'
-    },
-    isDefault: {
-      type: Boolean,
-      default: false
-    }
+  // Roles and Permissions
+  role: {
+    type: String,
+    enum: ['customer', 'seller', 'admin', 'super_admin', 'delivery_agent'],
+    default: 'customer'
+  },
+  permissions: [{
+    type: String,
+    enum: ['read', 'write', 'delete', 'manage_users']
   }],
 
-  // Security & Authentication
-  passwordChangedAt: {
-    type: Date,
-    select: false
-  },
-  
-  passwordResetToken: {
-    type: String,
-    select: false
-  },
-  
-  passwordResetExpires: {
-    type: Date,
-    select: false
-  },
-  
-  refreshToken: {
-    type: String,
-    select: false
-  },
-
-  // Email Verification
-  emailVerificationToken: {
-    type: String,
-    select: false
-  },
-  
-  emailVerificationExpires: {
-    type: Date,
-    select: false
-  },
-
-  // OAuth Integration
-  googleId: {
-    type: String,
-    sparse: true,
-    select: false
-  },
-  
-  facebookId: {
-    type: String,
-    sparse: true,
-    select: false
-  },
-
-  // User Activity
-  lastLoginAt: {
-    type: Date
-  },
-  
-  loginCount: {
-    type: Number,
-    default: 0
-  },
-
-  // Seller-specific fields (populated when role is 'seller')
-  sellerInfo: {
-    businessName: {
-      type: String,
-      trim: true
-    },
-    businessType: {
-      type: String,
-      enum: ['individual', 'company', 'partnership'],
-    },
-    gstNumber: {
-      type: String,
-      uppercase: true,
-      validate: {
-        validator: function(v) {
-          return !v || /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(v);
-        },
-        message: 'Please provide a valid GST number'
-      }
-    },
-    panNumber: {
-      type: String,
-      uppercase: true,
-      validate: {
-        validator: function(v) {
-          return !v || /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(v);
-        },
-        message: 'Please provide a valid PAN number'
-      }
-    },
-    bankDetails: {
-      accountNumber: String,
-      ifscCode: String,
-      accountHolderName: String,
-      bankName: String
-    },
-    isApproved: {
-      type: Boolean,
-      default: false
-    },
-    rating: {
-      type: Number,
-      min: 0,
-      max: 5,
-      default: 0
-    },
-    totalSales: {
-      type: Number,
-      default: 0
-    }
-  },
-
-  // User Preferences
-  preferences: {
-    notifications: {
-      email: {
-        type: Boolean,
-        default: true
-      },
-      sms: {
-        type: Boolean,
-        default: false
-      },
-      push: {
-        type: Boolean,
-        default: true
-      }
-    },
-    language: {
-      type: String,
-      default: 'en',
-      enum: ['en', 'hi', 'te', 'ta', 'bn']
-    },
-    currency: {
-      type: String,
-      default: 'INR',
-      enum: ['INR', 'USD', 'EUR']
-    }
-  },
-
-  // Wishlist and Cart
-  wishlist: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Product'
-  }],
-
-  // Account Security
-  twoFactorAuth: {
-    enabled: {
-      type: Boolean,
-      default: false
-    },
-    secret: {
-      type: String,
-      select: false
-    }
-  }
+  // Timestamps
+  lastLoginAt: Date,
+  lastActiveAt: Date
 }, {
   timestamps: true,
-  toJSON: { 
-    virtuals: true,
-    transform: function(doc, ret) {
-      delete ret.password;
-      delete ret.__v;
-      delete ret.passwordResetToken;
-      delete ret.emailVerificationToken;
-      delete ret.refreshToken;
-      return ret;
-    }
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true },
+  versionKey: '__v'
+});
+
+// ==================== FIXED INDEXES (No Duplicates) ====================
+
+// Core unique indexes
+UserSchema.index({ uuid: 1 }, { unique: true });
+UserSchema.index({ email: 1 }, { unique: true });
+UserSchema.index({ phone: 1 }, { unique: true, sparse: true });
+
+// Security-related indexes
+UserSchema.index({ emailVerificationToken: 1 });
+UserSchema.index({ passwordResetToken: 1 });
+
+// Query optimization indexes
+UserSchema.index({ role: 1, isActive: 1, createdAt: -1 });
+UserSchema.index({ isActive: 1, isVerified: 1 });
+UserSchema.index({ isDeleted: 1 });
+
+// Text search index
+UserSchema.index({
+  name: 'text',
+  email: 'text'
+}, {
+  weights: {
+    name: 5,
+    email: 3
   },
-  toObject: { virtuals: true }
+  name: 'user_search_index'
 });
 
-// Indexes for better performance
-userSchema.index({ email: 1 }, { unique: true });
-userSchema.index({ phone: 1 }, { sparse: true });
-userSchema.index({ role: 1 });
-userSchema.index({ 'sellerInfo.isApproved': 1 });
-userSchema.index({ createdAt: -1 });
-userSchema.index({ lastLoginAt: -1 });
+// ==================== MIDDLEWARE ====================
 
-// Virtual for full name display
-userSchema.virtual('displayName').get(function() {
-  return this.name;
-});
+UserSchema.pre('save', async function(next) {
+  if (!this.isModified('password')) return next();
 
-// Virtual for seller status
-userSchema.virtual('isApprovedSeller').get(function() {
-  return this.role === 'seller' && this.sellerInfo?.isApproved;
-});
-
-// Pre-save hooks
-userSchema.pre('save', async function(next) {
-  // Hash password if modified
-  if (this.isModified('password')) {
+  try {
     this.password = await bcrypt.hash(this.password, 12);
-    if (!this.isNew) {
-      this.passwordChangedAt = Date.now() - 1000;
-    }
+    if (!this.isNew) this.passwordChangedAt = Date.now() - 1000;
+    next();
+  } catch (err) {
+    next(err);
   }
+});
 
-  // Ensure only one default address
-  if (this.isModified('addresses')) {
-    const defaultAddresses = this.addresses.filter(addr => addr.isDefault);
-    if (defaultAddresses.length > 1) {
-      // Keep only the last one as default
-      this.addresses.forEach((addr, index) => {
-        addr.isDefault = index === this.addresses.length - 1 && addr.isDefault;
-      });
-    }
+UserSchema.pre(/^find/, function(next) {
+  if (this.getFilter().isDeleted === undefined) {
+    this.where({ isDeleted: false });
   }
-
   next();
 });
 
-// Pre-find hooks
-userSchema.pre(/^find/, function(next) {
-  this.find({ active: { $ne: false } });
-  next();
+// ==================== VIRTUAL PROPERTIES ====================
+
+UserSchema.virtual('age').get(function() {
+  if (!this.dateOfBirth) return null;
+  return Math.floor((new Date() - this.dateOfBirth) / (3.15576e+10));
 });
 
-// Methods
-userSchema.methods = {
-  // Password verification
-  matchPassword: async function(candidatePassword) {
-    return await bcrypt.compare(candidatePassword, this.password);
-  },
+UserSchema.virtual('profileCompletion').get(function() {
+  const requiredFields = ['name', 'email', 'phone', 'dateOfBirth'];
+  const completedFields = requiredFields.filter(field => this[field]);
+  return Math.round((completedFields.length / requiredFields.length) * 100);
+});
 
-  // Check if password changed after JWT issued
-  changedPasswordAfter: function(JWTTimestamp) {
-    if (this.passwordChangedAt) {
-      const changedTimestamp = parseInt(this.passwordChangedAt.getTime() / 1000, 10);
-      return JWTTimestamp < changedTimestamp;
-    }
-    return false;
-  },
+UserSchema.virtual('isLocked').get(function() {
+  return !!(this.lockUntil && this.lockUntil > Date.now());
+});
 
-  // Create password reset token
-  createPasswordResetToken: function() {
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    this.passwordResetToken = crypto.createHash('sha256').update(resetToken).digest('hex');
-    this.passwordResetExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
-    return resetToken;
-  },
+// ==================== INSTANCE METHODS ====================
 
-  // Create email verification token
-  createEmailVerificationToken: function() {
-    const verificationToken = crypto.randomBytes(32).toString('hex');
-    this.emailVerificationToken = crypto.createHash('sha256').update(verificationToken).digest('hex');
-    this.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
-    return verificationToken;
-  },
-
-  // Update last login
-  updateLastLogin: function() {
-    this.lastLoginAt = new Date();
-    this.loginCount += 1;
-    return this.save({ validateBeforeSave: false });
-  },
-
-  // Get default address
-  getDefaultAddress: function() {
-    return this.addresses.find(addr => addr.isDefault) || this.addresses[0];
-  },
-
-  // Add to wishlist
-  addToWishlist: function(productId) {
-    if (!this.wishlist.includes(productId)) {
-      this.wishlist.push(productId);
-    }
-    return this.save();
-  },
-
-  // Remove from wishlist
-  removeFromWishlist: function(productId) {
-    this.wishlist = this.wishlist.filter(id => !id.equals(productId));
-    return this.save();
-  },
-
-  // Check if user is approved seller
-  isApprovedSeller: function() {
-    return this.role === 'seller' && this.sellerInfo?.isApproved === true;
-  }
+UserSchema.methods.getSignedJwtToken = function() {
+  return jwt.sign({ id: this._id }, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRE || '30d'
+  });
 };
 
-// Static methods
-userSchema.statics = {
-  // Find by email
-  findByEmail: function(email) {
-    return this.findOne({ email: email.toLowerCase() });
-  },
+UserSchema.methods.correctPassword = async function(candidatePassword, userPassword) {
+  return await bcrypt.compare(candidatePassword, userPassword || this.password);
+};
 
-  // Get approved sellers
-  getApprovedSellers: function() {
-    return this.find({
-      role: 'seller',
-      'sellerInfo.isApproved': true
+UserSchema.methods.changedPasswordAfter = function(JWTTimestamp) {
+  if (this.passwordChangedAt) {
+    const changedTimestamp = parseInt(
+      this.passwordChangedAt.getTime() / 1000,
+      10
+    );
+    return JWTTimestamp < changedTimestamp;
+  }
+  return false;
+};
+
+UserSchema.methods.createPasswordResetToken = function() {
+  const resetToken = crypto.randomBytes(32).toString('hex');
+  this.passwordResetToken = crypto
+    .createHash('sha256')
+    .update(resetToken)
+    .digest('hex');
+  this.passwordResetExpires = Date.now() + 10 * 60 * 1000;
+  return resetToken;
+};
+
+UserSchema.methods.createEmailVerificationToken = function() {
+  const verificationToken = crypto.randomBytes(32).toString('hex');
+  this.emailVerificationToken = crypto
+    .createHash('sha256')
+    .update(verificationToken)
+    .digest('hex');
+  this.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000;
+  return verificationToken;
+};
+
+UserSchema.methods.incLoginAttempts = function() {
+  if (this.lockUntil && this.lockUntil < Date.now()) {
+    return this.updateOne({
+      $unset: { lockUntil: 1 },
+      $set: { loginAttempts: 1 }
     });
-  },
+  }
+  
+  const updates = { $inc: { loginAttempts: 1 } };
+  
+  if (this.loginAttempts + 1 >= 5 && !this.isLocked) {
+    updates.$set = { lockUntil: Date.now() + 2 * 60 * 60 * 1000 };
+  }
+  
+  return this.updateOne(updates);
+};
 
-  // Get user statistics
-  getUserStats: async function() {
-    return await this.aggregate([
-      {
-        $group: {
-          _id: '$role',
-          count: { $sum: 1 }
+UserSchema.methods.addLoginHistory = function(ip, userAgent, location) {
+  this.loginHistory.unshift({
+    ip,
+    userAgent,
+    location,
+    timestamp: new Date()
+  });
+  
+  if (this.loginHistory.length > 10) {
+    this.loginHistory = this.loginHistory.slice(0, 10);
+  }
+  
+  return this.save();
+};
+
+// ==================== STATIC METHODS ====================
+
+UserSchema.statics.findByEmailOrPhone = async function(identifier) {
+  return this.findOne({
+    $or: [
+      { email: identifier },
+      { phone: identifier }
+    ]
+  });
+};
+
+UserSchema.statics.getUserStats = async function() {
+  return this.aggregate([
+    {
+      $group: {
+        _id: '$role',
+        count: { $sum: 1 },
+        activeUsers: {
+          $sum: { $cond: [{ $eq: ['$isActive', true] }, 1, 0] }
+        },
+        verifiedUsers: {
+          $sum: { $cond: [{ $eq: ['$isVerified', true] }, 1, 0] }
         }
       }
-    ]);
-  }
+    },
+    { $sort: { count: -1 } }
+  ]);
 };
 
-module.exports = mongoose.model('User', userSchema);
+// ==================== QUERY HELPERS ====================
+
+UserSchema.query.active = function() {
+  return this.where({ isActive: true });
+};
+
+UserSchema.query.verified = function() {
+  return this.where({ isVerified: true });
+};
+
+UserSchema.query.byRole = function(role) {
+  return this.where({ role });
+};
+
+UserSchema.query.notLocked = function() {
+  return this.where({
+    $or: [
+      { lockUntil: { $exists: false } },
+      { lockUntil: { $lt: Date.now() } }
+    ]
+  });
+};
+module.exports = mongoose.models.User || mongoose.model('User', UserSchema);

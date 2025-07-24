@@ -1,3 +1,18 @@
+const OrderStatus = {
+  PENDING: 'pending',
+  CONFIRMED: 'confirmed',
+  PREPARING: 'preparing',
+  OUT_FOR_DELIVERY: 'out_for_delivery',
+  DELIVERED: 'delivered',
+  CANCELLED: 'cancelled'
+};
+
+const PaymentStatus = {
+  PENDING: 'pending',
+  PAID: 'paid',
+  REFUNDED: 'refunded',
+  FAILED: 'failed'
+};
 const express = require('express');
 const mongoose = require('mongoose');
 const { body, query, validationResult } = require('express-validator');
@@ -15,8 +30,6 @@ const { generateInvoice } = require('../utils/invoice');
 const logger = require('../utils/logger');
 const redis = require('../config/redis');
 const { io } = require('../server');
-const { OrderStatus, PaymentStatus } = require('../constants');
-
 const router = express.Router();
 
 // Enhanced rate limiting with Redis

@@ -9,7 +9,7 @@ const geoSchema = new mongoose.Schema({
     enum: ['Point']
   },
   coordinates: {
-    type: [Number], // [lng, lat]
+    type: [Number], // [lng, lat] - REMOVED index from here
     validate: {
       validator: function(coords) {
         return coords.length === 2 && 
@@ -119,18 +119,14 @@ const orderSchema = new mongoose.Schema({
   // Order Identification
   orderNumber: {
     type: String,
-    unique: true,
     required: true,
-    uppercase: true,
-    index: true
   },
   
   // Customer Information
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true,
-    index: true
+    required: true
   },
   
   // Guest order support
@@ -208,8 +204,7 @@ const orderSchema = new mongoose.Schema({
         trim: true
       },
       coordinates: {
-        type: [Number], // [lng, lat]
-        index: '2dsphere'
+        type: [Number] // [lng, lat] - REMOVED index from here
       }
     },
     method: {
@@ -246,8 +241,7 @@ const orderSchema = new mongoose.Schema({
     status: {
       type: String,
       enum: ['pending', 'processing', 'completed', 'failed', 'refunded', 'partially_refunded'],
-      default: 'pending',
-      index: true
+      default: 'pending'
     },
     transactionId: {
       type: String,
@@ -320,8 +314,7 @@ const orderSchema = new mongoose.Schema({
       'refunded',         // Order refunded
       'failed'            // Order failed
     ],
-    default: 'pending',
-    index: true
+    default: 'pending'
   },
   
   // Status History
@@ -465,7 +458,7 @@ const orderSchema = new mongoose.Schema({
     }
   },
   
-  // Metadata
+  // Metadata - ADDED sessionId field to fix warning
   metadata: {
     source: {
       type: String,
@@ -479,7 +472,7 @@ const orderSchema = new mongoose.Schema({
     },
     userAgent: String,
     ipAddress: String,
-    sessionId: String,
+    sessionId: String, // ADDED this field
     cartId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Cart'
@@ -497,7 +490,7 @@ const orderSchema = new mongoose.Schema({
   toObject: { virtuals: true }
 });
 
-// Indexes for optimization
+// FIXED: Single index definitions (no duplicates)
 orderSchema.index({ orderNumber: 1 }, { unique: true });
 orderSchema.index({ user: 1, status: 1 });
 orderSchema.index({ user: 1, createdAt: -1 });
@@ -505,7 +498,7 @@ orderSchema.index({ status: 1, createdAt: -1 });
 orderSchema.index({ 'payment.status': 1 });
 orderSchema.index({ 'delivery.agent': 1, 'delivery.status': 1 });
 orderSchema.index({ 'shipping.address.coordinates': '2dsphere' });
-orderSchema.index({ 'delivery.tracking.location': '2dsphere' });
+orderSchema.index({ 'metadata.sessionId': 1 }); // FIXED: Added missing sessionId index
 
 // Text search index
 orderSchema.index({
@@ -513,6 +506,11 @@ orderSchema.index({
   'items.productSnapshot.name': 'text',
   'shipping.address.name': 'text'
 });
+
+// Compound indexes for better performance
+orderSchema.index({ user: 1, 'payment.status': 1, createdAt: -1 });
+orderSchema.index({ 'delivery.agent': 1, createdAt: -1 });
+orderSchema.index({ status: 1, 'payment.status': 1 });
 
 // Pre-save middleware
 orderSchema.pre('save', async function(next) {

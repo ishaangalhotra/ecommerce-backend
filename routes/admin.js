@@ -1,7 +1,7 @@
 const express = require('express');
 const { body, param, query, validationResult } = require('express-validator');
 const { protect, authorize } = require('../middleware/authMiddleware');
-const { cacheMiddleware, clearCache } = require('../middleware/cache');
+const { cache: cacheMiddleware, invalidateCache: clearCache } = require('../middleware/cache');
 const rateLimit = require('express-rate-limit');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
@@ -17,17 +17,19 @@ const ORDER_STATUSES = ['pending', 'confirmed', 'preparing', 'out_for_delivery',
 const USER_ROLES = ['admin', 'seller', 'customer', 'moderator', 'support', 'delivery_agent'];
 const CACHE_TTL = '5 minutes';
 
-// Rate Limiter Configuration
+// Rate Limiter Configuration - FIXED
 const adminLimiter = rateLimit({
   windowMs: 1 * 60 * 1000, // 1 minute
   max: 60, // 60 requests per minute
   legacyHeaders: false,
   standardHeaders: true,
   keyGenerator: (req) => `admin:${req.user?.id || req.ip}`,
-  store: new rateLimit.RedisStore({
-    client: redis,
-    prefix: 'ratelimit:admin'
-  }),
+  // Removed the problematic RedisStore configuration
+  // If you want to use Redis store, you'll need to install and properly configure it
+  // store: new RedisStore({
+  //   client: redis,
+  //   prefix: 'ratelimit:admin'
+  // }),
   handler: (req, res) => {
     logger.warn('Admin rate limit exceeded', {
       userId: req.user?.id,
@@ -37,7 +39,7 @@ const adminLimiter = rateLimit({
     res.status(429).json({ 
       success: false, 
       message: 'Rate limit exceeded. Please wait.',
-      retryAfter: req.rateLimit.resetTime
+      retryAfter: Math.ceil(req.rateLimit?.resetTime / 1000) || 60
     });
   }
 });
@@ -371,7 +373,6 @@ router.put('/orders/:id/status',
     body('notes').optional().isString().trim().escape()
   ]),
   requestLogger('update_order_status'),
-  clearCache(['dashboard']),
   async (req, res) => {
     try {
       const order = await Order.findById(req.params.id);
@@ -397,14 +398,21 @@ router.put('/orders/:id/status',
       
       const updatedOrder = await order.save();
       
-      // Send notification to user about status change
-      await sendNotification({
-        userId: order.user,
-        title: 'Order Status Updated',
-        message: `Your order #${order.orderNumber} status changed from ${previousStatus} to ${newStatus}`,
-        type: 'order_update',
-        metadata: { orderId: order._id }
-      });
+      // Send notification to user about status change (with error handling)
+      try {
+        await sendNotification({
+          userId: order.user,
+          title: 'Order Status Updated',
+          message: `Your order #${order.orderNumber} status changed from ${previousStatus} to ${newStatus}`,
+          type: 'order_update',
+          metadata: { orderId: order._id }
+        });
+      } catch (notificationError) {
+        logger.warn('Failed to send notification', {
+          error: notificationError.message,
+          orderId: order._id
+        });
+      }
       
       res.json({ 
         success: true, 
@@ -559,7 +567,6 @@ router.put('/users/:id',
       .withMessage('isActive must be boolean')
   ]),
   requestLogger('update_user'),
-  clearCache(['dashboard']),
   async (req, res) => {
     try {
       const updateFields = {};
@@ -594,16 +601,23 @@ router.put('/users/:id',
         });
       }
       
-      // Send notification to user if their role or status changed
+      // Send notification to user if their role or status changed (with error handling)
       if (req.body.role || typeof req.body.isActive !== 'undefined') {
-        await sendNotification({
-          userId: updated._id,
-          title: 'Account Updated',
-          message: req.body.role 
-            ? `Your account role has been updated to ${req.body.role}`
-            : `Your account has been ${req.body.isActive ? 'activated' : 'deactivated'}`,
-          type: 'account_update'
-        });
+        try {
+          await sendNotification({
+            userId: updated._id,
+            title: 'Account Updated',
+            message: req.body.role 
+              ? `Your account role has been updated to ${req.body.role}`
+              : `Your account has been ${req.body.isActive ? 'activated' : 'deactivated'}`,
+            type: 'account_update'
+          });
+        } catch (notificationError) {
+          logger.warn('Failed to send user update notification', {
+            error: notificationError.message,
+            userId: updated._id
+          });
+        }
       }
       
       res.json({ 

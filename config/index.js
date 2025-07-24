@@ -42,9 +42,10 @@ const promBundle = require('express-prom-bundle');
 const pidusage = require('pidusage');
 
 // Configuration and utilities
-const config = require('./config/config');
-const logger = require('./utils/logger');
-const { connectDB, disconnectDB } = require('./config/database');
+const config = require('./config');
+const logger = require('../utils/logger');
+const database = require('./database');
+const redis = require('./redis');
 const { initializeRedis, shutdownRedis } = require('./utils/redis');
 const { validateConfig } = require('./config/validator');
 const { setupTracing } = require('./utils/tracing');
