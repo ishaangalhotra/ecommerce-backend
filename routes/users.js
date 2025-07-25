@@ -13,7 +13,7 @@ const { sendEmail } = require('../utils/email');
 const { generateToken } = require('../utils/auth');
 const logger = require('../utils/logger');
 const redis = require('../config/redis');
-const { io } = require('../server');
+// // const { io } = require');
 
 const router = express.Router();
 

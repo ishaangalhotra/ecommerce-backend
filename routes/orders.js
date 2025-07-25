@@ -29,7 +29,7 @@ const { calculateDeliveryFee, estimateDeliveryTime } = require('../utils/deliver
 const { generateInvoice } = require('../utils/invoice');
 const logger = require('../utils/logger');
 const redis = require('../config/redis');
-const { io } = require('../server');
+// const { io } = require');
 const router = express.Router();
 
 // Enhanced rate limiting with Redis

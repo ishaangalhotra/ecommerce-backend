@@ -6,21 +6,19 @@ const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 
 /**
- * FIXED User Model - No Duplicate Indexes
+ * Enhanced User Model with Authentication Features
  */
 
 const UserSchema = new mongoose.Schema({
-  // Unique Identifiers - REMOVED index definitions from field level
+  // Unique Identifiers
   uuid: {
     type: String,
     default: uuidv4,
-    // REMOVED: index: true, unique: true (will be defined in schema.index())
     immutable: true
   },
   email: {
     type: String,
     required: [true, 'Email is required'],
-    // REMOVED: unique: true, index: true (will be defined in schema.index())
     lowercase: true,
     trim: true,
     validate: {
@@ -30,7 +28,6 @@ const UserSchema = new mongoose.Schema({
   },
   phone: {
     type: String,
-    // REMOVED: unique: true (will be defined in schema.index())
     sparse: true,
     validate: {
       validator: function(v) {
@@ -40,7 +37,7 @@ const UserSchema = new mongoose.Schema({
     }
   },
 
-  // Authentication & Security
+  // Authentication & Security (ENHANCED)
   password: {
     type: String,
     required: [true, 'Password is required'],
@@ -50,6 +47,16 @@ const UserSchema = new mongoose.Schema({
   passwordChangedAt: Date,
   passwordResetToken: String,
   passwordResetExpires: Date,
+  
+  // NEW: Enhanced token management
+  refreshToken: {
+    type: String,
+    select: false
+  },
+  tokenVersion: {
+    type: Number,
+    default: 0
+  },
   
   // Email Verification
   emailVerificationToken: String,
@@ -62,10 +69,16 @@ const UserSchema = new mongoose.Schema({
     default: 0
   },
   lockUntil: Date,
+  
+  // ENHANCED: Login history with remember me tracking
   loginHistory: [{
     ip: String,
     userAgent: String,
     location: String,
+    rememberMe: {
+      type: Boolean,
+      default: false
+    },
     timestamp: {
       type: Date,
       default: Date.now
@@ -139,7 +152,7 @@ const UserSchema = new mongoose.Schema({
     enum: ['read', 'write', 'delete', 'manage_users']
   }],
 
-  // Timestamps
+  // Timestamps (ENHANCED)
   lastLoginAt: Date,
   lastActiveAt: Date
 }, {
@@ -149,7 +162,7 @@ const UserSchema = new mongoose.Schema({
   versionKey: '__v'
 });
 
-// ==================== FIXED INDEXES (No Duplicates) ====================
+// ==================== ENHANCED INDEXES ====================
 
 // Core unique indexes
 UserSchema.index({ uuid: 1 }, { unique: true });
@@ -159,6 +172,11 @@ UserSchema.index({ phone: 1 }, { unique: true, sparse: true });
 // Security-related indexes
 UserSchema.index({ emailVerificationToken: 1 });
 UserSchema.index({ passwordResetToken: 1 });
+
+// NEW: Enhanced authentication indexes
+UserSchema.index({ refreshToken: 1 });
+UserSchema.index({ tokenVersion: 1 });
+UserSchema.index({ lastActiveAt: -1 });
 
 // Query optimization indexes
 UserSchema.index({ role: 1, isActive: 1, createdAt: -1 });
@@ -177,7 +195,7 @@ UserSchema.index({
   name: 'user_search_index'
 });
 
-// ==================== MIDDLEWARE ====================
+// ==================== ENHANCED MIDDLEWARE ====================
 
 UserSchema.pre('save', async function(next) {
   if (!this.isModified('password')) return next();
@@ -189,6 +207,14 @@ UserSchema.pre('save', async function(next) {
   } catch (err) {
     next(err);
   }
+});
+
+// NEW: Auto-update lastActiveAt when lastLoginAt changes
+UserSchema.pre('save', function(next) {
+  if (this.isModified('lastLoginAt')) {
+    this.lastActiveAt = new Date();
+  }
+  next();
 });
 
 UserSchema.pre(/^find/, function(next) {
@@ -215,12 +241,49 @@ UserSchema.virtual('isLocked').get(function() {
   return !!(this.lockUntil && this.lockUntil > Date.now());
 });
 
-// ==================== INSTANCE METHODS ====================
+// NEW: Check if user has active sessions
+UserSchema.virtual('hasActiveSessions').get(function() {
+  return !!(this.refreshToken);
+});
+
+// ==================== ENHANCED INSTANCE METHODS ====================
 
 UserSchema.methods.getSignedJwtToken = function() {
-  return jwt.sign({ id: this._id }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRE || '30d'
-  });
+  return jwt.sign(
+    { 
+      id: this._id,
+      tokenVersion: this.tokenVersion || 0
+    }, 
+    process.env.JWT_SECRET, 
+    {
+      expiresIn: process.env.JWT_EXPIRE || '15m'
+    }
+  );
+};
+
+// NEW: Generate refresh token
+UserSchema.methods.generateRefreshToken = function() {
+  return jwt.sign(
+    { 
+      id: this._id, 
+      type: 'refresh',
+      version: this.tokenVersion || 0
+    },
+    process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_REFRESH_EXPIRES || '7d' }
+  );
+};
+
+// NEW: Validate refresh token
+UserSchema.methods.isRefreshTokenValid = function(token) {
+  return this.refreshToken === token;
+};
+
+// NEW: Invalidate all tokens
+UserSchema.methods.invalidateAllTokens = async function() {
+  this.tokenVersion = (this.tokenVersion || 0) + 1;
+  this.refreshToken = undefined;
+  return this.save({ validateBeforeSave: false });
 };
 
 UserSchema.methods.correctPassword = async function(candidatePassword, userPassword) {
@@ -275,11 +338,13 @@ UserSchema.methods.incLoginAttempts = function() {
   return this.updateOne(updates);
 };
 
-UserSchema.methods.addLoginHistory = function(ip, userAgent, location) {
+// ENHANCED: Add login history with remember me support
+UserSchema.methods.addLoginHistory = function(ip, userAgent, location, rememberMe = false) {
   this.loginHistory.unshift({
     ip,
     userAgent,
     location,
+    rememberMe,
     timestamp: new Date()
   });
   
@@ -288,6 +353,22 @@ UserSchema.methods.addLoginHistory = function(ip, userAgent, location) {
   }
   
   return this.save();
+};
+
+// NEW: Clean up expired tokens (useful for cleanup jobs)
+UserSchema.methods.cleanupExpiredTokens = async function() {
+  // This would be called by a scheduled job
+  if (this.passwordResetExpires && this.passwordResetExpires < Date.now()) {
+    this.passwordResetToken = undefined;
+    this.passwordResetExpires = undefined;
+  }
+  
+  if (this.emailVerificationExpires && this.emailVerificationExpires < Date.now()) {
+    this.emailVerificationToken = undefined;
+    this.emailVerificationExpires = undefined;
+  }
+  
+  return this.save({ validateBeforeSave: false });
 };
 
 // ==================== STATIC METHODS ====================
@@ -319,6 +400,47 @@ UserSchema.statics.getUserStats = async function() {
   ]);
 };
 
+// NEW: Get users with active sessions
+UserSchema.statics.getActiveSessionStats = async function() {
+  return this.aggregate([
+    {
+      $match: {
+        refreshToken: { $exists: true, $ne: null }
+      }
+    },
+    {
+      $group: {
+        _id: '$role',
+        activeSessions: { $sum: 1 }
+      }
+    }
+  ]);
+};
+
+// NEW: Cleanup expired tokens for all users
+UserSchema.statics.cleanupExpiredTokens = async function() {
+  const now = Date.now();
+  
+  const result = await this.updateMany(
+    {
+      $or: [
+        { passwordResetExpires: { $lt: now } },
+        { emailVerificationExpires: { $lt: now } }
+      ]
+    },
+    {
+      $unset: {
+        passwordResetToken: 1,
+        passwordResetExpires: 1,
+        emailVerificationToken: 1,
+        emailVerificationExpires: 1
+      }
+    }
+  );
+  
+  return result;
+};
+
 // ==================== QUERY HELPERS ====================
 
 UserSchema.query.active = function() {
@@ -341,4 +463,19 @@ UserSchema.query.notLocked = function() {
     ]
   });
 };
+
+// NEW: Query helpers for session management
+UserSchema.query.withActiveSessions = function() {
+  return this.where({
+    refreshToken: { $exists: true, $ne: null }
+  });
+};
+
+UserSchema.query.recentlyActive = function(hours = 24) {
+  const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000);
+  return this.where({
+    lastActiveAt: { $gte: cutoff }
+  });
+};
+
 module.exports = mongoose.models.User || mongoose.model('User', UserSchema);

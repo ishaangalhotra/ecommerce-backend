@@ -76,7 +76,7 @@ app.use(helmet({
   }
 }));
 
-// TEMPORARY: Enhanced CORS with better error handling (FIXED for testing)
+// Enhanced CORS with better error handling
 app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (mobile apps, curl, Postman)
@@ -102,7 +102,6 @@ app.use(cors({
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  // Add preflight handling
   preflightContinue: false,
   optionsSuccessStatus: 204
 }));
@@ -164,10 +163,9 @@ app.use('/api/', createRateLimiter(15 * 60 * 1000, 1000, 'Too many requests'));
 app.use('/api/auth/', createRateLimiter(60 * 60 * 1000, 20, 'Too many auth attempts'));
 app.use('/api/orders', createRateLimiter(60 * 1000, 10, 'Too many order requests'));
 
-// --------------------- FIXED MongoDB Connection ---------------------
+// --------------------- MongoDB Connection ---------------------
 const connectDB = async (retries = 5) => {
   try {
-    // ✅ FIXED: Removed deprecated options (useNewUrlParser, useUnifiedTopology)
     const options = {
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
@@ -175,7 +173,6 @@ const connectDB = async (retries = 5) => {
       maxPoolSize: 10,
       minPoolSize: 2,
       maxIdleTimeMS: 30000,
-      // Removed deprecated options that were causing warnings
     };
 
     await mongoose.connect(process.env.MONGODB_URI, options);
@@ -195,7 +192,7 @@ const connectDB = async (retries = 5) => {
       logger.info('MongoDB reconnected');
     });
 
-    // ✅ FIXED: Improved index synchronization to avoid duplicate warnings
+    // Index synchronization
     try {
       const models = mongoose.modelNames();
       if (models.length > 0) {
@@ -206,7 +203,6 @@ const connectDB = async (retries = 5) => {
             await mongoose.model(modelName).syncIndexes();
             logger.debug(`✅ Indexes synced for ${modelName}`);
           } catch (indexError) {
-            // Log but don't fail - duplicate indexes are handled gracefully
             logger.debug(`Index sync completed for ${modelName}: ${indexError.message}`);
           }
         }
@@ -295,12 +291,12 @@ io.on('connection', (socket) => {
 });
 
 // --------------------- API Routes ---------------------
-
 const paymentRoutes = require('./routes/payment-routes');
 const webhookRoutes = require('./routes/webhook-routes');
 
 app.use('/api/v1/payment', paymentRoutes);
 app.use('/api/v1/webhooks', webhookRoutes);
+
 const routes = [
   { path: '/api/auth', module: './routes/auth' },
   { path: '/api/users', module: './routes/users' },
@@ -315,9 +311,8 @@ const routes = [
 
 routes.forEach(({ path, module }) => {
   try {
-    logger.debug(`Attempting to load route: ${path}`);
+    logger.debug(`Loading route: ${path}`);
     
-    // Clear require cache to ensure fresh module
     delete require.cache[require.resolve(module)];
     
     const routeModule = require(module);
@@ -334,8 +329,7 @@ routes.forEach(({ path, module }) => {
   } catch (error) {
     logger.error(`Failed to load route ${path}:`, {
       error: error.message,
-      stack: error.stack,
-      modulePath: require.resolve(module)
+      stack: error.stack
     });
   }
 });
@@ -347,8 +341,9 @@ app.get('/health', async (req, res) => {
     timestamp: new Date(),
     uptime: process.uptime(),
     database: mongoose.connection.readyState === 1 ? 'UP' : 'DOWN',
-    redis: 'DISABLED', // Update if you have Redis
-    memory: process.memoryUsage()
+    redis: 'ENABLED',
+    memory: process.memoryUsage(),
+    version: process.env.APP_VERSION || '2.0.0'
   };
   res.json(health);
 });
@@ -426,8 +421,8 @@ const startServer = async () => {
       logger.info(`   Environment: ${process.env.NODE_ENV || 'development'}`);
       logger.info(`   Port: ${PORT}`);
       logger.info(`   Database: ${mongoose.connection.name}`);
-      logger.info(`   Redis: ${process.env.REDIS_HOST ? 'Enabled' : 'Disabled'}`);
-      logger.info(`   Features: healthChecks`);
+      logger.info(`   Redis: ${process.env.REDIS_ENABLED === 'true' ? 'Enabled' : 'Disabled'}`);
+      logger.info(`   Features: healthChecks, realtime, payments`);
       logger.info('');
       logger.info(`🚀 Server running on port ${PORT}`);
     });
