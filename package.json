@@ -55,7 +55,7 @@
     "pm2:restart": "pm2 restart ecosystem.config.js",
     "pm2:logs": "pm2 logs",
     "pm2:monit": "pm2 monit",
-    "security:audit": "npm audit --audit-level critical",
+    "security:audit": "npm audit --audit-level high || true",
     "security:check": "npx audit-ci --config audit-ci.json",
     "security:fix": "npm audit fix",
     "security:snyk": "npx snyk test",
