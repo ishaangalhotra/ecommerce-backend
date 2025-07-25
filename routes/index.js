@@ -16,31 +16,6 @@ const wishlistRoutes = require('./wishlist');
 const deliveryRoutes = require('./delivery');
 const localDeliveryRoutes = require('./localdelivery');
 
-// Health check route (if not defined elsewhere)
-router.get('/health', (req, res) => {
-  res.json({
-    status: 'OK',
-    message: 'QuickLocal Backend API is running',
-    timestamp: new Date().toISOString(),
-    version: process.env.npm_package_version || '2.0.0'
-  });
-});
-
-// Mount API routes
-router.use('/auth', authRoutes);
-router.use('/users', userRoutes);
-router.use('/products', productRoutes);
-router.use('/cart', cartRoutes);
-router.use('/orders', orderRoutes);
-router.use('/admin', adminRoutes);
-router.use('/admin/products', adminProductRoutes);
-router.use('/seller', sellerRoutes);
-router.use('/payments', paymentRoutes);
-router.use('/webhooks', webhookRoutes);
-router.use('/wishlist', wishlistRoutes);
-router.use('/delivery', deliveryRoutes);
-router.use('/local-delivery', localDeliveryRoutes);
-
 // API documentation route
 router.get('/', (req, res) => {
   res.json({
@@ -58,10 +33,24 @@ router.get('/', (req, res) => {
       webhooks: '/api/webhooks',
       wishlist: '/api/wishlist',
       delivery: '/api/delivery',
-      localDelivery: '/api/local-delivery',
-      health: '/health'
+      localDelivery: '/api/local-delivery'
     }
   });
 });
+
+// Mount API routes
+router.use('/auth', authRoutes);
+router.use('/users', userRoutes);
+router.use('/products', productRoutes);
+router.use('/cart', cartRoutes);
+router.use('/orders', orderRoutes);
+router.use('/admin', adminRoutes);
+router.use('/admin/products', adminProductRoutes);
+router.use('/seller', sellerRoutes);
+router.use('/payments', paymentRoutes);
+router.use('/webhooks', webhookRoutes);
+router.use('/wishlist', wishlistRoutes);
+router.use('/delivery', deliveryRoutes);
+router.use('/local-delivery', localDeliveryRoutes);
 
 module.exports = router;
