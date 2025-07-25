@@ -23,7 +23,7 @@
     "npm": ">=9.0.0"
   },
   "scripts": {
-    "start": "cross-env NODE_ENV=production node --enable-source-maps server.js",
+    "start": "node --enable-source-maps server.js",
     "dev": "cross-env NODE_ENV=development nodemon --inspect server.js",
     "debug": "cross-env NODE_ENV=development node --inspect-brk server.js",
     "prod": "NODE_ENV=production PM2_HOME=.pm2 pm2-runtime start ecosystem.config.js",
