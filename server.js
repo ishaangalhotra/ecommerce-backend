@@ -79,23 +79,16 @@ app.use(helmet({
   }
 }));
 
-// Enhanced CORS with better error handling
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no origin (mobile apps, curl, Postman)
     if (!origin) return callback(null, true);
-    
-    // Allow all localhost origins for development
     if (origin.includes('localhost') || origin.includes('127.0.0.1') || origin.includes('192.168.')) {
       return callback(null, true);
     }
-    
-    // Check against allowed origins from env
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       logger.warn(`CORS blocked: ${origin}`);
-      // For development, allow anyway but log the warning
       if (process.env.NODE_ENV === 'development') {
         return callback(null, true);
       }
@@ -117,7 +110,6 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser(process.env.COOKIE_SECRET));
 app.use(compression({ level: 6, threshold: 1024 }));
 
-// Enhanced request tracking middleware
 app.use((req, res, next) => {
   req.requestId = uuidv4();
   req.startTime = process.hrtime();
@@ -131,7 +123,6 @@ app.use(morgan('combined', {
   skip: req => req.path === '/health'
 }));
 
-// Response time tracking
 app.use((req, res, next) => {
   res.on('finish', () => {
     const diff = process.hrtime(req.startTime);
@@ -184,7 +175,6 @@ const connectDB = async (retries = 5) => {
       name: mongoose.connection.name
     });
 
-    // Connection event handlers
     mongoose.connection.on('error', err => {
       logger.error('MongoDB connection error:', err);
     });
@@ -195,12 +185,10 @@ const connectDB = async (retries = 5) => {
       logger.info('MongoDB reconnected');
     });
 
-    // Index synchronization
     try {
       const models = mongoose.modelNames();
       if (models.length > 0) {
         logger.info(`Syncing indexes for ${models.length} models...`);
-        
         for (const modelName of models) {
           try {
             await mongoose.model(modelName).syncIndexes();
@@ -240,7 +228,6 @@ const io = new Server(httpServer, {
   pingTimeout: 5000
 });
 
-// Enhanced Socket.IO authentication
 io.use((socket, next) => {
   try {
     const token = socket.handshake.auth.token || 
@@ -267,15 +254,11 @@ io.use((socket, next) => {
 io.on('connection', (socket) => {
   logger.info(`🔗 Socket connected: ${socket.id}`, { userId: socket.user?.id });
 
-  // Join user-specific room
   socket.join(`user-${socket.user.id}`);
-  
-  // Join role-specific room
   if (socket.user.role) {
     socket.join(`role-${socket.user.role}`);
   }
 
-  // Enhanced order tracking
   socket.on('join-order', (orderId) => {
     if (!orderId || typeof orderId !== 'string') {
       return socket.emit('error', { message: 'Invalid order ID' });
@@ -314,26 +297,25 @@ const routes = [
 
 routes.forEach(({ path, module }) => {
   try {
-    logger.debug(`Loading route: ${path}`);
-    
+    logger.debug(`Attempting to load route: ${path}`);
     delete require.cache[require.resolve(module)];
-    
     const routeModule = require(module);
     
     if (routeModule && typeof routeModule === 'function') {
       app.use(path, routeModule);
-      logger.info(`Successfully loaded route: ${path}`);
+      logger.info(`Successfully loaded route (function): ${path}`);
     } else if (routeModule && routeModule.router) {
       app.use(path, routeModule.router);
       logger.info(`Successfully loaded route (router): ${path}`);
     } else {
-      throw new Error(`Invalid route module format - must export router or middleware function`);
+      throw new Error(`Invalid route module format for ${path} - must export router or middleware function`);
     }
   } catch (error) {
     logger.error(`Failed to load route ${path}:`, {
       error: error.message,
       stack: error.stack
     });
+    // Continue loading other routes instead of crashing
   }
 });
 
@@ -344,10 +326,11 @@ app.get('/health', async (req, res) => {
     timestamp: new Date(),
     uptime: process.uptime(),
     database: mongoose.connection.readyState === 1 ? 'UP' : 'DOWN',
-    redis: 'ENABLED',
+    redis: process.env.DISABLE_REDIS === 'true' ? 'DISABLED' : 'ENABLED',
     memory: process.memoryUsage(),
     version: process.env.APP_VERSION || '2.0.0'
   };
+  logger.info('Health check accessed', { requestId: req.requestId });
   res.json(health);
 });
 
@@ -357,6 +340,14 @@ app.use(express.static(path.join(__dirname, 'public'), {
 }));
 
 // --------------------- Error Handling ---------------------
+app.use((req, res, next) => {
+  logger.warn(`Route not found: ${req.method} ${req.url}`, { requestId: req.requestId });
+  res.status(404).json({
+    error: `Cannot ${req.method} ${req.url}`,
+    requestId: req.requestId
+  });
+});
+
 app.use((err, req, res, next) => {
   logger.error('Unhandled error:', {
     error: err.message,
@@ -424,7 +415,7 @@ const startServer = async () => {
       logger.info(`   Environment: ${process.env.NODE_ENV || 'development'}`);
       logger.info(`   Port: ${PORT}`);
       logger.info(`   Database: ${mongoose.connection.name}`);
-      logger.info(`   Redis: ${process.env.REDIS_ENABLED === 'true' ? 'Enabled' : 'Disabled'}`);
+      logger.info(`   Redis: ${process.env.DISABLE_REDIS === 'true' ? 'Disabled' : 'Enabled'}`);
       logger.info(`   Features: healthChecks, realtime, payments`);
       logger.info('');
       logger.info(`🚀 Server running on port ${PORT}`);
