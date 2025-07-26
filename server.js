@@ -1,3 +1,11 @@
+# Let's update your server.js to include the hardcoded products route
+# This replaces the API Routes section with better error handling
+
+# First, create a backup
+cp server.js server.js.backup-$(date +%Y%m%d-%H%M%S)
+
+# Update the API Routes section in server.js
+cat > server.js << 'EOF'
 // EMERGENCY: Disable Redis
 process.env.DISABLE_REDIS = "true";
 
@@ -283,10 +291,22 @@ const webhookRoutes = require('./routes/webhook-routes');
 app.use('/api/v1/payment', paymentRoutes);
 app.use('/api/v1/webhooks', webhookRoutes);
 
+// Explicitly load products route
+try {
+  const productsRoute = require('./routes/products');
+  app.use('/api/products', productsRoute);
+  logger.info('✅ Explicitly loaded products route');
+} catch (error) {
+  logger.error('❌ Failed to load products route:', {
+    error: error.message,
+    stack: error.stack
+  });
+}
+
+// Load other routes dynamically
 const routes = [
   { path: '/api/auth', module: './routes/auth' },
   { path: '/api/users', module: './routes/users' },
-  { path: '/api/products', module: './routes/products' },
   { path: '/api/orders', module: './routes/orders' },
   { path: '/api/delivery', module: './routes/delivery' },
   { path: '/api/cart', module: './routes/cart' },
@@ -315,7 +335,6 @@ routes.forEach(({ path, module }) => {
       error: error.message,
       stack: error.stack
     });
-    // Continue loading other routes instead of crashing
   }
 });
 
@@ -429,3 +448,4 @@ const startServer = async () => {
 startServer();
 
 module.exports = { app, io, logger };
+EOF
