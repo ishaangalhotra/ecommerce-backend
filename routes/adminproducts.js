@@ -1,5 +1,5 @@
 const express = require('express');
-const { query, body, param } = require('express-validator');
+const { query, body, param, validationResult } = require('express-validator');
 const Product = require('../models/Product');
 const Category = require('../models/Category');
 const { protect, restrictTo } = require('../middleware/authMiddleware');
@@ -7,7 +7,7 @@ const asyncHandler = require('../middleware/asyncHandler');
 const logger = require('../utils/logger');
 const rateLimit = require('express-rate-limit');
 const redis = require('../utils/redis');
-const { clearCache } = require('../middleware/cache');
+const { invalidateCache: clearCache } = require('../middleware/cache');
 const { sendNotification } = require('../services/notificationService');
 
 const router = express.Router();
@@ -29,10 +29,10 @@ const adminProductLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => `admin:${req.user.id}:products`,
-  store: new rateLimit.RedisStore({
-    client: redis,
-    prefix: 'ratelimit:adminProducts'
-  }),
+  // store: new rateLimit.RedisStore({
+    // client: redis,
+    // prefix: 'ratelimit:adminProducts'
+  // }),
   handler: (req, res) => {
     logger.warn('Admin product rate limit exceeded', {
       userId: req.user.id,
@@ -252,7 +252,7 @@ router.patch(
       .trim()
       .escape()
   ]),
-  clearCache(['products']),
+  clearCache,
   asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { status, reason } = req.body;
@@ -327,7 +327,7 @@ router.put(
     body('specifications').optional().isArray(),
     body('isFeatured').optional().isBoolean()
   ]),
-  clearCache(['products']),
+  clearCache,
   asyncHandler(async (req, res) => {
     const { id } = req.params;
     const updateData = req.body;
@@ -378,7 +378,7 @@ router.delete(
   validate([
     param('id').isMongoId().withMessage('Invalid product ID')
   ]),
-  clearCache(['products']),
+  clearCache,
   asyncHandler(async (req, res) => {
     const { id } = req.params;
     const { id: adminId } = req.user;
