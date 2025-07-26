@@ -1,12 +1,3 @@
-# Let's update your server.js to include the hardcoded products route
-# This replaces the API Routes section with better error handling
-
-# First, create a backup
-cp server.js server.js.backup-$(date +%Y%m%d-%H%M%S)
-
-# Update the API Routes section in server.js
-cat > server.js << 'EOF'
-// EMERGENCY: Disable Redis
 process.env.DISABLE_REDIS = "true";
 
 require('dotenv').config();
@@ -18,7 +9,6 @@ const path = require('path');
 const cookieParser = require('cookie-parser');
 const compression = require('compression');
 const morgan = require('morgan');
-const passport = require('passport');
 const rateLimit = require('express-rate-limit');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
@@ -87,6 +77,7 @@ app.use(helmet({
   }
 }));
 
+// Enhanced CORS with better error handling
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
@@ -118,6 +109,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser(process.env.COOKIE_SECRET));
 app.use(compression({ level: 6, threshold: 1024 }));
 
+// Enhanced request tracking middleware
 app.use((req, res, next) => {
   req.requestId = uuidv4();
   req.startTime = process.hrtime();
@@ -131,6 +123,7 @@ app.use(morgan('combined', {
   skip: req => req.path === '/health'
 }));
 
+// Response time tracking
 app.use((req, res, next) => {
   res.on('finish', () => {
     const diff = process.hrtime(req.startTime);
@@ -236,6 +229,7 @@ const io = new Server(httpServer, {
   pingTimeout: 5000
 });
 
+// Enhanced Socket.IO authentication
 io.use((socket, next) => {
   try {
     const token = socket.handshake.auth.token || 
@@ -448,4 +442,3 @@ const startServer = async () => {
 startServer();
 
 module.exports = { app, io, logger };
-EOF
