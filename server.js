@@ -1,3 +1,6 @@
+// EMERGENCY: Disable Redis to prevent infinite reconnection loop
+process.env.DISABLE_REDIS = "true";
+
 process.env.DISABLE_REDIS = "true";
 
 require('dotenv').config();
