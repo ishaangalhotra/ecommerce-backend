@@ -24,17 +24,17 @@ const logger = createLogger({
     format.json()
   ),
   transports: [
-    new transports.File({
-      filename: 'logs/error.log',
-      level: 'error',
-      maxsize: 5_000_000,
+    new transports.File({ 
+      filename: 'logs/error.log', 
+      level: 'error', 
+      maxsize: 5_000_000, 
       maxFiles: 5,
-      handleExceptions: true
+      handleExceptions: true 
     }),
-    new transports.File({
-      filename: 'logs/combined.log',
-      maxsize: 5_000_000,
-      maxFiles: 5
+    new transports.File({ 
+      filename: 'logs/combined.log', 
+      maxsize: 5_000_000, 
+      maxFiles: 5 
     })
   ],
   exitOnError: false
@@ -81,12 +81,12 @@ app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (mobile apps, curl, Postman)
     if (!origin) return callback(null, true);
-
+    
     // Allow all localhost origins for development
     if (origin.includes('localhost') || origin.includes('127.0.0.1') || origin.includes('192.168.')) {
       return callback(null, true);
     }
-
+    
     // Check against allowed origins from env
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
@@ -106,7 +106,7 @@ app.use(cors({
   optionsSuccessStatus: 204
 }));
 
-app.use(express.json({
+app.use(express.json({ 
   limit: '10mb',
   verify: (req, res, buf) => req.rawBody = buf
 }));
@@ -133,7 +133,7 @@ app.use((req, res, next) => {
   res.on('finish', () => {
     const diff = process.hrtime(req.startTime);
     const responseTime = diff[0] * 1e3 + diff[1] * 1e-6;
-
+    
     logger.info('Request completed', {
       requestId: req.requestId,
       method: req.method,
@@ -160,8 +160,8 @@ const createRateLimiter = (windowMs, max, message) => rateLimit({
 });
 
 app.use('/api/', createRateLimiter(15 * 60 * 1000, 1000, 'Too many requests'));
-app.use('/api/v1/auth/', createRateLimiter(60 * 60 * 1000, 20, 'Too many auth attempts'));
-app.use('/api/v1/orders', createRateLimiter(60 * 1000, 10, 'Too many order requests'));
+app.use('/api/auth/', createRateLimiter(60 * 60 * 1000, 20, 'Too many auth attempts'));
+app.use('/api/orders', createRateLimiter(60 * 1000, 10, 'Too many order requests'));
 
 // --------------------- MongoDB Connection ---------------------
 const connectDB = async (retries = 5) => {
@@ -197,7 +197,7 @@ const connectDB = async (retries = 5) => {
       const models = mongoose.modelNames();
       if (models.length > 0) {
         logger.info(`Syncing indexes for ${models.length} models...`);
-
+        
         for (const modelName of models) {
           try {
             await mongoose.model(modelName).syncIndexes();
@@ -240,20 +240,20 @@ const io = new Server(httpServer, {
 // Enhanced Socket.IO authentication
 io.use((socket, next) => {
   try {
-    const token = socket.handshake.auth.token ||
+    const token = socket.handshake.auth.token || 
                  socket.handshake.headers['authorization']?.split(' ')[1];
-
+    
     if (!token) throw new Error('Token missing');
-
+    
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     socket.user = decoded;
-
+    
     logger.info('Socket authenticated', {
       socketId: socket.id,
       userId: decoded.id,
       role: decoded.role
     });
-
+    
     next();
   } catch (err) {
     logger.error('Socket auth failed:', { error: err.message });
@@ -266,7 +266,7 @@ io.on('connection', (socket) => {
 
   // Join user-specific room
   socket.join(`user-${socket.user.id}`);
-
+  
   // Join role-specific room
   if (socket.user.role) {
     socket.join(`role-${socket.user.role}`);
@@ -297,29 +297,42 @@ const webhookRoutes = require('./routes/webhook-routes');
 app.use('/api/v1/payment', paymentRoutes);
 app.use('/api/v1/webhooks', webhookRoutes);
 
-// Base API route
-app.get('/api/v1/', (req, res) => {
-  res.json({
-    message: "QuickLocal API v1",
-    version: "2.0.0",
-    status: "operational",
-    endpoints: {
-      auth: "/api/v1/auth",
-      products: "/api/v1/products", 
-      orders: "/api/v1/orders",
-      delivery: "/api/v1/delivery",
-      users: "/api/v1/users",
-      cart: "/api/v1/cart",
-      seller: "/api/v1/seller",
-      admin: "/api/v1/admin",
-      wishlist: "/api/v1/wishlist"
-    },
-    documentation: "API documentation coming soon"
-  });
-});
+const routes = [
+  { path: '/api/auth', module: './routes/auth' },
+  { path: '/api/users', module: './routes/users' },
+  { path: '/api/products', module: './routes/products' },
+  { path: '/api/orders', module: './routes/orders' },
+  { path: '/api/delivery', module: './routes/delivery' },
+  { path: '/api/cart', module: './routes/cart' },
+  { path: '/api/seller', module: './routes/seller' },
+  { path: '/api/admin', module: './routes/admin' },
+  { path: '/api/wishlist', module: './routes/wishlist' }
+];
 
-// Use consolidated routes approach
-app.use('/api/v1', require('./routes'));
+routes.forEach(({ path, module }) => {
+  try {
+    logger.debug(`Loading route: ${path}`);
+    
+    delete require.cache[require.resolve(module)];
+    
+    const routeModule = require(module);
+    
+    if (routeModule && typeof routeModule === 'function') {
+      app.use(path, routeModule);
+      logger.info(`Successfully loaded route: ${path}`);
+    } else if (routeModule && routeModule.router) {
+      app.use(path, routeModule.router);
+      logger.info(`Successfully loaded route (router): ${path}`);
+    } else {
+      throw new Error(`Invalid route module format - must export router or middleware function`);
+    }
+  } catch (error) {
+    logger.error(`Failed to load route ${path}:`, {
+      error: error.message,
+      stack: error.stack
+    });
+  }
+});
 
 // --------------------- Health Check ---------------------
 app.get('/health', async (req, res) => {
@@ -381,7 +394,7 @@ process.on('uncaughtException', (err) => {
 // --------------------- Graceful Shutdown ---------------------
 const shutdown = async (signal) => {
   logger.info(`Received ${signal}, shutting down gracefully...`);
-
+  
   try {
     httpServer.close(() => logger.info('HTTP server closed'));
     io.close(() => logger.info('Socket.IO closed'));
@@ -401,7 +414,7 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 const startServer = async () => {
   try {
     await connectDB();
-
+    
     const PORT = process.env.PORT || 3000;
     httpServer.listen(PORT, '0.0.0.0', () => {
       logger.info(`📋 Configuration Summary:`);
