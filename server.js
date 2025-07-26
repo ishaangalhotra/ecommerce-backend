@@ -1,4 +1,15 @@
-require('dotenv').config();
+const helmet = require('helmet');
+const cors = require('cors');
+const path = require('path');
+const cookieParser = require('cookie-parser');
+const compression = require('compression');
+const morgan = require('morgan');
+const rateLimit = require('express-rate-limit');
+const { createServer } = require('http');
+const { Server } = require('socket.io');
+const jwt = require('jsonwebtoken');
+const { v4: uuidv4 } = require('uuid');
+const { createLogger, format, transports } = require('winston');require('dotenv').config();
 
 // Early Redis disable check - before any other imports
 if (process.env.DISABLE_REDIS === 'true' || !process.env.REDIS_URL) {
@@ -29,21 +40,6 @@ if (process.env.DISABLE_REDIS === 'true' || !process.env.REDIS_URL) {
 
 const express = require('express');
 const mongoose = require('mongoose');
-const helmet = require('helmet');
-const cors = require('cors');
-const path = require('path');
-const cookieParser = require('cookie-parser');
-const compression = require('compression');
-const morgan = require('morgan');
-const rateLimit = require('express-rate-limit');
-const { createServer } = require('http');
-const { Server } = require('socket.io');
-const jwt = require('jsonwebtoken');
-const { v4: uuidv4 } = require('uuid');
-const { createLogger, format, transports } = require('winston');
-
-// Fix mongoose duplicate index warning
-mongoose.set('strictIndex', false);
 
 // --------------------- Winston Logger ---------------------
 const logger = createLogger({
