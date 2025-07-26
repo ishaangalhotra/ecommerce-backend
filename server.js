@@ -1,3 +1,6 @@
+// EMERGENCY: Disable Redis
+process.env.DISABLE_REDIS = "true";
+
 require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
