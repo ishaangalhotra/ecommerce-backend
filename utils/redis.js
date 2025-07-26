@@ -1,261 +1,78 @@
-// utils/redis.js
+const redis = require('redis');
 const logger = require('./logger');
 
-const mockRedisClient = {
-  connected: false,
-  call: () => Promise.resolve(),
-  get: () => Promise.resolve(null),
-  set: () => Promise.resolve('OK'),
-  setex: () => Promise.resolve('OK'),
-  del: () => Promise.resolve(1),
-  flushall: () => Promise.resolve('OK'),
-  quit: () => Promise.resolve('OK'),
-  connect: () => Promise.resolve(),
-  ping: () => Promise.resolve('PONG'),
-  on: () => {},
-  off: () => {},
-};
+let redisClient = null;
 
-let redisClient = mockRedisClient;
-let isConnecting = false;
-
-const connectRedis = async () => {
-  if (isConnecting) {
-    logger.debug('Redis connection already in progress');
-    return redisClient;
+const initializeRedis = () => {
+  // Only attempt Redis connection if URL is provided
+  if (!process.env.REDIS_URL && process.env.NODE_ENV === 'production') {
+    logger.info('Redis URL not provided, using mock client');
+    return createMockClient();
   }
 
-  isConnecting = true;
-
   try {
-    const Redis = require('ioredis');
-    
-    const redisConfig = {
-      host: process.env.REDIS_HOST || 'localhost',
-      port: parseInt(process.env.REDIS_PORT) || 6379,
-      db: parseInt(process.env.REDIS_DB) || 0,
+    redisClient = redis.createClient({
+      url: process.env.REDIS_URL || 'redis://127.0.0.1:6379',
       retryDelayOnFailover: 100,
-      retryOnFailover: true,
+      enableOfflineQueue: false,
       maxRetriesPerRequest: 3,
-      lazyConnect: true,
+      retryMaxDelay: 2000,
       connectTimeout: 5000,
-      commandTimeout: 5000,
-      // Don't auto-reconnect indefinitely in development
-      retryDelayOnCluster: 100,
-      enableOfflineQueue: false
-    };
-
-    // Only add password if it exists and is not empty
-    if (process.env.REDIS_PASSWORD && process.env.REDIS_PASSWORD.trim()) {
-      redisConfig.password = process.env.REDIS_PASSWORD.trim();
-      logger.debug('Redis password configured');
-    } else {
-      logger.debug('No Redis password configured');
-    }
-
-    const newClient = new Redis(redisConfig);
-    
-    // Set up event listeners
-    newClient.on('connect', () => {
-      logger.info('✅ Redis connected successfully');
-      newClient.connected = true;
+      lazyConnect: true
     });
 
-    newClient.on('error', (err) => {
-      logger.warn('Redis connection error:', {
-        message: err.message,
-        code: err.code
-      });
-      
-      // Fall back to mock client on persistent errors
-      if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND') {
-        logger.warn('Redis server unavailable, falling back to mock client');
-        redisClient = mockRedisClient;
+    redisClient.on('connect', () => {
+      logger.info('✅ Redis connected successfully');
+    });
+
+    redisClient.on('error', (err) => {
+      logger.warn('Redis connection error:', err.message);
+      // Don't continuously retry in production without Redis service
+      if (!process.env.REDIS_URL) {
+        redisClient = createMockClient();
+        logger.info('Switched to mock Redis client');
       }
     });
 
-    newClient.on('ready', () => {
-      logger.info('🚀 Redis ready for operations');
-      redisClient = newClient;
-    });
-
-    newClient.on('close', () => {
+    redisClient.on('end', () => {
       logger.warn('Redis connection closed');
     });
 
-    newClient.on('reconnecting', () => {
-      logger.info('Redis reconnecting...');
+    // Attempt connection
+    redisClient.connect().catch(() => {
+      logger.warn('Redis server unavailable, falling back to mock client');
+      redisClient = createMockClient();
     });
-
-    // Test connection with timeout
-    await Promise.race([
-      newClient.ping(),
-      new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Redis connection timeout')), 3000)
-      )
-    ]);
-
-    logger.info('Redis ping successful');
-    redisClient = newClient;
 
   } catch (error) {
-    logger.warn('Redis initialization failed, using mock client:', {
-      message: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
-    redisClient = mockRedisClient;
-  } finally {
-    isConnecting = false;
+    logger.warn('Redis initialization failed, using mock client:', error.message);
+    redisClient = createMockClient();
   }
 
   return redisClient;
 };
 
-const disconnectRedis = async () => {
-  try {
-    if (redisClient && redisClient !== mockRedisClient) {
-      // Remove all listeners to prevent memory leaks
-      redisClient.removeAllListeners();
-      await redisClient.quit();
-      logger.info('Redis connection closed gracefully');
-    }
-  } catch (error) {
-    logger.warn('Error closing Redis connection:', error.message);
-  } finally {
-    redisClient = mockRedisClient;
-  }
-};
-
-const safeCall = async (...args) => {
-  try {
-    if (!redisClient || redisClient === mockRedisClient) {
-      logger.debug('Redis call skipped (using mock client)');
-      return Promise.resolve();
-    }
-
-    if (typeof redisClient.call === 'function') {
-      return await redisClient.call(...args);
-    }
-    
-    if (typeof redisClient.sendCommand === 'function') {
-      return await redisClient.sendCommand(args);
-    }
-    
-    logger.warn('Redis client missing call/sendCommand methods');
-    return Promise.resolve();
-    
-  } catch (err) {
-    logger.warn('Redis call error:', {
-      message: err.message,
-      args: args.slice(0, 2) // Log first 2 args only for debugging
-    });
-    return Promise.resolve();
-  }
-};
-
-const isRedisAvailable = () => {
-  return redisClient !== mockRedisClient && redisClient.connected;
-};
-
-const getConnectionStatus = () => {
+// Mock Redis client for development/environments without Redis
+const createMockClient = () => {
+  logger.info('Using mock Redis client');
+  
   return {
-    isAvailable: isRedisAvailable(),
-    isMock: redisClient === mockRedisClient,
-    isConnecting
+    get: async () => null,
+    set: async () => 'OK',
+    setex: async () => 'OK',
+    del: async () => 1,
+    exists: async () => 0,
+    expire: async () => 1,
+    ttl: async () => -1,
+    keys: async () => [],
+    flushall: async () => 'OK',
+    quit: async () => 'OK',
+    disconnect: () => {},
+    zincrby: async () => 1,
+    zrange: async () => [],
+    isOpen: true,
+    isReady: true
   };
 };
 
-module.exports = {
-  connectRedis,
-  disconnectRedis,
-  isRedisAvailable,
-  getConnectionStatus,
-  
-  get client() {
-    return redisClient;
-  },
-  
-  call: safeCall,
-  
-  safeGet: async (key) => {
-    try {
-      if (!key) {
-        logger.warn('Redis GET called with empty key');
-        return null;
-      }
-      
-      const result = await redisClient.get(key);
-      
-      if (redisClient !== mockRedisClient) {
-        logger.debug('Redis GET:', { key, found: !!result });
-      }
-      
-      return result;
-    } catch (err) {
-      logger.warn('Redis GET error:', {
-        message: err.message,
-        key
-      });
-      return null;
-    }
-  },
-  
-  safeSet: async (key, value, ttl = null) => {
-    try {
-      if (!key) {
-        logger.warn('Redis SET called with empty key');
-        return null;
-      }
-      
-      let result;
-      if (ttl && ttl > 0) {
-        result = await redisClient.setex(key, ttl, value);
-      } else {
-        result = await redisClient.set(key, value);
-      }
-      
-      if (redisClient !== mockRedisClient) {
-        logger.debug('Redis SET:', { key, ttl, success: result === 'OK' });
-      }
-      
-      return result;
-    } catch (err) {
-      logger.warn('Redis SET error:', {
-        message: err.message,
-        key,
-        ttl
-      });
-      return null;
-    }
-  },
-  
-  safeDel: async (key) => {
-    try {
-      if (!key) {
-        logger.warn('Redis DEL called with empty key');
-        return 0;
-      }
-      
-      const result = await redisClient.del(key);
-      
-      if (redisClient !== mockRedisClient) {
-        logger.debug('Redis DEL:', { key, deleted: result });
-      }
-      
-      return result;
-    } catch (err) {
-      logger.warn('Redis DEL error:', {
-        message: err.message,
-        key
-      });
-      return 0;
-    }
-  }
-};
-
-// Initialize Redis connection only if not in test environment
-if (process.env.NODE_ENV !== 'test') {
-  connectRedis().catch(err => {
-    logger.warn('Initial Redis connection failed:', err.message);
-  });
-}
+module.exports = initializeRedis();
