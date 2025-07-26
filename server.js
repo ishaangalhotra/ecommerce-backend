@@ -160,8 +160,8 @@ const createRateLimiter = (windowMs, max, message) => rateLimit({
 });
 
 app.use('/api/', createRateLimiter(15 * 60 * 1000, 1000, 'Too many requests'));
-app.use('/api/v1/auth/', createRateLimiter(60 * 60 * 1000, 20, 'Too many auth attempts'));
-app.use('/api/v1/orders', createRateLimiter(60 * 1000, 10, 'Too many order requests'));
+app.use('/api/auth/', createRateLimiter(60 * 60 * 1000, 20, 'Too many auth attempts'));
+app.use('/api/orders', createRateLimiter(60 * 1000, 10, 'Too many order requests'));
 
 // --------------------- MongoDB Connection ---------------------
 const connectDB = async (retries = 5) => {
@@ -298,15 +298,15 @@ app.use('/api/v1/payment', paymentRoutes);
 app.use('/api/v1/webhooks', webhookRoutes);
 
 const routes = [
-  { path: '/api/v1/auth', module: './routes/auth' },
-  { path: '/api/v1/users', module: './routes/users' },
-  { path: '/api/v1/products', module: './routes/products' },
-  { path: '/api/v1/orders', module: './routes/orders' },
-  { path: '/api/v1/delivery', module: './routes/delivery' },
-  { path: '/api/v1/cart', module: './routes/cart' },
-  { path: '/api/v1/seller', module: './routes/seller' },
-  { path: '/api/v1/admin', module: './routes/admin' },
-  { path: '/api/v1/wishlist', module: './routes/wishlist' }
+  { path: '/api/auth', module: './routes/auth' },
+  { path: '/api/users', module: './routes/users' },
+  { path: '/api/products', module: './routes/products' },
+  { path: '/api/orders', module: './routes/orders' },
+  { path: '/api/delivery', module: './routes/delivery' },
+  { path: '/api/cart', module: './routes/cart' },
+  { path: '/api/seller', module: './routes/seller' },
+  { path: '/api/admin', module: './routes/admin' },
+  { path: '/api/wishlist', module: './routes/wishlist' }
 ];
 
 routes.forEach(({ path, module }) => {
