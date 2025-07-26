@@ -11,7 +11,17 @@ const { protect, authorize } = require('../middleware/authMiddleware');
 const { uploadToCloudinary, deleteFromCloudinary } = require('../utils/cloudinary');
 const { createSlug } = require('../utils/helpers');
 const logger = require('../utils/logger');
-const redis = require('../config/redis');
+let redis = null;
+if (process.env.DISABLE_REDIS !== 'true') {
+  try {
+    redis = require('../config/redis');
+  } catch (error) {
+    console.log('Redis config not available, running without cache');
+    redis = null;
+  }
+} else {
+  console.log('Redis disabled, running without cache');
+}
 
 const router = express.Router();
 
