@@ -5,8 +5,8 @@ const LocalDeliveryController = require('../controllers/LocalDeliveryController'
 const { protect, authorize } = require('../middleware/authMiddleware');
 const logger = require('../utils/logger');
 const redis = require('../utils/redis');
-const { validateDeliveryParameters } = require('../middleware/deliveryValidation');
-const { cacheMiddleware } = require('../middleware/cache');
+const { validateDeliveryParameters, validateLocation } = require('../validations/deliveryvalidation');
+const { cache: cacheMiddleware } = require('../middleware/cache');
 
 const router = express.Router();
 
@@ -14,10 +14,10 @@ const router = express.Router();
 const createRateLimiter = (windowMs, max, keyPrefix) => rateLimit({
   windowMs,
   max,
-  store: new rateLimit.RedisStore({
-    client: redis,
-    prefix: `rate_limit:${keyPrefix}`
-  }),
+  // store: new rateLimit.RedisStore({
+    // client: redis,
+    // prefix: `rate_limit:${keyPrefix}`
+  // }),
   keyGenerator: (req) => {
     return `${req.ip}:${req.user?.id || 'guest'}`;
   },
@@ -207,7 +207,7 @@ router.post('/check/:productId',
       .toInt()
   ]),
   requestLogger('delivery_check'),
-  validateDeliveryParameters,
+  validateLocation,
   LocalDeliveryController.checkDelivery
 );
 
@@ -311,7 +311,7 @@ router.post('/estimate-cart',
       .withMessage('Invalid delivery type')
   ]),
   requestLogger('cart_estimate'),
-  validateDeliveryParameters,
+  validateLocation,
   LocalDeliveryController.estimateCartDelivery
 );
 

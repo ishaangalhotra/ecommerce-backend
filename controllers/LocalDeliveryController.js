@@ -2,7 +2,7 @@ const LocalDeliveryService = require('../services/LocalDeliveryService');
 const { validationResult } = require('express-validator');
 const logger = require('../utils/logger');
 const asyncHandler = require('../middleware/asyncHandler');
-const AppError = require('../utils/AppError');
+const ErrorResponse = require('../utils/errorResponse');
 
 // Constants for better maintainability
 const DEFAULT_VALUES = {
@@ -26,7 +26,7 @@ class LocalDeliveryController {
     static getNearbyProducts = asyncHandler(async (req, res) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
-            throw new AppError('Validation failed', HTTP_STATUS.BAD_REQUEST, errors.array());
+            throw new ErrorResponse('Validation failed', HTTP_STATUS.BAD_REQUEST, errors.array());
         }
 
         const {
@@ -43,7 +43,7 @@ class LocalDeliveryController {
 
         // Enhanced input validation
         if (!latitude || !longitude) {
-            throw new AppError('Latitude and longitude are required', HTTP_STATUS.BAD_REQUEST);
+            throw new ErrorResponse('Latitude and longitude are required', HTTP_STATUS.BAD_REQUEST);
         }
 
         const userLocation = {
@@ -55,7 +55,7 @@ class LocalDeliveryController {
         if (isNaN(userLocation.lat) || isNaN(userLocation.lng) ||
             userLocation.lat < -90 || userLocation.lat > 90 ||
             userLocation.lng < -180 || userLocation.lng > 180) {
-            throw new AppError('Invalid coordinates provided', HTTP_STATUS.BAD_REQUEST);
+            throw new ErrorResponse('Invalid coordinates provided', HTTP_STATUS.BAD_REQUEST);
         }
 
         const parsedPage = Math.max(1, parseInt(page) || 1);
@@ -73,7 +73,7 @@ class LocalDeliveryController {
 
         // Validate price range
         if (options.minPrice && options.maxPrice && options.minPrice > options.maxPrice) {
-            throw new AppError('Minimum price cannot be greater than maximum price', HTTP_STATUS.BAD_REQUEST);
+            throw new ErrorResponse('Minimum price cannot be greater than maximum price', HTTP_STATUS.BAD_REQUEST);
         }
 
         const result = await LocalDeliveryService.findNearbyProducts(userLocation, options);
@@ -125,18 +125,18 @@ class LocalDeliveryController {
     static checkDelivery = asyncHandler(async (req, res) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
-            throw new AppError('Validation failed', HTTP_STATUS.BAD_REQUEST, errors.array());
+            throw new ErrorResponse('Validation failed', HTTP_STATUS.BAD_REQUEST, errors.array());
         }
 
         const { productId } = req.params;
         const { latitude, longitude } = req.body;
 
         if (!productId?.trim()) {
-            throw new AppError('Product ID is required', HTTP_STATUS.BAD_REQUEST);
+            throw new ErrorResponse('Product ID is required', HTTP_STATUS.BAD_REQUEST);
         }
 
         if (!latitude || !longitude) {
-            throw new AppError('Latitude and longitude are required', HTTP_STATUS.BAD_REQUEST);
+            throw new ErrorResponse('Latitude and longitude are required', HTTP_STATUS.BAD_REQUEST);
         }
 
         const userLocation = { 
@@ -146,7 +146,7 @@ class LocalDeliveryController {
 
         // Validate coordinates
         if (isNaN(userLocation.lat) || isNaN(userLocation.lng)) {
-            throw new AppError('Invalid coordinates provided', HTTP_STATUS.BAD_REQUEST);
+            throw new ErrorResponse('Invalid coordinates provided', HTTP_STATUS.BAD_REQUEST);
         }
 
         const deliveryInfo = await LocalDeliveryService.checkDeliveryFeasibility(
@@ -155,7 +155,7 @@ class LocalDeliveryController {
         );
 
         if (!deliveryInfo) {
-            throw new AppError('Unable to check delivery feasibility', HTTP_STATUS.INTERNAL_SERVER_ERROR);
+            throw new ErrorResponse('Unable to check delivery feasibility', HTTP_STATUS.INTERNAL_SERVER_ERROR);
         }
 
         res.status(HTTP_STATUS.OK).json({
@@ -188,7 +188,7 @@ class LocalDeliveryController {
         const { date, latitude, longitude } = req.query;
 
         if (!productId?.trim()) {
-            throw new AppError('Product ID is required', HTTP_STATUS.BAD_REQUEST);
+            throw new ErrorResponse('Product ID is required', HTTP_STATUS.BAD_REQUEST);
         }
 
         // Validate date if provided
@@ -196,12 +196,12 @@ class LocalDeliveryController {
         if (date) {
             targetDate = new Date(date);
             if (isNaN(targetDate.getTime())) {
-                throw new AppError('Invalid date format', HTTP_STATUS.BAD_REQUEST);
+                throw new ErrorResponse('Invalid date format', HTTP_STATUS.BAD_REQUEST);
             }
             
             // Don't allow past dates
             if (targetDate < new Date().setHours(0, 0, 0, 0)) {
-                throw new AppError('Cannot check slots for past dates', HTTP_STATUS.BAD_REQUEST);
+                throw new ErrorResponse('Cannot check slots for past dates', HTTP_STATUS.BAD_REQUEST);
             }
         }
 
@@ -242,23 +242,23 @@ class LocalDeliveryController {
     static estimateCartDelivery = asyncHandler(async (req, res) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
-            throw new AppError('Validation failed', HTTP_STATUS.BAD_REQUEST, errors.array());
+            throw new ErrorResponse('Validation failed', HTTP_STATUS.BAD_REQUEST, errors.array());
         }
 
         const { items, latitude, longitude } = req.body;
 
         if (!Array.isArray(items) || items.length === 0) {
-            throw new AppError('Cart items are required', HTTP_STATUS.BAD_REQUEST);
+            throw new ErrorResponse('Cart items are required', HTTP_STATUS.BAD_REQUEST);
         }
 
         if (!latitude || !longitude) {
-            throw new AppError('Latitude and longitude are required', HTTP_STATUS.BAD_REQUEST);
+            throw new ErrorResponse('Latitude and longitude are required', HTTP_STATUS.BAD_REQUEST);
         }
 
         // Validate each item
         for (const item of items) {
             if (!item.productId || !item.quantity || item.quantity <= 0) {
-                throw new AppError('Each item must have valid productId and quantity', HTTP_STATUS.BAD_REQUEST);
+                throw new ErrorResponse('Each item must have valid productId and quantity', HTTP_STATUS.BAD_REQUEST);
             }
         }
 
@@ -269,13 +269,13 @@ class LocalDeliveryController {
 
         // Validate coordinates
         if (isNaN(userLocation.lat) || isNaN(userLocation.lng)) {
-            throw new AppError('Invalid coordinates provided', HTTP_STATUS.BAD_REQUEST);
+            throw new ErrorResponse('Invalid coordinates provided', HTTP_STATUS.BAD_REQUEST);
         }
 
         const estimate = await LocalDeliveryService.estimateCartDelivery(items, userLocation);
 
         if (!estimate) {
-            throw new AppError('Unable to estimate delivery', HTTP_STATUS.INTERNAL_SERVER_ERROR);
+            throw new ErrorResponse('Unable to estimate delivery', HTTP_STATUS.INTERNAL_SERVER_ERROR);
         }
 
         res.status(HTTP_STATUS.OK).json({
@@ -307,7 +307,7 @@ class LocalDeliveryController {
         const { pincode } = req.params;
 
         if (!pincode?.trim() || !/^\d{6}$/.test(pincode.trim())) {
-            throw new AppError('Valid 6-digit pincode is required', HTTP_STATUS.BAD_REQUEST);
+            throw new ErrorResponse('Valid 6-digit pincode is required', HTTP_STATUS.BAD_REQUEST);
         }
 
         try {
@@ -375,4 +375,15 @@ class LocalDeliveryController {
     });
 }
 
+LocalDeliveryController.getLiveTracking = async (req, res) => {
+  res.json({ success: true, message: "Live tracking not implemented yet" });
+};
+
+LocalDeliveryController.updateAgentLocation = async (req, res) => {
+  res.json({ success: true, message: "Agent location update not implemented yet" });
+};
+
+LocalDeliveryController.getCoverageArea = async (req, res) => {
+  res.json({ success: true, message: "Coverage area check not implemented yet" });
+};
 module.exports = LocalDeliveryController;
