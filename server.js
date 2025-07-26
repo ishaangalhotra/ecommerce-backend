@@ -77,7 +77,6 @@ app.use(helmet({
   }
 }));
 
-// Enhanced CORS with better error handling
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
@@ -109,7 +108,6 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser(process.env.COOKIE_SECRET));
 app.use(compression({ level: 6, threshold: 1024 }));
 
-// Enhanced request tracking middleware
 app.use((req, res, next) => {
   req.requestId = uuidv4();
   req.startTime = process.hrtime();
@@ -123,7 +121,6 @@ app.use(morgan('combined', {
   skip: req => req.path === '/health'
 }));
 
-// Response time tracking
 app.use((req, res, next) => {
   res.on('finish', () => {
     const diff = process.hrtime(req.startTime);
@@ -229,7 +226,6 @@ const io = new Server(httpServer, {
   pingTimeout: 5000
 });
 
-// Enhanced Socket.IO authentication
 io.use((socket, next) => {
   try {
     const token = socket.handshake.auth.token || 
@@ -285,8 +281,9 @@ const webhookRoutes = require('./routes/webhook-routes');
 app.use('/api/v1/payment', paymentRoutes);
 app.use('/api/v1/webhooks', webhookRoutes);
 
-// Explicitly load products route
+// Explicitly load products route with enhanced logging
 try {
+  logger.info('Attempting to load /api/products route');
   const productsRoute = require('./routes/products');
   app.use('/api/products', productsRoute);
   logger.info('✅ Explicitly loaded products route');
