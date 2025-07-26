@@ -1,9 +1,32 @@
-// EMERGENCY: Disable Redis to prevent infinite reconnection loop
-process.env.DISABLE_REDIS = "true";
-
-process.env.DISABLE_REDIS = "true";
-
 require('dotenv').config();
+
+// Early Redis disable check - before any other imports
+if (process.env.DISABLE_REDIS === 'true' || !process.env.REDIS_URL) {
+  console.log('🔴 Redis disabled - skipping Redis initialization');
+  
+  // Mock Redis module to prevent connection attempts
+  const Module = require('module');
+  const originalRequire = Module.prototype.require;
+  
+  Module.prototype.require = function(id) {
+    if (id === 'redis') {
+      return {
+        createClient: () => ({
+          on: () => {},
+          connect: () => Promise.resolve(),
+          get: () => Promise.resolve(null),
+          set: () => Promise.resolve(),
+          del: () => Promise.resolve(),
+          exists: () => Promise.resolve(false),
+          quit: () => Promise.resolve(),
+          disconnect: () => Promise.resolve()
+        })
+      };
+    }
+    return originalRequire.apply(this, arguments);
+  };
+}
+
 const express = require('express');
 const mongoose = require('mongoose');
 const helmet = require('helmet');
@@ -18,6 +41,9 @@ const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const { createLogger, format, transports } = require('winston');
+
+// Fix mongoose duplicate index warning
+mongoose.set('strictIndex', false);
 
 // --------------------- Winston Logger ---------------------
 const logger = createLogger({
@@ -339,7 +365,7 @@ app.get('/health', async (req, res) => {
     timestamp: new Date(),
     uptime: process.uptime(),
     database: mongoose.connection.readyState === 1 ? 'UP' : 'DOWN',
-    redis: process.env.DISABLE_REDIS === 'true' ? 'DISABLED' : 'ENABLED',
+    redis: process.env.DISABLE_REDIS === 'true' || !process.env.REDIS_URL ? 'DISABLED' : 'ENABLED',
     memory: process.memoryUsage(),
     version: process.env.APP_VERSION || '2.0.0'
   };
@@ -428,7 +454,7 @@ const startServer = async () => {
       logger.info(`   Environment: ${process.env.NODE_ENV || 'development'}`);
       logger.info(`   Port: ${PORT}`);
       logger.info(`   Database: ${mongoose.connection.name}`);
-      logger.info(`   Redis: ${process.env.DISABLE_REDIS === 'true' ? 'Disabled' : 'Enabled'}`);
+      logger.info(`   Redis: ${process.env.DISABLE_REDIS === 'true' || !process.env.REDIS_URL ? 'Disabled' : 'Enabled'}`);
       logger.info(`   Features: healthChecks, realtime, payments`);
       logger.info('');
       logger.info(`🚀 Server running on port ${PORT}`);
