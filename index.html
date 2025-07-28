@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickLocal - 20 Minute Local Delivery</title>
+  <meta name="description" content="Get everything you need from local sellers delivered to your doorstep in just 20 minutes">
+  
+  <!-- Preload critical resources -->
+  <link rel="preload" href="https://cdn.tailwindcss.com" as="script">
+  <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" as="style">
+  
+  <!-- Favicon -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+  
+  <!-- CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+ <script src="payment.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <style>
+    /* Performance optimized animations */
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    
+    @keyframes slideUp {
+      from { transform: translateY(20px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    
+    .animate-fade-in {
+      animation: fadeIn 0.5s ease-out forwards;
+    }
+    
+    .animate-slide-up {
+      animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    
+    /* Optimized product card hover */
+    .product-card {
+      will-change: transform, box-shadow;
+      transition: 
+        transform 0.2s ease-out,
+        box-shadow 0.2s ease-out;
+    }
+    
+    .product-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+    }
+    
+    /* Smooth scrolling with prefers-reduced-motion */
+    @media (prefers-reduced-motion: no-preference) {
+      html {
+        scroll-behavior: smooth;
+      }
+    }
+    
+    /* Focus styles for accessibility */
+    button:focus-visible, 
+    input:focus-visible,
+    select:focus-visible,
+    a:focus-visible {
+      outline: 2px solid #3b82f6;
+      outline-offset: 2px;
+    }
+    
+    /* Loading spinner */
+    .spinner {
+      animation: spin 1s linear infinite;
+      will-change: transform;
+    }
+    
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    
+    /* Delivery tracking animation */
+    @keyframes pulse-glow {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.05); opacity: 0.8; }
+    }
+    
+    .pulse-animation {
+      animation: pulse-glow 2s ease-in-out infinite;
+    }
+    
+    /* Gradient background with fallback */
+    .gradient-bg {
+      background-color: #667eea;
+      background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    
+    /* Reduced motion alternatives */
+    @media (prefers-reduced-motion: reduce) {
+      .product-card {
+        transition: none;
+      }
+      
+      .animate-fade-in,
+      .animate-slide-up {
+        animation: none;
+        opacity: 1;
+      }
+    }
+  </style>
+</head>
+<body class="bg-gray-50 font-sans antialiased">
+  <!-- Skip to content link for accessibility -->
+  <a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:bg-white focus:px-4 focus:py-2 focus:rounded focus:z-50">
+    Skip to content
+  </a>
+
+  <!-- Navigation Bar -->
+  <nav class="bg-white shadow-md sticky top-0 z-50" aria-label="Main navigation">
+    <div class="container mx-auto px-4">
+      <div class="flex items-center justify-between h-16">
+        <div class="flex items-center space-x-4">
+          <a href="index.html" class="text-2xl font-bold text-blue-600 flex items-center">
+            <i class="fas fa-bolt mr-2" aria-hidden="true"></i>
+            <span>QuickLocal</span>
+          </a>
+        </div>
+        
+        <!-- Mobile menu button -->
+        <button id="mobileMenuButton" class="md:hidden text-gray-700 focus:outline-none" aria-label="Toggle menu" aria-expanded="false">
+          <i class="fas fa-bars text-xl"></i>
+        </button>
+        
+        <div id="mainMenu" class="hidden md:flex items-center space-x-6">
+          <a href="marketplace.html" class="text-gray-700 hover:text-blue-600 transition-colors">Shop Now</a>
+          <a href="#how-it-works" class="text-gray-700 hover:text-blue-600 transition-colors">How It Works</a>
+          <a href="#sellers" class="text-gray-700 hover:text-blue-600 transition-colors">For Sellers</a>
+          <a href="#about" class="text-gray-700 hover:text-blue-600 transition-colors">About</a>
+        </div>
+        
+        <div class="flex items-center space-x-4">
+          <a href="marketplace.html" class="text-gray-700 hover:text-blue-600 transition-colors" aria-label="Search products">
+            <i class="fas fa-search text-xl"></i>
+          </a>
+          
+          <a href="marketplace.html" class="text-gray-700 hover:text-blue-600 transition-colors relative" aria-label="Shopping cart">
+            <i class="fas fa-shopping-cart text-xl"></i>
+            <span id="cartCount" class="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center hidden">0</span>
+          </a>
+          
+          <button id="loginBtn" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+            <i class="fas fa-user mr-2" aria-hidden="true"></i>
+            Sign In
+          </button>
+        </div>
+      </div>
+      
+      <!-- Mobile menu -->
+      <div id="mobileMenu" class="hidden md:hidden py-4 border-t border-gray-200">
+        <div class="flex flex-col space-y-3">
+          <a href="marketplace.html" class="text-gray-700 hover:text-blue-600 transition-colors">Shop Now</a>
+          <a href="#how-it-works" class="text-gray-700 hover:text-blue-600 transition-colors">How It Works</a>
+          <a href="seller.html" class="text-gray-700 hover:text-blue-600 transition-colors">Become a Seller</a>
+          <a href="#about" class="text-gray-700 hover:text-blue-600 transition-colors">About</a>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <main id="main-content">
+    <!-- Enhanced Hero Section -->
+    <section class="gradient-bg text-white py-16 md:py-24">
+      <div class="container mx-auto px-4 text-center">
+        <div class="max-w-4xl mx-auto animate-slide-up">
+          <h1 class="text-4xl sm:text-5xl md:text-6xl font-bold mb-6 leading-tight">
+            Fresh. Local. <span class="text-yellow-300">20 Minutes.</span>
+          </h1>
+          <p class="text-lg md:text-2xl mb-8 text-blue-100">
+            Get everything you need from local sellers delivered to your doorstep in just 20 minutes
+          </p>
+          
+          <!-- Call to Action Buttons -->
+          <div class="flex flex-col sm:flex-row justify-center gap-4 mb-8">
+            <a href="marketplace.html" class="bg-white text-blue-600 px-8 py-4 rounded-lg hover:bg-gray-100 transition-colors font-semibold text-lg">
+              <i class="fas fa-shopping-cart mr-2"></i>
+              Start Shopping
+            </a>
+            <a href="seller.html" class="bg-transparent border-2 border-white text-white px-8 py-4 rounded-lg hover:bg-white hover:text-blue-600 transition-colors font-semibold text-lg">
+              <i class="fas fa-store mr-2"></i>
+              Become a Seller
+            </a>
+          </div>
+          
+          <!-- Location Input with Auto-detect -->
+          <div class="bg-white rounded-full p-2 max-w-2xl mx-auto shadow-xl animate-fade-in" style="animation-delay: 0.2s">
+            <div class="flex flex-col sm:flex-row items-stretch">
+              <div class="flex-1 relative mb-2 sm:mb-0">
+                <i class="fas fa-map-marker-alt absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+                <input 
+                  type="text" 
+                  id="locationInput"
+                  placeholder="Enter your delivery address..." 
+                  class="w-full pl-12 pr-4 py-4 text-gray-800 rounded-l-full sm:rounded-r-none rounded-r-full sm:rounded-r-none focus:outline-none text-lg"
+                  aria-label="Delivery address"
+                />
+              </div>
+              <button 
+                id="detectLocationBtn"
+                class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-full sm:rounded-l-none transition-colors flex items-center justify-center whitespace-nowrap"
+                aria-label="Detect my location"
+              >
+                <i class="fas fa-crosshairs mr-2"></i>
+                Detect Location
+              </button>
+            </div>
+          </div>
+          
+          <!-- Quick Stats -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-8 mt-12 animate-fade-in" style="animation-delay: 0.4s">
+            <div class="text-center">
+              <div class="text-3xl font-bold text-yellow-300" id="deliveryTime">20</div>
+              <div class="text-blue-100">Minutes Delivery</div>
+            </div>
+            <div class="text-center">
+              <div class="text-3xl font-bold text-yellow-300" id="localSellers">500+</div>
+              <div class="text-blue-100">Local Sellers</div>
+            </div>
+            <div class="text-center">
+              <div class="text-3xl font-bold text-yellow-300" id="happyCustomers">10K+</div>
+              <div class="text-blue-100">Happy Customers</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- How It Works Section -->
+    <section id="how-it-works" class="py-16 bg-white">
+      <div class="container mx-auto px-4">
+        <div class="text-center mb-12">
+          <h2 class="text-3xl md:text-4xl font-bold text-gray-800 mb-4">How QuickLocal Works</h2>
+          <p class="text-lg text-gray-600 max-w-2xl mx-auto">Get what you need in just 3 simple steps</p>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+          <div class="bg-gray-50 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow">
+            <div class="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-blue-600 text-2xl">
+              1
+            </div>
+            <h3 class="text-xl font-semibold text-center text-gray-800 mb-2">Set Your Location</h3>
+            <p class="text-gray-600 text-center">Enter your address or let us detect your location to see available products near you.</p>
+          </div>
+          
+          <div class="bg-gray-50 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow">
+            <div class="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-blue-600 text-2xl">
+              2
+            </div>
+            <h3 class="text-xl font-semibold text-center text-gray-800 mb-2">Shop Local Stores</h3>
+            <p class="text-gray-600 text-center">Browse fresh products from local sellers in your neighborhood.</p>
+          </div>
+          
+          <div class="bg-gray-50 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow">
+            <div class="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-blue-600 text-2xl">
+              3
+            </div>
+            <h3 class="text-xl font-semibold text-center text-gray-800 mb-2">Get Fast Delivery</h3>
+            <p class="text-gray-600 text-center">Receive your order in about 20 minutes from a nearby delivery agent.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Enhanced Categories Section -->
+    <section class="py-16 bg-gray-50">
+      <div class="container mx-auto px-4">
+        <div class="text-center mb-12">
+          <h2 class="text-3xl md:text-4xl font-bold text-gray-800 mb-4">Shop by Category</h2>
+          <p class="text-lg text-gray-600">Everything you need from your neighborhood</p>
+          <div id="locationDisplay" class="mt-4 text-blue-600 font-medium flex items-center justify-center">
+            <i class="fas fa-map-marker-alt mr-2"></i>
+            <span>Detecting your location...</span>
+          </div>
+        </div>
+        
+        <div id="categoriesGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 sm:gap-6">
+          <!-- Dynamic categories will be loaded here -->
+          <a href="marketplace.html?category=grocery" class="category-card bg-white rounded-xl p-4 sm:p-6 text-center shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer group" data-category="grocery" aria-label="Browse groceries">
+            <div class="bg-green-100 w-12 h-12 sm:w-16 sm:h-16 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4 group-hover:bg-green-200 transition-colors">
+              <i class="fas fa-shopping-basket text-xl sm:text-2xl text-green-600"></i>
+            </div>
+            <h3 class="font-semibold text-gray-800 mb-1 sm:mb-2 text-sm sm:text-base">Fresh Grocery</h3>
+            <p class="text-xs sm:text-sm text-gray-500">From local stores</p>
+            <div class="mt-2 text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full inline-block">
+              15-20 min
+            </div>
+          </a>
+          
+          <a href="marketplace.html?category=electronics" class="category-card bg-white rounded-xl p-4 sm:p-6 text-center shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer group" data-category="electronics" aria-label="Browse electronics">
+            <div class="bg-blue-100 w-12 h-12 sm:w-16 sm:h-16 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4 group-hover:bg-blue-200 transition-colors">
+              <i class="fas fa-laptop text-xl sm:text-2xl text-blue-600"></i>
+            </div>
+            <h3 class="font-semibold text-gray-800 mb-1 sm:mb-2 text-sm sm:text-base">Electronics</h3>
+            <p class="text-xs sm:text-sm text-gray-500">Gadgets & more</p>
+            <div class="mt-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full inline-block">
+              20-25 min
+            </div>
+          </a>
+          
+          <a href="marketplace.html?category=bakery" class="category-card bg-white rounded-xl p-4 sm:p-6 text-center shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer group" data-category="bakery" aria-label="Browse bakery items">
+            <div class="bg-orange-100 w-12 h-12 sm:w-16 sm:h-16 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4 group-hover:bg-orange-200 transition-colors">
+              <i class="fas fa-bread-slice text-xl sm:text-2xl text-orange-600"></i>
+            </div>
+            <h3 class="font-semibold text-gray-800 mb-1 sm:mb-2 text-sm sm:text-base">Bakery</h3>
+            <p class="text-xs sm:text-sm text-gray-500">Fresh baked</p>
+            <div class="mt-2 text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-full inline-block">
+              12-18 min
+            </div>
+          </a>
+          
+          <a href="marketplace.html?category=clothing" class="category-card bg-white rounded-xl p-4 sm:p-6 text-center shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer group" data-category="clothing" aria-label="Browse clothing">
+            <div class="bg-purple-100 w-12 h-12 sm:w-16 sm:h-16 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4 group-hover:bg-purple-200 transition-colors">
+              <i class="fas fa-tshirt text-xl sm:text-2xl text-purple-600"></i>
+            </div>
+            <h3 class="font-semibold text-gray-800 mb-1 sm:mb-2 text-sm sm:text-base">Clothing</h3>
+            <p class="text-xs sm:text-sm text-gray-500">Fashion items</p>
+            <div class="mt-2 text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-full inline-block">
+              25-30 min
+            </div>
+          </a>
+          
+          <a href="marketplace.html?category=books" class="category-card bg-white rounded-xl p-4 sm:p-6 text-center shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer group" data-category="books" aria-label="Browse books">
+            <div class="bg-red-100 w-12 h-12 sm:w-16 sm:h-16 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4 group-hover:bg-red-200 transition-colors">
+              <i class="fas fa-book text-xl sm:text-2xl text-red-600"></i>
+            </div>
+            <h3 class="font-semibold text-gray-800 mb-1 sm:mb-2 text-sm sm:text-base">Books</h3>
+            <p class="text-xs sm:text-sm text-gray-500">Local bookstore</p>
+            <div class="mt-2 text-xs bg-red-100 text-red-800 px-2 py-1 rounded-full inline-block">
+              20-25 min
+            </div>
+          </a>
+          
+          <a href="marketplace.html?category=home" class="category-card bg-white rounded-xl p-4 sm:p-6 text-center shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer group" data-category="home" aria-label="Browse home items">
+            <div class="bg-yellow-100 w-12 h-12 sm:w-16 sm:h-16 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4 group-hover:bg-yellow-200 transition-colors">
+              <i class="fas fa-home text-xl sm:text-2xl text-yellow-600"></i>
+            </div>
+            <h3 class="font-semibold text-gray-800 mb-1 sm:mb-2 text-sm sm:text-base">Home & Garden</h3>
+            <p class="text-xs sm:text-sm text-gray-500">House essentials</p>
+            <div class="mt-2 text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full inline-block">
+              25-30 min
+            </div>
+          </a>
+        </div>
+        
+        <div class="text-center mt-12">
+          <a href="marketplace.html" class="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 transition-colors font-semibold">
+            <i class="fas fa-arrow-right mr-2"></i>
+            View All Products
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- For Sellers Section -->
+    <section id="sellers" class="py-16 bg-white">
+      <div class="container mx-auto px-4">
+        <div class="text-center mb-12">
+          <h2 class="text-3xl md:text-4xl font-bold text-gray-800 mb-4">For Local Sellers</h2>
+          <p class="text-lg text-gray-600 max-w-2xl mx-auto">Join our network and reach more customers in your area</p>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+          <div class="bg-gray-50 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow">
+            <div class="bg-blue-100 w-12 h-12 rounded-full flex items-center justify-center mb-4 text-blue-600">
+              <i class="fas fa-store text-xl"></i>
+            </div>
+            <h3 class="text-xl font-semibold text-gray-800 mb-2">Expand Your Reach</h3>
+            <p class="text-gray-600">Connect with customers in your neighborhood who want fast delivery of your products.</p>
+          </div>
+          
+          <div class="bg-gray-50 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow">
+            <div class="bg-green-100 w-12 h-12 rounded-full flex items-center justify-center mb-4 text-green-600">
+              <i class="fas fa-bolt text-xl"></i>
+            </div>
+            <h3 class="text-xl font-semibold text-gray-800 mb-2">Fast Delivery Network</h3>
+            <p class="text-gray-600">Our delivery agents will handle the last-mile delivery for your orders.</p>
+          </div>
+          
+          <div class="bg-gray-50 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow">
+            <div class="bg-purple-100 w-12 h-12 rounded-full flex items-center justify-center mb-4 text-purple-600">
+              <i class="fas fa-chart-line text-xl"></i>
+            </div>
+            <h3 class="text-xl font-semibold text-gray-800 mb-2">Easy Management</h3>
+            <p class="text-gray-600">Simple dashboard to manage your inventory, orders, and payments.</p>
+          </div>
+          
+          <div class="bg-gray-50 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow">
+            <div class="bg-orange-100 w-12 h-12 rounded-full flex items-center justify-center mb-4 text-orange-600">
+              <i class="fas fa-hand-holding-usd text-xl"></i>
+            </div>
+            <h3 class="text-xl font-semibold text-gray-800 mb-2">Fair Commissions</h3>
+            <p class="text-gray-600">Keep more of your earnings with our low, transparent commission structure.</p>
+          </div>
+        </div>
+        
+        <div class="text-center mt-12">
+          <a href="seller.html" class="bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 transition-colors font-semibold">
+            <i class="fas fa-user-plus mr-2"></i>
+            Sign Up as a Seller
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Testimonials Section -->
+    <section class="py-16 bg-gray-50">
+      <div class="container mx-auto px-4">
+        <div class="text-center mb-12">
+          <h2 class="text-3xl md:text-4xl font-bold text-gray-800 mb-4">What Our Customers Say</h2>
+          <p class="text-lg text-gray-600">Real experiences from our community</p>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+          <div class="bg-white p-6 rounded-xl shadow-sm">
+            <div class="flex items-center mb-4">
+              <div class="flex items-center text-yellow-400 mr-2">
+                <i class="fas fa-star"></i>
+                <i class="fas fa-star"></i>
+                <i class="fas fa-star"></i>
+                <i class="fas fa-star"></i>
+                <i class="fas fa-star"></i>
+              </div>
+              <span class="text-sm text-gray-500">2 days ago</span>
+            </div>
+            <p class="text-gray-700 mb-4">"I needed ingredients for dinner and got them in 15 minutes! QuickLocal saved my evening."</p>
+            <div class="flex items-center">
+              <div class="w-10 h-10 rounded-full bg-gray-300 mr-3 overflow-hidden">
+                <img src="https://randomuser.me/api/portraits/women/32.jpg" alt="Sarah K." class="w-full h-full object-cover">
+              </div>
+              <div>
+                <h4 class="font-medium text-gray-800">Sarah K.</h4>
+                <p class="text-sm text-gray-500">Regular Customer</p>
+              </div>
+            </div>
+          </div>
+          
+          <div class="bg-white p-6 rounded-xl shadow-sm">
+            <div class="flex items-center mb-4">
+              <div class="flex items-center text-yellow-400 mr-2">
+                <i class="fas fa-star"></i>
+                <i class="fas fa-star"></i>
+                <i class="fas fa-star"></i>
+                <i class="fas fa-star"></i>
+                <i class="fas fa-star"></i>
+              </div>
+              <span class="text-sm text-gray-500">1 week ago</span>
+            </div>
+            <p class="text-gray-700 mb-4">"The quality of produce is amazing and delivery is lightning fast. I use QuickLocal weekly now."</p>
+            <div class="flex items-center">
+              <div class="w-10 h-10 rounded-full bg-gray-300 mr-3 overflow-hidden">
+                <img src="https://randomuser.me/api/portraits/men/45.jpg" alt="Raj P." class="w-full h-full object-cover">
+              </div>
+              <div>
+                <h4 class="font-medium text-gray-800">Raj P.</h4>
+                <p class="text-sm text-gray-500">Local Business Owner</p>
+              </div>
+            </div>
+          </div>
+          
+          <div class="bg-white p-6 rounded-xl shadow-sm">
+            <div class="flex items-center mb-4">
+              <div class="flex items-center text-yellow-400 mr-2">
+                <i class="fas fa-star"></i>
+                <i class="fas fa-star"></i>
+                <i class="fas fa-star"></i>
+                <i class="fas fa-star"></i>
+                <i class="fas fa-star-half-alt"></i>
+              </div>
+              <span class="text-sm text-gray-500">3 days ago</span>
+            </div>
+            <p class="text-gray-700 mb-4">"Forgot milk for my baby's breakfast. QuickLocal delivered before we finished getting dressed!"</p>
+            <div class="flex items-center">
+              <div class="w-10 h-10 rounded-full bg-gray-300 mr-3 overflow-hidden">
+                <img src="https://randomuser.me/api/portraits/women/68.jpg" alt="Priya M." class="w-full h-full object-cover">
+              </div>
+              <div>
+                <h4 class="font-medium text-gray-800">Priya M.</h4>
+                <p class="text-sm text-gray-500">New Parent</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="py-16 gradient-bg text-white">
+      <div class="container mx-auto px-4 text-center">
+        <div class="max-w-3xl mx-auto">
+          <h2 class="text-3xl md:text-4xl font-bold mb-6">Ready to Experience Lightning-Fast Delivery?</h2>
+          <p class="text-xl text-blue-100 mb-8">Start shopping from local sellers in your neighborhood</p>
+          
+          <div class="flex flex-col sm:flex-row justify-center gap-4 mb-8">
+            <a href="marketplace.html" class="bg-white text-blue-600 px-8 py-4 rounded-lg hover:bg-gray-100 transition-colors font-semibold text-lg">
+              <i class="fas fa-shopping-cart mr-2"></i>
+              Start Shopping Now
+            </a>
+            <a href="seller.html" class="bg-transparent border-2 border-white text-white px-8 py-4 rounded-lg hover:bg-white hover:text-blue-600 transition-colors font-semibold text-lg">
+              <i class="fas fa-store mr-2"></i>
+              Become a Seller
+            </a>
+          </div>
+          
+          <p class="text-blue-100 text-sm">
+            <i class="fas fa-shield-alt mr-2"></i>
+            Safe and secure payments • Fast delivery guarantee • 24/7 support
+          </p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-gray-800 text-white py-12">
+    <div class="container mx-auto px-4">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+        <div>
+          <div class="text-2xl font-bold mb-4 flex items-center">
+            <i class="fas fa-bolt mr-2" aria-hidden="true"></i>
+            QuickLocal
+          </div>
+          <p class="text-gray-300 mb-4">Your neighborhood marketplace for 20-minute delivery</p>
+          
+          <div class="flex space-x-4">
+            <a href="#" aria-label="Facebook" class="text-gray-300 hover:text-white transition-colors">
+              <i class="fab fa-facebook-f"></i>
+            </a>
+            <a href="#" aria-label="Twitter" class="text-gray-300 hover:text-white transition-colors">
+              <i class="fab fa-twitter"></i>
+            </a>
+            <a href="#" aria-label="Instagram" class="text-gray-300 hover:text-white transition-colors">
+              <i class="fab fa-instagram"></i>
+            </a>
+          </div>
+        </div>
+        
+        <div>
+          <h4 class="text-lg font-semibold mb-4">Quick Links</h4>
+          <ul class="space-y-2">
+            <li><a href="marketplace.html" class="text-gray-300 hover:text-white transition-colors">Shop Now</a></li>
+            <li><a href="#how-it-works" class="text-gray-300 hover:text-white transition-colors">How It Works</a></li>
+            <li><a href="seller.html" class="text-gray-300 hover:text-white transition-colors">Become a Seller</a></li>
+            <li><a href="#" class="text-gray-300 hover:text-white transition-colors">Careers</a></li>
+          </ul>
+        </div>
+        
+        <div>
+          <h4 class="text-lg font-semibold mb-4">Support</h4>
+          <ul class="space-y-2">
+            <li><a href="#" class="text-gray-300 hover:text-white transition-colors">Help Center</a></li>
+            <li><a href="#" class="text-gray-300 hover:text-white transition-colors">Privacy Policy</a></li>
+            <li><a href="#" class="text-gray-300 hover:text-white transition-colors">Terms of Service</a></li>
+            <li><a href="#" class="text-gray-300 hover:text-white transition-colors">Refund Policy</a></li>
+          </ul>
+        </div>
+        
+        <div>
+          <h4 class="text-lg font-semibold mb-4">Contact Us</h4>
+          <ul class="space-y-2">
+            <li class="flex items-center">
+              <i class="fas fa-map-marker-alt mr-2 text-gray-400"></i>
+              <span class="text-gray-300">Ludhiana, Punjab, India</span>
+            </li>
+            <li class="flex items-center">
+              <i class="fas fa-phone mr-2 text-gray-400"></i>
+              <a href="tel:+919876543210" class="text-gray-300 hover:text-white">+91 98765 43210</a>
+            </li>
+            <li class="flex items-center">
+              <i class="fas fa-envelope mr-2 text-gray-400"></i>
+              <a href="mailto:hello@quicklocal.com" class="text-gray-300 hover:text-white">hello@quicklocal.com</a>
+            </li>
+          </ul>
+        </div>
+      </div>
+      
+      <div class="border-t border-gray-700 mt-8 pt-8 text-center">
+        <p class="text-gray-300">&copy; 2024 QuickLocal. All rights reserved.</p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Login Modal -->
+  <div id="loginModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden" aria-hidden="true">
+    <div class="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
+      <div class="p-6">
+        <div class="flex justify-between items-center mb-6">
+          <h3 class="text-2xl font-bold text-gray-800">Sign In</h3>
+          <button id="closeLoginModal" class="text-gray-400 hover:text-gray-600" aria-label="Close login modal">
+            <i class="fas fa-times text-xl"></i>
+          </button>
+        </div>
+        
+        <form id="loginForm" class="space-y-4">
+          <div>
+            <label for="loginEmail" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <input type="email" id="loginEmail" class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" required>
+          </div>
+          
+          <div>
+            <label for="loginPassword" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <input type="password" id="loginPassword" class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" required>
+          </div>
+          
+          <div class="flex items-center justify-between">
+            <div class="flex items-center">
+              <input type="checkbox" id="rememberMe" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+              <label for="rememberMe" class="ml-2 block text-sm text-gray-700">Remember me</label>
+            </div>
+            
+            <a href="#" class="text-sm text-blue-600 hover:text-blue-800">Forgot password?</a>
+          </div>
+          
+          <button type="submit" class="w-full bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors">
+            Sign In
+          </button>
+          
+          <div class="text-center text-sm text-gray-600">
+            Don't have an account? <a href="#" class="text-blue-600 hover:text-blue-800">Sign up</a>
+          </div>
+          
+          <div class="relative mt-6">
+            <div class="absolute inset-0 flex items-center">
+              <div class="w-full border-t border-gray-300"></div>
+            </div>
+            <div class="relative flex justify-center text-sm">
+              <span class="px-2 bg-white text-gray-500">Or continue with</span>
+            </div>
+          </div>
+          
+          <div class="grid grid-cols-2 gap-3 mt-4">
+            <button type="button" class="flex items-center justify-center space-x-2 border border-gray-300 rounded-lg px-4 py-2 hover:bg-gray-50">
+              <i class="fab fa-google text-red-500"></i>
+              <span>Google</span>
+            </button>
+            
+            <button type="button" class="flex items-center justify-center space-x-2 border border-gray-300 rounded-lg px-4 py-2 hover:bg-gray-50">
+              <i class="fab fa-facebook text-blue-600"></i>
+              <span>Facebook</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script>
+    // Enhanced Landing Page functionality
+    class QuickLocalLanding {
+      constructor() {
+        this.init();
+      }
+      
+      init() {
+        this.setupEventListeners();
+        this.loadStats();
+      }
+      
+      setupEventListeners() {
+        // Mobile menu toggle
+        document.getElementById('mobileMenuButton')?.addEventListener('click', () => {
+          const menu = document.getElementById('mobileMenu');
+          const expanded = menu.classList.toggle('hidden');
+          document.getElementById('mobileMenuButton').setAttribute('aria-expanded', !expanded);
+        });
+        
+        // Location detection
+        document.getElementById('detectLocationBtn')?.addEventListener('click', () => {
+          this.detectLocation();
+        });
+        
+        // Login modal
+        document.getElementById('loginBtn')?.addEventListener('click', (e) => {
+          e.preventDefault();
+          this.showLoginModal();
+        });
+        
+        document.getElementById('closeLoginModal')?.addEventListener('click', () => {
+          this.closeLoginModal();
+        });
+        
+        // Login form
+        document.getElementById('loginForm')?.addEventListener('submit', (e) => {
+          e.preventDefault();
+          this.handleLogin();
+        });
+        
+        // Category clicks redirect to marketplace
+        document.querySelectorAll('.category-card').forEach(card => {
+          card.addEventListener('click', (e) => {
+            e.preventDefault();
+            const category = card.getAttribute('data-category');
+            window.location.href = `marketplace.html${category ? '?category=' + category : ''}`;
+          });
+        });
+      }
+      
+      detectLocation() {
+        const btn = document.getElementById('detectLocationBtn');
+        const display = document.getElementById('locationDisplay');
+        
+        if (!btn || !display) return;
+        
+        // Show loading state
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Detecting...';
+        btn.disabled = true;
+        
+        display.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i><span>Finding your location...</span>';
+        
+        if ('geolocation' in navigator) {
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+              // Success - location detected
+              const { latitude, longitude } = position.coords;
+              
+              // Save location for marketplace
+              localStorage.setItem('userLocation', JSON.stringify({
+                lat: latitude,
+                lng: longitude
+              }));
+              
+              // Update display
+              display.innerHTML = '<i class="fas fa-map-marker-alt mr-2 text-green-600"></i><span class="text-green-600 font-medium">Location detected! Ready to show nearby products.</span>';
+              
+              // Reset button
+              btn.innerHTML = '<i class="fas fa-check mr-2"></i>Location Set';
+              btn.classList.add('bg-green-600', 'hover:bg-green-700');
+              btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+              
+              // Show success message
+              this.showToast('Location detected successfully! You can now browse products near you.', 'success');
+              
+              // Enable button after 2 seconds
+              setTimeout(() => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-crosshairs mr-2"></i>Detect Location';
+                btn.classList.remove('bg-green-600', 'hover:bg-green-700');
+                btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
+              }, 2000);
+            },
+            (error) => {
+              // Error handling
+              let errorMessage = 'Could not detect location. Please enter manually.';
+              
+              switch(error.code) {
+                case error.PERMISSION_DENIED:
+                  errorMessage = 'Location access denied. Please enable location in your browser.';
+                  break;
+                case error.POSITION_UNAVAILABLE:
+                  errorMessage = 'Location information unavailable.';
+                  break;
+                case error.TIMEOUT:
+                  errorMessage = 'Location request timed out.';
+                  break;
+              }
+              
+              display.innerHTML = '<i class="fas fa-exclamation-triangle mr-2 text-red-600"></i><span class="text-red-600">' + errorMessage + '</span>';
+              
+              // Reset button
+              btn.innerHTML = '<i class="fas fa-crosshairs mr-2"></i>Try Again';
+              btn.disabled = false;
+              
+              this.showToast(errorMessage, 'error');
+            },
+            {
+              enableHighAccuracy: true,
+              timeout: 10000,
+              maximumAge: 60000
+            }
+          );
+        } else {
+          display.innerHTML = '<i class="fas fa-exclamation-triangle mr-2 text-red-600"></i><span class="text-red-600">Geolocation not supported by this browser.</span>';
+          btn.innerHTML = '<i class="fas fa-crosshairs mr-2"></i>Detect Location';
+          btn.disabled = false;
+          
+          this.showToast('Geolocation not supported. Please enter your address manually.', 'error');
+        }
+      }
+      
+      loadStats() {
+        // Animate stats numbers
+        this.animateCounter('deliveryTime', 20, 'min');
+        this.animateCounter('localSellers', 500, '+');
+        this.animateCounter('happyCustomers', 10000, '+', 'K');
+      }
+      
+      animateCounter(elementId, target, suffix = '', prefix = '') {
+        const element = document.getElementById(elementId);
+        if (!element) return;
+        
+        let current = 0;
+        const increment = target / 100;
+        const timer = setInterval(() => {
+          current += increment;
+          if (current >= target) {
+            current = target;
+            clearInterval(timer);
+          }
+          
+          let displayValue = Math.floor(current);
+          if (prefix === 'K' && target >= 1000) {
+            displayValue = Math.floor(current / 1000);
+          }
+          
+          element.textContent = displayValue + (prefix === 'K' ? 'K' : '') + suffix;
+        }, 20);
+      }
+      
+      showLoginModal() {
+        document.getElementById('loginModal').classList.remove('hidden');
+        document.getElementById('loginModal').setAttribute('aria-hidden', 'false');
+      }
+      
+      closeLoginModal() {
+        document.getElementById('loginModal').classList.add('hidden');
+        document.getElementById('loginModal').setAttribute('aria-hidden', 'true');
+      }
+      
+      handleLogin() {
+        // Simulate login process
+        const email = document.getElementById('loginEmail').value;
+        
+        if (email) {
+          this.closeLoginModal();
+          this.showToast('Login successful! Welcome to QuickLocal.', 'success');
+          
+          // Update UI to show logged in state
+          const loginBtn = document.getElementById('loginBtn');
+          if (loginBtn) {
+            loginBtn.innerHTML = '<i class="fas fa-user-circle mr-2"></i>Welcome!';
+            loginBtn.classList.add('bg-green-600', 'hover:bg-green-700');
+            loginBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
+          }
+          
+          // Reset form
+          document.getElementById('loginForm').reset();
+        }
+      }
+      
+      showToast(message, type = 'info') {
+        // Remove existing toasts
+        document.querySelectorAll('.toast-notification').forEach(el => el.remove());
+        
+        const toast = document.createElement('div');
+        toast.className = `toast-notification fixed top-4 right-4 z-50 px-6 py-4 rounded-lg shadow-lg text-white transition-all duration-300 transform translate-x-full max-w-sm`;
+        
+        const colors = {
+          success: 'bg-green-600',
+          error: 'bg-red-600',
+          info: 'bg-blue-600'
+        };
+        
+        const icons = {
+          success: 'fas fa-check-circle',
+          error: 'fas fa-exclamation-circle',
+          info: 'fas fa-info-circle'
+        };
+        
+        toast.classList.add(colors[type]);
+        toast.innerHTML = `
+          <div class="flex items-start">
+            <i class="${icons[type]} mr-3 mt-1"></i>
+            <span>${message}</span>
+          </div>
+        `;
+        
+        document.body.appendChild(toast);
+        
+        // Animate in
+        setTimeout(() => {
+          toast.classList.remove('translate-x-full');
+        }, 100);
+        
+        // Remove after 5 seconds
+        setTimeout(() => {
+          toast.classList.add('translate-x-full');
+          setTimeout(() => {
+            if (document.body.contains(toast)) {
+              document.body.removeChild(toast);
+            }
+          }, 300);
+        }, 5000);
+      }
+    }
+
+    // Initialize when DOM is loaded
+    document.addEventListener('DOMContentLoaded', () => {
+      new QuickLocalLanding();
+    });
+  </script>
+</body>
+</html>
