@@ -1,901 +1,2166 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>QuickLocal - 20 Minute Local Delivery</title>
-  <meta name="description" content="Get everything you need from local sellers delivered to your doorstep in just 20 minutes">
-  
-  <!-- Preload critical resources -->
-  <link rel="preload" href="https://cdn.tailwindcss.com" as="script">
-  <link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" as="style">
-  
-  <!-- Favicon -->
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
-  
-  <!-- CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
- <script src="payment.js"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  
-  <style>
-    /* Performance optimized animations */
-    @keyframes fadeIn {
-      from { opacity: 0; }
-      to { opacity: 1; }
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuickLocal - Ultra-Fast Local Delivery | Fresh. Local. 20 Minutes.</title>
+    <meta name="description" content="Get everything you need from local sellers delivered in 20 minutes. Fresh groceries, electronics, and more from your neighborhood.">
+    <meta name="keywords" content="local delivery, fast delivery, groceries, electronics, 20 minutes, neighborhood shopping">
+    <link rel="canonical" href="https://quicklocal.shop">
     
-    @keyframes slideUp {
-      from { transform: translateY(20px); opacity: 0; }
-      to { transform: translateY(0); opacity: 1; }
-    }
+    <!-- Open Graph Meta Tags -->
+    <meta property="og:title" content="QuickLocal - Ultra-Fast Local Delivery">
+    <meta property="og:description" content="Fresh products from local sellers delivered in 20 minutes">
+    <meta property="og:image" content="https://quicklocal.shop/og-image.jpg">
+    <meta property="og:url" content="https://quicklocal.shop">
+    <meta property="og:type" content="website">
     
-    .animate-fade-in {
-      animation: fadeIn 0.5s ease-out forwards;
-    }
+    <!-- Twitter Card Meta Tags -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="QuickLocal - Ultra-Fast Local Delivery">
+    <meta name="twitter:description" content="Fresh products from local sellers delivered in 20 minutes">
+    <meta name="twitter:image" content="https://quicklocal.shop/twitter-image.jpg">
     
-    .animate-slide-up {
-      animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-    }
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🛒%3C/text%3E%3C/svg%3E">
     
-    /* Optimized product card hover */
-    .product-card {
-      will-change: transform, box-shadow;
-      transition: 
-        transform 0.2s ease-out,
-        box-shadow 0.2s ease-out;
-    }
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
-    .product-card:hover {
-      transform: translateY(-4px);
-      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
-    }
+    <!-- Icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
     
-    /* Smooth scrolling with prefers-reduced-motion */
-    @media (prefers-reduced-motion: no-preference) {
-      html {
-        scroll-behavior: smooth;
-      }
-    }
+    <!-- AOS Animation Library -->
+    <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
     
-    /* Focus styles for accessibility */
-    button:focus-visible, 
-    input:focus-visible,
-    select:focus-visible,
-    a:focus-visible {
-      outline: 2px solid #3b82f6;
-      outline-offset: 2px;
-    }
-    
-    /* Loading spinner */
-    .spinner {
-      animation: spin 1s linear infinite;
-      will-change: transform;
-    }
-    
-    @keyframes spin {
-      from { transform: rotate(0deg); }
-      to { transform: rotate(360deg); }
-    }
-    
-    /* Delivery tracking animation */
-    @keyframes pulse-glow {
-      0%, 100% { transform: scale(1); opacity: 1; }
-      50% { transform: scale(1.05); opacity: 0.8; }
-    }
-    
-    .pulse-animation {
-      animation: pulse-glow 2s ease-in-out infinite;
-    }
-    
-    /* Gradient background with fallback */
-    .gradient-bg {
-      background-color: #667eea;
-      background-image: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    }
-    
-    /* Reduced motion alternatives */
-    @media (prefers-reduced-motion: reduce) {
-      .product-card {
-        transition: none;
-      }
-      
-      .animate-fade-in,
-      .animate-slide-up {
-        animation: none;
-        opacity: 1;
-      }
-    }
-  </style>
+    <style>
+        :root {
+            /* Primary Colors */
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --primary-color: #667eea;
+            --primary-dark: #5a67d8;
+            --primary-light: #e3f2fd;
+            
+            /* Accent Colors */
+            --accent-color: #ff6b6b;
+            --accent-dark: #ee5a52;
+            --success-color: #4ecdc4;
+            --warning-color: #ffe66d;
+            
+            /* Neutral Colors */
+            --dark: #2d3748;
+            --dark-light: #4a5568;
+            --text-primary: #1a202c;
+            --text-secondary: #718096;
+            --text-muted: #a0aec0;
+            
+            /* Background Colors */
+            --bg-primary: #ffffff;
+            --bg-secondary: #f7fafc;
+            --bg-tertiary: #edf2f7;
+            --bg-glass: rgba(255, 255, 255, 0.25);
+            
+            /* Shadows */
+            --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
+            --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.1);
+            --shadow-xl: 0 20px 40px rgba(0, 0, 0, 0.1);
+            --shadow-glow: 0 0 30px rgba(102, 126, 234, 0.3);
+            
+            /* Border Radius */
+            --radius-sm: 6px;
+            --radius-md: 12px;
+            --radius-lg: 20px;
+            --radius-xl: 30px;
+            
+            /* Transitions */
+            --transition-fast: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            --transition-base: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            --transition-slow: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            
+            /* Spacing */
+            --container-max-width: 1200px;
+            --section-padding: 80px 0;
+        }
+
+        /* Reset and Base Styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+            font-size: 16px;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            line-height: 1.6;
+            color: var(--text-primary);
+            background: var(--bg-primary);
+            overflow-x: hidden;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-tertiary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--primary-color);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--primary-dark);
+        }
+
+        /* Loading Animation */
+        .page-loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--primary-gradient);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            transition: opacity 0.5s ease, visibility 0.5s ease;
+        }
+
+        .page-loader.hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        .loader-content {
+            text-align: center;
+            color: white;
+        }
+
+        .loader-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 24px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loader-text {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .loader-subtitle {
+            font-size: 16px;
+            opacity: 0.8;
+        }
+
+        /* Utility Classes */
+        .container {
+            max-width: var(--container-max-width);
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        .section-padding {
+            padding: var(--section-padding);
+        }
+
+        .text-gradient {
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 14px 28px;
+            border: none;
+            border-radius: var(--radius-md);
+            font-weight: 600;
+            text-decoration: none;
+            cursor: pointer;
+            transition: var(--transition-base);
+            position: relative;
+            overflow: hidden;
+            font-size: 16px;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .btn:hover::before {
+            left: 100%;
+        }
+
+        .btn-primary {
+            background: var(--primary-gradient);
+            color: white;
+            box-shadow: var(--shadow-md);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-xl);
+        }
+
+        .btn-secondary {
+            background: var(--bg-primary);
+            color: var(--primary-color);
+            border: 2px solid var(--primary-color);
+        }
+
+        .btn-secondary:hover {
+            background: var(--primary-color);
+            color: white;
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .btn-ghost {
+            background: transparent;
+            color: white;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .btn-ghost:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.6);
+        }
+
+        /* Header */
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            transition: var(--transition-base);
+            padding: 0;
+        }
+
+        .header.scrolled {
+            background: rgba(255, 255, 255, 0.98);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .nav {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 0;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 28px;
+            font-weight: 800;
+            font-family: 'Space Grotesk', sans-serif;
+            text-decoration: none;
+            color: var(--text-primary);
+            transition: var(--transition-base);
+        }
+
+        .logo:hover {
+            transform: scale(1.05);
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: var(--primary-gradient);
+            border-radius: var(--radius-md);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 20px;
+        }
+
+        .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 32px;
+            list-style: none;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: var(--text-primary);
+            font-weight: 500;
+            transition: var(--transition-base);
+            position: relative;
+        }
+
+        .nav-links a::after {
+            content: '';
+            position: absolute;
+            width: 0;
+            height: 2px;
+            bottom: -4px;
+            left: 0;
+            background: var(--primary-gradient);
+            transition: width 0.3s;
+        }
+
+        .nav-links a:hover::after {
+            width: 100%;
+        }
+
+        .nav-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .nav-btn {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            color: var(--text-primary);
+            text-decoration: none;
+            border-radius: var(--radius-md);
+            transition: var(--transition-base);
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .nav-btn:hover {
+            background: var(--bg-secondary);
+            color: var(--primary-color);
+        }
+
+        /* User Menu Dropdown */
+        .user-menu {
+            position: relative;
+        }
+
+        .user-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: none;
+            border: none;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            transition: var(--transition-base);
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .user-btn:hover {
+            background: var(--bg-secondary);
+        }
+
+        .user-dropdown {
+            position: absolute;
+            top: 100%;
+            right: 0;
+            background: white;
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-xl);
+            border: 1px solid var(--bg-tertiary);
+            min-width: 200px;
+            padding: 8px 0;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-10px);
+            transition: var(--transition-base);
+            z-index: 1001;
+        }
+
+        .user-dropdown.show {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
+        .user-dropdown a {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 20px;
+            color: var(--text-primary);
+            text-decoration: none;
+            transition: var(--transition-base);
+            font-size: 14px;
+        }
+
+        .user-dropdown a:hover {
+            background: var(--bg-secondary);
+            color: var(--primary-color);
+        }
+
+        .user-dropdown hr {
+            margin: 8px 0;
+            border: none;
+            border-top: 1px solid var(--bg-tertiary);
+        }
+
+        /* Cart Button */
+        .cart-btn {
+            background: var(--primary-gradient);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            font-weight: 600;
+            transition: var(--transition-base);
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .cart-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .cart-count {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: var(--accent-color);
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+        }
+
+        .hamburger {
+            display: none;
+            flex-direction: column;
+            cursor: pointer;
+            padding: 8px;
+        }
+
+        .hamburger span {
+            width: 24px;
+            height: 3px;
+            background: var(--text-primary);
+            margin: 3px 0;
+            transition: var(--transition-base);
+        }
+
+        .hamburger.active span:nth-child(1) {
+            transform: rotate(-45deg) translate(-5px, 6px);
+        }
+
+        .hamburger.active span:nth-child(2) {
+            opacity: 0;
+        }
+
+        .hamburger.active span:nth-child(3) {
+            transform: rotate(45deg) translate(-5px, -6px);
+        }
+
+        /* Mobile Menu */
+        .mobile-menu {
+            position: fixed;
+            top: 0;
+            left: -100%;
+            width: 300px;
+            height: 100vh;
+            background: white;
+            z-index: 1002;
+            transition: var(--transition-base);
+            box-shadow: var(--shadow-xl);
+            padding: 80px 0 20px;
+            overflow-y: auto;
+        }
+
+        .mobile-menu.open {
+            left: 0;
+        }
+
+        .mobile-menu-links {
+            list-style: none;
+            padding: 0 20px;
+        }
+
+        .mobile-menu-links li {
+            margin-bottom: 8px;
+        }
+
+        .mobile-menu-links a {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 16px 20px;
+            color: var(--text-primary);
+            text-decoration: none;
+            border-radius: var(--radius-md);
+            transition: var(--transition-base);
+            font-weight: 500;
+        }
+
+        .mobile-menu-links a:hover {
+            background: var(--bg-secondary);
+        }
+
+        .mobile-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1001;
+            opacity: 0;
+            visibility: hidden;
+            transition: var(--transition-base);
+        }
+
+        .mobile-overlay.show {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        /* Hero Section */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            background: var(--primary-gradient);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" width="100" height="100" patternUnits="userSpaceOnUse"><circle cx="50" cy="50" r="0.5" fill="rgba(255,255,255,0.1)"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
+            animation: float 20s infinite linear;
+        }
+
+        @keyframes float {
+            0% { transform: translate(0, 0); }
+            25% { transform: translate(-10px, -10px); }
+            50% { transform: translate(10px, -20px); }
+            75% { transform: translate(-20px, 10px); }
+            100% { transform: translate(0, 0); }
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 2;
+            color: white;
+            text-align: center;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.2);
+            padding: 8px 16px;
+            border-radius: 50px;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 24px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .hero-title {
+            font-size: clamp(48px, 8vw, 80px);
+            font-weight: 900;
+            line-height: 1.1;
+            margin-bottom: 24px;
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        .hero-subtitle {
+            font-size: 24px;
+            font-weight: 400;
+            opacity: 0.9;
+            margin-bottom: 40px;
+            line-height: 1.4;
+        }
+
+        .hero-actions {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 60px;
+        }
+
+        .hero-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 40px;
+            margin-top: 80px;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 48px;
+            font-weight: 800;
+            font-family: 'Space Grotesk', sans-serif;
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        .stat-label {
+            font-size: 16px;
+            opacity: 0.8;
+            font-weight: 500;
+        }
+
+        /* Location Search */
+        .location-search {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            margin-top: 40px;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .search-input-group {
+            display: flex;
+            background: white;
+            border-radius: var(--radius-md);
+            overflow: hidden;
+            box-shadow: var(--shadow-lg);
+        }
+
+        .search-input {
+            flex: 1;
+            padding: 16px 20px;
+            border: none;
+            font-size: 16px;
+            color: var(--text-primary);
+            background: transparent;
+        }
+
+        .search-input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .search-input:focus {
+            outline: none;
+        }
+
+        .search-btn {
+            padding: 16px 24px;
+            background: var(--primary-gradient);
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            transition: var(--transition-base);
+        }
+
+        .search-btn:hover {
+            transform: scale(1.05);
+        }
+
+        /* Features Section */
+        .features {
+            background: var(--bg-secondary);
+            position: relative;
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 80px;
+        }
+
+        .section-title {
+            font-size: clamp(36px, 6vw, 56px);
+            font-weight: 800;
+            font-family: 'Space Grotesk', sans-serif;
+            margin-bottom: 16px;
+            color: var(--text-primary);
+        }
+
+        .section-subtitle {
+            font-size: 20px;
+            color: var(--text-secondary);
+            font-weight: 400;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 40px;
+        }
+
+        .feature-card {
+            background: var(--bg-primary);
+            padding: 40px;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-md);
+            text-align: center;
+            transition: var(--transition-base);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: var(--primary-gradient);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-8px);
+            box-shadow: var(--shadow-xl);
+            color: white;
+        }
+
+        .feature-card:hover::before {
+            opacity: 1;
+        }
+
+        .feature-card > * {
+            position: relative;
+            z-index: 2;
+        }
+
+        .feature-icon {
+            width: 80px;
+            height: 80px;
+            background: var(--primary-gradient);
+            border-radius: var(--radius-lg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 24px;
+            font-size: 36px;
+            color: white;
+            transition: var(--transition-base);
+        }
+
+        .feature-card:hover .feature-icon {
+            background: rgba(255, 255, 255, 0.2);
+            transform: scale(1.1);
+        }
+
+        .feature-title {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 16px;
+            color: var(--text-primary);
+        }
+
+        .feature-card:hover .feature-title {
+            color: white;
+        }
+
+        .feature-description {
+            font-size: 16px;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        .feature-card:hover .feature-description {
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        /* Categories Section */
+        .categories {
+            background: var(--bg-primary);
+        }
+
+        .categories-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+        }
+
+        .category-card {
+            background: var(--bg-secondary);
+            border-radius: var(--radius-lg);
+            padding: 32px;
+            text-align: center;
+            transition: var(--transition-base);
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+            border: 2px solid transparent;
+        }
+
+        .category-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: var(--primary-gradient);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .category-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
+            border-color: var(--primary-color);
+        }
+
+        .category-card:hover::before {
+            opacity: 0.1;
+        }
+
+        .category-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+            display: block;
+            transition: var(--transition-base);
+        }
+
+        .category-card:hover .category-icon {
+            transform: scale(1.2);
+        }
+
+        .category-title {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: var(--text-primary);
+        }
+
+        .category-subtitle {
+            font-size: 14px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        /* Sellers Section */
+        .sellers {
+            background: var(--primary-gradient);
+            color: white;
+        }
+
+        .sellers-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 80px;
+            align-items: center;
+        }
+
+        .sellers-text h2 {
+            font-size: clamp(36px, 6vw, 48px);
+            font-weight: 800;
+            font-family: 'Space Grotesk', sans-serif;
+            margin-bottom: 24px;
+        }
+
+        .sellers-text p {
+            font-size: 18px;
+            opacity: 0.9;
+            margin-bottom: 32px;
+            line-height: 1.6;
+        }
+
+        .sellers-features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 24px;
+        }
+
+        .seller-feature {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 24px;
+            border-radius: var(--radius-md);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .seller-feature-icon {
+            font-size: 32px;
+            margin-bottom: 16px;
+            display: block;
+        }
+
+        .seller-feature-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .seller-feature-desc {
+            font-size: 14px;
+            opacity: 0.8;
+            line-height: 1.5;
+        }
+
+        /* Testimonials Section */
+        .testimonials {
+            background: var(--bg-secondary);
+        }
+
+        .testimonials-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 32px;
+        }
+
+        .testimonial-card {
+            background: var(--bg-primary);
+            padding: 32px;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-md);
+            transition: var(--transition-base);
+            position: relative;
+        }
+
+        .testimonial-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-xl);
+        }
+
+        .testimonial-quote {
+            font-size: 18px;
+            line-height: 1.6;
+            margin-bottom: 24px;
+            color: var(--text-primary);
+            position: relative;
+        }
+
+        .testimonial-quote::before {
+            content: '"';
+            font-size: 60px;
+            color: var(--primary-color);
+            opacity: 0.3;
+            position: absolute;
+            top: -10px;
+            left: -10px;
+            font-family: serif;
+        }
+
+        .testimonial-author {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .author-avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: var(--primary-gradient);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 18px;
+        }
+
+        .author-info h4 {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+
+        .author-info p {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .testimonial-rating {
+            display: flex;
+            gap: 4px;
+            margin-top: 8px;
+        }
+
+        .star {
+            color: #ffd700;
+            font-size: 16px;
+        }
+
+        /* CTA Section */
+        .cta {
+            background: var(--primary-gradient);
+            color: white;
+            text-align: center;
+        }
+
+        .cta h2 {
+            font-size: clamp(32px, 6vw, 48px);
+            font-weight: 800;
+            font-family: 'Space Grotesk', sans-serif;
+            margin-bottom: 16px;
+        }
+
+        .cta p {
+            font-size: 20px;
+            opacity: 0.9;
+            margin-bottom: 32px;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .cta-features {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            margin-top: 40px;
+            flex-wrap: wrap;
+        }
+
+        .cta-feature {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 16px;
+            font-weight: 500;
+        }
+
+        .cta-feature i {
+            font-size: 20px;
+            color: var(--success-color);
+        }
+
+        /* Footer */
+        .footer {
+            background: var(--dark);
+            color: white;
+            padding: 60px 0 30px;
+        }
+
+        .footer-content {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr;
+            gap: 40px;
+            margin-bottom: 40px;
+        }
+
+        .footer-brand h3 {
+            font-size: 24px;
+            font-weight: 800;
+            font-family: 'Space Grotesk', sans-serif;
+            margin-bottom: 16px;
+        }
+
+        .footer-brand p {
+            opacity: 0.8;
+            line-height: 1.6;
+            margin-bottom: 24px;
+        }
+
+        .social-links {
+            display: flex;
+            gap: 16px;
+        }
+
+        .social-link {
+            width: 40px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            text-decoration: none;
+            transition: var(--transition-base);
+        }
+
+        .social-link:hover {
+            background: var(--primary-color);
+            transform: translateY(-2px);
+        }
+
+        .footer-section h4 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+
+        .footer-links {
+            list-style: none;
+        }
+
+        .footer-links li {
+            margin-bottom: 12px;
+        }
+
+        .footer-links a {
+            color: rgba(255, 255, 255, 0.8);
+            text-decoration: none;
+            transition: var(--transition-base);
+        }
+
+        .footer-links a:hover {
+            color: white;
+        }
+
+        .footer-bottom {
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding-top: 30px;
+            text-align: center;
+            opacity: 0.8;
+        }
+
+        /* Floating Action Buttons */
+        .floating-actions {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            z-index: 999;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .fab {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: var(--primary-gradient);
+            color: white;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            box-shadow: var(--shadow-lg);
+            transition: var(--transition-base);
+            text-decoration: none;
+        }
+
+        .fab:hover {
+            transform: scale(1.1);
+            box-shadow: var(--shadow-xl);
+        }
+
+        .fab.scroll-top {
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        .fab.scroll-top.show {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            :root {
+                --section-padding: 60px 0;
+            }
+
+            .nav-links {
+                display: none;
+            }
+
+            .hamburger {
+                display: flex;
+            }
+
+            .nav-actions {
+                gap: 8px;
+            }
+
+            .nav-btn {
+                padding: 6px 12px;
+                font-size: 13px;
+            }
+
+            .hero-title {
+                font-size: 48px;
+            }
+
+            .hero-subtitle {
+                font-size: 18px;
+            }
+
+            .hero-actions {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .hero-stats {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 20px;
+            }
+
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .categories-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .sellers-content {
+                grid-template-columns: 1fr;
+                gap: 40px;
+            }
+
+            .testimonials-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .footer-content {
+                grid-template-columns: 1fr;
+                gap: 30px;
+            }
+
+            .floating-actions {
+                bottom: 20px;
+                right: 20px;
+            }
+
+            .location-search {
+                margin: 40px 20px 0;
+            }
+
+            .search-input-group {
+                flex-direction: column;
+            }
+
+            .search-btn {
+                border-radius: 0 0 var(--radius-md) var(--radius-md);
+            }
+        }
+
+        /* Animations */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeInLeft {
+            from {
+                opacity: 0;
+                transform: translateX(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        @keyframes fadeInRight {
+            from {
+                opacity: 0;
+                transform: translateX(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+            50% {
+                opacity: 0.8;
+                transform: scale(1.05);
+            }
+        }
+
+        /* Dark mode support */
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg-primary: #1a202c;
+                --bg-secondary: #2d3748;
+                --bg-tertiary: #4a5568;
+                --text-primary: #f7fafc;
+                --text-secondary: #e2e8f0;
+                --text-muted: #a0aec0;
+            }
+        }
+
+        /* Accessibility */
+        @media (prefers-reduced-motion: reduce) {
+            *,
+            *::before,
+            *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
+        /* Performance optimizations */
+        .feature-card,
+        .category-card,
+        .testimonial-card {
+            will-change: transform;
+        }
+
+        /* Custom properties for dynamic themes */
+        [data-theme="dark"] {
+            --bg-primary: #1a202c;
+            --bg-secondary: #2d3748;
+            --text-primary: #f7fafc;
+            --text-secondary: #e2e8f0;
+        }
+    </style>
 </head>
-<body class="bg-gray-50 font-sans antialiased">
-  <!-- Skip to content link for accessibility -->
-  <a href="#main-content" class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:bg-white focus:px-4 focus:py-2 focus:rounded focus:z-50">
-    Skip to content
-  </a>
-
-  <!-- Navigation Bar -->
-  <nav class="bg-white shadow-md sticky top-0 z-50" aria-label="Main navigation">
-    <div class="container mx-auto px-4">
-      <div class="flex items-center justify-between h-16">
-        <div class="flex items-center space-x-4">
-          <a href="index.html" class="text-2xl font-bold text-blue-600 flex items-center">
-            <i class="fas fa-bolt mr-2" aria-hidden="true"></i>
-            <span>QuickLocal</span>
-          </a>
+<body>
+    <!-- Page Loader -->
+    <div class="page-loader" id="pageLoader">
+        <div class="loader-content">
+            <div class="loader-icon"></div>
+            <div class="loader-text">QuickLocal</div>
+            <div class="loader-subtitle">Setting up your premium experience...</div>
         </div>
-        
-        <!-- Mobile menu button -->
-        <button id="mobileMenuButton" class="md:hidden text-gray-700 focus:outline-none" aria-label="Toggle menu" aria-expanded="false">
-          <i class="fas fa-bars text-xl"></i>
-        </button>
-        
-        <div id="mainMenu" class="hidden md:flex items-center space-x-6">
-          <a href="marketplace.html" class="text-gray-700 hover:text-blue-600 transition-colors">Shop Now</a>
-          <a href="#how-it-works" class="text-gray-700 hover:text-blue-600 transition-colors">How It Works</a>
-          <a href="#sellers" class="text-gray-700 hover:text-blue-600 transition-colors">For Sellers</a>
-          <a href="#about" class="text-gray-700 hover:text-blue-600 transition-colors">About</a>
-        </div>
-        
-        <div class="flex items-center space-x-4">
-          <a href="marketplace.html" class="text-gray-700 hover:text-blue-600 transition-colors" aria-label="Search products">
-            <i class="fas fa-search text-xl"></i>
-          </a>
-          
-          <a href="marketplace.html" class="text-gray-700 hover:text-blue-600 transition-colors relative" aria-label="Shopping cart">
-            <i class="fas fa-shopping-cart text-xl"></i>
-            <span id="cartCount" class="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center hidden">0</span>
-          </a>
-          
-          <button id="loginBtn" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
-            <i class="fas fa-user mr-2" aria-hidden="true"></i>
-            Sign In
-          </button>
-        </div>
-      </div>
-      
-      <!-- Mobile menu -->
-      <div id="mobileMenu" class="hidden md:hidden py-4 border-t border-gray-200">
-        <div class="flex flex-col space-y-3">
-          <a href="marketplace.html" class="text-gray-700 hover:text-blue-600 transition-colors">Shop Now</a>
-          <a href="#how-it-works" class="text-gray-700 hover:text-blue-600 transition-colors">How It Works</a>
-          <a href="seller.html" class="text-gray-700 hover:text-blue-600 transition-colors">Become a Seller</a>
-          <a href="#about" class="text-gray-700 hover:text-blue-600 transition-colors">About</a>
-        </div>
-      </div>
     </div>
-  </nav>
 
-  <!-- Main Content -->
-  <main id="main-content">
-    <!-- Enhanced Hero Section -->
-    <section class="gradient-bg text-white py-16 md:py-24">
-      <div class="container mx-auto px-4 text-center">
-        <div class="max-w-4xl mx-auto animate-slide-up">
-          <h1 class="text-4xl sm:text-5xl md:text-6xl font-bold mb-6 leading-tight">
-            Fresh. Local. <span class="text-yellow-300">20 Minutes.</span>
-          </h1>
-          <p class="text-lg md:text-2xl mb-8 text-blue-100">
-            Get everything you need from local sellers delivered to your doorstep in just 20 minutes
-          </p>
-          
-          <!-- Call to Action Buttons -->
-          <div class="flex flex-col sm:flex-row justify-center gap-4 mb-8">
-            <a href="marketplace.html" class="bg-white text-blue-600 px-8 py-4 rounded-lg hover:bg-gray-100 transition-colors font-semibold text-lg">
-              <i class="fas fa-shopping-cart mr-2"></i>
-              Start Shopping
-            </a>
-            <a href="seller.html" class="bg-transparent border-2 border-white text-white px-8 py-4 rounded-lg hover:bg-white hover:text-blue-600 transition-colors font-semibold text-lg">
-              <i class="fas fa-store mr-2"></i>
-              Become a Seller
-            </a>
-          </div>
-          
-          <!-- Location Input with Auto-detect -->
-          <div class="bg-white rounded-full p-2 max-w-2xl mx-auto shadow-xl animate-fade-in" style="animation-delay: 0.2s">
-            <div class="flex flex-col sm:flex-row items-stretch">
-              <div class="flex-1 relative mb-2 sm:mb-0">
-                <i class="fas fa-map-marker-alt absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
-                <input 
-                  type="text" 
-                  id="locationInput"
-                  placeholder="Enter your delivery address..." 
-                  class="w-full pl-12 pr-4 py-4 text-gray-800 rounded-l-full sm:rounded-r-none rounded-r-full sm:rounded-r-none focus:outline-none text-lg"
-                  aria-label="Delivery address"
-                />
-              </div>
-              <button 
-                id="detectLocationBtn"
-                class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-full sm:rounded-l-none transition-colors flex items-center justify-center whitespace-nowrap"
-                aria-label="Detect my location"
-              >
-                <i class="fas fa-crosshairs mr-2"></i>
-                Detect Location
-              </button>
-            </div>
-          </div>
-          
-          <!-- Quick Stats -->
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-8 mt-12 animate-fade-in" style="animation-delay: 0.4s">
-            <div class="text-center">
-              <div class="text-3xl font-bold text-yellow-300" id="deliveryTime">20</div>
-              <div class="text-blue-100">Minutes Delivery</div>
-            </div>
-            <div class="text-center">
-              <div class="text-3xl font-bold text-yellow-300" id="localSellers">500+</div>
-              <div class="text-blue-100">Local Sellers</div>
-            </div>
-            <div class="text-center">
-              <div class="text-3xl font-bold text-yellow-300" id="happyCustomers">10K+</div>
-              <div class="text-blue-100">Happy Customers</div>
-            </div>
-          </div>
+    <!-- Header -->
+    <header class="header" id="header">
+        <div class="container">
+            <nav class="nav">
+                <a href="#" class="logo">
+                    <div class="logo-icon">
+                        <i class="fas fa-shopping-bag"></i>
+                    </div>
+                    QuickLocal
+                </a>
+                
+                <ul class="nav-links">
+                    <li><a href="#features">How it Works</a></li>
+                    <li><a href="#categories">Categories</a></li>
+                    <li><a href="#sellers">For Sellers</a></li>
+                    <li><a href="#testimonials">Reviews</a></li>
+                    <li><a href="marketplace.html">Shop Now</a></li>
+                </ul>
+                
+                <div class="nav-actions">
+                    <!-- Guest Navigation -->
+                    <div class="guest-nav" id="guestNav">
+                        <a href="login.html" class="nav-btn">
+                            <i class="fas fa-sign-in-alt"></i>
+                            Login
+                        </a>
+                        <a href="register.html" class="nav-btn">
+                            <i class="fas fa-user-plus"></i>
+                            Sign Up
+                        </a>
+                    </div>
+                    
+                    <!-- Logged In Navigation -->
+                    <div class="user-menu" id="userMenu" style="display: none;">
+                        <button class="user-btn" onclick="toggleUserDropdown()">
+                            <i class="fas fa-user-circle"></i>
+                            <span id="userName">John Doe</span>
+                            <i class="fas fa-chevron-down"></i>
+                        </button>
+                        <div class="user-dropdown" id="userDropdown">
+                            <a href="profile.html"><i class="fas fa-user"></i> My Profile</a>
+                            <a href="orders.html"><i class="fas fa-shopping-bag"></i> My Orders</a>
+                            <a href="wishlist.html"><i class="fas fa-heart"></i> Wishlist</a>
+                            <a href="addresses.html"><i class="fas fa-map-marker-alt"></i> Addresses</a>
+                            <a href="wallet.html"><i class="fas fa-wallet"></i> Wallet</a>
+                            <hr>
+                            <a href="settings.html"><i class="fas fa-cog"></i> Settings</a>
+                            <a href="help.html"><i class="fas fa-question-circle"></i> Help Center</a>
+                            <hr>
+                            <a href="#" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Logout</a>
+                        </div>
+                    </div>
+                    
+                    <!-- Cart Button -->
+                    <button class="cart-btn" onclick="toggleCart()">
+                        <i class="fas fa-shopping-cart"></i>
+                        Cart
+                        <span class="cart-count" id="cartCount">0</span>
+                    </button>
+                </div>
+                
+                <div class="hamburger" id="hamburger" onclick="toggleMobileMenu()">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </nav>
         </div>
-      </div>
+    </header>
+
+    <!-- Mobile Menu -->
+    <div class="mobile-menu" id="mobileMenu">
+        <ul class="mobile-menu-links">
+            <li><a href="#features"><i class="fas fa-info-circle"></i> How it Works</a></li>
+            <li><a href="#categories"><i class="fas fa-th-large"></i> Categories</a></li>
+            <li><a href="#sellers"><i class="fas fa-store"></i> For Sellers</a></li>
+            <li><a href="#testimonials"><i class="fas fa-star"></i> Reviews</a></li>
+            <li><a href="marketplace.html"><i class="fas fa-shopping-cart"></i> Shop Now</a></li>
+            <hr style="margin: 20px 0; border: 1px solid var(--bg-tertiary);">
+            <!-- Guest Links -->
+            <li class="guest-only"><a href="login.html"><i class="fas fa-sign-in-alt"></i> Login</a></li>
+            <li class="guest-only"><a href="register.html"><i class="fas fa-user-plus"></i> Sign Up</a></li>
+            <!-- User Links -->
+            <li class="user-only" style="display: none;"><a href="profile.html"><i class="fas fa-user"></i> My Profile</a></li>
+            <li class="user-only" style="display: none;"><a href="orders.html"><i class="fas fa-shopping-bag"></i> My Orders</a></li>
+            <li class="user-only" style="display: none;"><a href="wishlist.html"><i class="fas fa-heart"></i> Wishlist</a></li>
+            <li class="user-only" style="display: none;"><a href="addresses.html"><i class="fas fa-map-marker-alt"></i> Addresses</a></li>
+            <li class="user-only" style="display: none;"><a href="wallet.html"><i class="fas fa-wallet"></i> Wallet</a></li>
+            <li class="user-only" style="display: none;"><a href="settings.html"><i class="fas fa-cog"></i> Settings</a></li>
+            <li class="user-only" style="display: none;"><a href="help.html"><i class="fas fa-question-circle"></i> Help Center</a></li>
+            <li class="user-only" style="display: none;"><a href="#" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
+        </ul>
+    </div>
+
+    <!-- Mobile Overlay -->
+    <div class="mobile-overlay" id="mobileOverlay" onclick="toggleMobileMenu()"></div>
+
+    <!-- Hero Section -->
+    <section class="hero" id="hero">
+        <div class="container">
+            <div class="hero-content" data-aos="fade-up" data-aos-duration="1000">
+                <div class="hero-badge" data-aos="fade-up" data-aos-delay="200">
+                    <i class="fas fa-bolt"></i>
+                    India's Fastest Local Delivery
+                </div>
+                
+                <h1 class="hero-title" data-aos="fade-up" data-aos-delay="400">
+                    Fresh. Local. <span class="text-gradient">20 Minutes.</span>
+                </h1>
+                
+                <p class="hero-subtitle" data-aos="fade-up" data-aos-delay="600">
+                    Get everything you need from local sellers delivered to your doorstep in just 20 minutes. Fresh groceries, electronics, and more from your neighborhood.
+                </p>
+                
+                <div class="hero-actions" data-aos="fade-up" data-aos-delay="800">
+                    <a href="marketplace.html" class="btn btn-primary btn-lg">
+                        <i class="fas fa-rocket"></i>
+                        Shop Now
+                    </a>
+                    <a href="#features" class="btn btn-ghost">
+                        <i class="fas fa-play"></i>
+                        How it Works
+                    </a>
+                </div>
+                
+                <div class="location-search" data-aos="fade-up" data-aos-delay="1000">
+                    <div class="search-input-group">
+                        <input type="text" class="search-input" placeholder="Enter your location to see available products..." id="locationInput">
+                        <button class="search-btn" onclick="searchLocation()">
+                            <i class="fas fa-search"></i>
+                            Find Products
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="hero-stats" data-aos="fade-up" data-aos-delay="1200">
+                    <div class="stat-item">
+                        <span class="stat-number" data-count="10000">0</span>
+                        <span class="stat-label">Happy Customers</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number" data-count="500">0</span>
+                        <span class="stat-label">Local Sellers</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number">20</span>
+                        <span class="stat-label">Minutes Delivery</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number">24/7</span>
+                        <span class="stat-label">Support</span>
+                    </div>
+                </div>
+            </div>
+        </div>
     </section>
 
-    <!-- How It Works Section -->
-    <section id="how-it-works" class="py-16 bg-white">
-      <div class="container mx-auto px-4">
-        <div class="text-center mb-12">
-          <h2 class="text-3xl md:text-4xl font-bold text-gray-800 mb-4">How QuickLocal Works</h2>
-          <p class="text-lg text-gray-600 max-w-2xl mx-auto">Get what you need in just 3 simple steps</p>
+    <!-- Features Section -->
+    <section class="features section-padding" id="features">
+        <div class="container">
+            <div class="section-header" data-aos="fade-up">
+                <h2 class="section-title">How QuickLocal Works</h2>
+                <p class="section-subtitle">Get what you need in just 3 simple steps</p>
+            </div>
+            
+            <div class="features-grid">
+                <div class="feature-card" data-aos="fade-up" data-aos-delay="200">
+                    <div class="feature-icon">
+                        <i class="fas fa-map-marker-alt"></i>
+                    </div>
+                    <h3 class="feature-title">Set Your Location</h3>
+                    <p class="feature-description">Enter your address or let us detect your location to see available products near you. We'll show you everything within a 5km radius.</p>
+                </div>
+                
+                <div class="feature-card" data-aos="fade-up" data-aos-delay="400">
+                    <div class="feature-icon">
+                        <i class="fas fa-store"></i>
+                    </div>
+                    <h3 class="feature-title">Shop Local Stores</h3>
+                    <p class="feature-description">Browse fresh products from verified local sellers in your neighborhood. Compare prices and read reviews from your community.</p>
+                </div>
+                
+                <div class="feature-card" data-aos="fade-up" data-aos-delay="600">
+                    <div class="feature-icon">
+                        <i class="fas fa-shipping-fast"></i>
+                    </div>
+                    <h3 class="feature-title">Get Fast Delivery</h3>
+                    <p class="feature-description">Receive your order in about 20 minutes from a nearby delivery agent. Track your order in real-time from pickup to doorstep.</p>
+                </div>
+            </div>
         </div>
-        
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-          <div class="bg-gray-50 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow">
-            <div class="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-blue-600 text-2xl">
-              1
-            </div>
-            <h3 class="text-xl font-semibold text-center text-gray-800 mb-2">Set Your Location</h3>
-            <p class="text-gray-600 text-center">Enter your address or let us detect your location to see available products near you.</p>
-          </div>
-          
-          <div class="bg-gray-50 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow">
-            <div class="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-blue-600 text-2xl">
-              2
-            </div>
-            <h3 class="text-xl font-semibold text-center text-gray-800 mb-2">Shop Local Stores</h3>
-            <p class="text-gray-600 text-center">Browse fresh products from local sellers in your neighborhood.</p>
-          </div>
-          
-          <div class="bg-gray-50 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow">
-            <div class="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-blue-600 text-2xl">
-              3
-            </div>
-            <h3 class="text-xl font-semibold text-center text-gray-800 mb-2">Get Fast Delivery</h3>
-            <p class="text-gray-600 text-center">Receive your order in about 20 minutes from a nearby delivery agent.</p>
-          </div>
-        </div>
-      </div>
     </section>
 
-    <!-- Enhanced Categories Section -->
-    <section class="py-16 bg-gray-50">
-      <div class="container mx-auto px-4">
-        <div class="text-center mb-12">
-          <h2 class="text-3xl md:text-4xl font-bold text-gray-800 mb-4">Shop by Category</h2>
-          <p class="text-lg text-gray-600">Everything you need from your neighborhood</p>
-          <div id="locationDisplay" class="mt-4 text-blue-600 font-medium flex items-center justify-center">
-            <i class="fas fa-map-marker-alt mr-2"></i>
-            <span>Detecting your location...</span>
-          </div>
+    <!-- Categories Section -->
+    <section class="categories section-padding" id="categories">
+        <div class="container">
+            <div class="section-header" data-aos="fade-up">
+                <h2 class="section-title">Shop by Category</h2>
+                <p class="section-subtitle">Everything you need from your neighborhood</p>
+            </div>
+            
+            <div class="categories-grid">
+                <div class="category-card" data-aos="fade-up" data-aos-delay="100" onclick="shopCategory('grocery')">
+                    <span class="category-icon">🥬</span>
+                    <h3 class="category-title">Fresh Grocery</h3>
+                    <p class="category-subtitle">From local stores</p>
+                </div>
+                
+                <div class="category-card" data-aos="fade-up" data-aos-delay="200" onclick="shopCategory('electronics')">
+                    <span class="category-icon">📱</span>
+                    <h3 class="category-title">Electronics</h3>
+                    <p class="category-subtitle">Gadgets & more</p>
+                </div>
+                
+                <div class="category-card" data-aos="fade-up" data-aos-delay="300" onclick="shopCategory('bakery')">
+                    <span class="category-icon">🍞</span>
+                    <h3 class="category-title">Bakery</h3>
+                    <p class="category-subtitle">Fresh baked</p>
+                </div>
+                
+                <div class="category-card" data-aos="fade-up" data-aos-delay="400" onclick="shopCategory('clothing')">
+                    <span class="category-icon">👕</span>
+                    <h3 class="category-title">Clothing</h3>
+                    <p class="category-subtitle">Fashion items</p>
+                </div>
+                
+                <div class="category-card" data-aos="fade-up" data-aos-delay="500" onclick="shopCategory('books')">
+                    <span class="category-icon">📚</span>
+                    <h3 class="category-title">Books</h3>
+                    <p class="category-subtitle">Local bookstore</p>
+                </div>
+                
+                <div class="category-card" data-aos="fade-up" data-aos-delay="600" onclick="shopCategory('home')">
+                    <span class="category-icon">🏠</span>
+                    <h3 class="category-title">Home & Garden</h3>
+                    <p class="category-subtitle">House essentials</p>
+                </div>
+            </div>
         </div>
-        
-        <div id="categoriesGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 sm:gap-6">
-          <!-- Dynamic categories will be loaded here -->
-          <a href="marketplace.html?category=grocery" class="category-card bg-white rounded-xl p-4 sm:p-6 text-center shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer group" data-category="grocery" aria-label="Browse groceries">
-            <div class="bg-green-100 w-12 h-12 sm:w-16 sm:h-16 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4 group-hover:bg-green-200 transition-colors">
-              <i class="fas fa-shopping-basket text-xl sm:text-2xl text-green-600"></i>
-            </div>
-            <h3 class="font-semibold text-gray-800 mb-1 sm:mb-2 text-sm sm:text-base">Fresh Grocery</h3>
-            <p class="text-xs sm:text-sm text-gray-500">From local stores</p>
-            <div class="mt-2 text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full inline-block">
-              15-20 min
-            </div>
-          </a>
-          
-          <a href="marketplace.html?category=electronics" class="category-card bg-white rounded-xl p-4 sm:p-6 text-center shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer group" data-category="electronics" aria-label="Browse electronics">
-            <div class="bg-blue-100 w-12 h-12 sm:w-16 sm:h-16 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4 group-hover:bg-blue-200 transition-colors">
-              <i class="fas fa-laptop text-xl sm:text-2xl text-blue-600"></i>
-            </div>
-            <h3 class="font-semibold text-gray-800 mb-1 sm:mb-2 text-sm sm:text-base">Electronics</h3>
-            <p class="text-xs sm:text-sm text-gray-500">Gadgets & more</p>
-            <div class="mt-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full inline-block">
-              20-25 min
-            </div>
-          </a>
-          
-          <a href="marketplace.html?category=bakery" class="category-card bg-white rounded-xl p-4 sm:p-6 text-center shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer group" data-category="bakery" aria-label="Browse bakery items">
-            <div class="bg-orange-100 w-12 h-12 sm:w-16 sm:h-16 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4 group-hover:bg-orange-200 transition-colors">
-              <i class="fas fa-bread-slice text-xl sm:text-2xl text-orange-600"></i>
-            </div>
-            <h3 class="font-semibold text-gray-800 mb-1 sm:mb-2 text-sm sm:text-base">Bakery</h3>
-            <p class="text-xs sm:text-sm text-gray-500">Fresh baked</p>
-            <div class="mt-2 text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-full inline-block">
-              12-18 min
-            </div>
-          </a>
-          
-          <a href="marketplace.html?category=clothing" class="category-card bg-white rounded-xl p-4 sm:p-6 text-center shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer group" data-category="clothing" aria-label="Browse clothing">
-            <div class="bg-purple-100 w-12 h-12 sm:w-16 sm:h-16 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4 group-hover:bg-purple-200 transition-colors">
-              <i class="fas fa-tshirt text-xl sm:text-2xl text-purple-600"></i>
-            </div>
-            <h3 class="font-semibold text-gray-800 mb-1 sm:mb-2 text-sm sm:text-base">Clothing</h3>
-            <p class="text-xs sm:text-sm text-gray-500">Fashion items</p>
-            <div class="mt-2 text-xs bg-purple-100 text-purple-800 px-2 py-1 rounded-full inline-block">
-              25-30 min
-            </div>
-          </a>
-          
-          <a href="marketplace.html?category=books" class="category-card bg-white rounded-xl p-4 sm:p-6 text-center shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer group" data-category="books" aria-label="Browse books">
-            <div class="bg-red-100 w-12 h-12 sm:w-16 sm:h-16 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4 group-hover:bg-red-200 transition-colors">
-              <i class="fas fa-book text-xl sm:text-2xl text-red-600"></i>
-            </div>
-            <h3 class="font-semibold text-gray-800 mb-1 sm:mb-2 text-sm sm:text-base">Books</h3>
-            <p class="text-xs sm:text-sm text-gray-500">Local bookstore</p>
-            <div class="mt-2 text-xs bg-red-100 text-red-800 px-2 py-1 rounded-full inline-block">
-              20-25 min
-            </div>
-          </a>
-          
-          <a href="marketplace.html?category=home" class="category-card bg-white rounded-xl p-4 sm:p-6 text-center shadow-sm hover:shadow-md transition-all duration-300 cursor-pointer group" data-category="home" aria-label="Browse home items">
-            <div class="bg-yellow-100 w-12 h-12 sm:w-16 sm:h-16 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4 group-hover:bg-yellow-200 transition-colors">
-              <i class="fas fa-home text-xl sm:text-2xl text-yellow-600"></i>
-            </div>
-            <h3 class="font-semibold text-gray-800 mb-1 sm:mb-2 text-sm sm:text-base">Home & Garden</h3>
-            <p class="text-xs sm:text-sm text-gray-500">House essentials</p>
-            <div class="mt-2 text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full inline-block">
-              25-30 min
-            </div>
-          </a>
-        </div>
-        
-        <div class="text-center mt-12">
-          <a href="marketplace.html" class="bg-blue-600 text-white px-8 py-3 rounded-lg hover:bg-blue-700 transition-colors font-semibold">
-            <i class="fas fa-arrow-right mr-2"></i>
-            View All Products
-          </a>
-        </div>
-      </div>
     </section>
 
-    <!-- For Sellers Section -->
-    <section id="sellers" class="py-16 bg-white">
-      <div class="container mx-auto px-4">
-        <div class="text-center mb-12">
-          <h2 class="text-3xl md:text-4xl font-bold text-gray-800 mb-4">For Local Sellers</h2>
-          <p class="text-lg text-gray-600 max-w-2xl mx-auto">Join our network and reach more customers in your area</p>
+    <!-- Sellers Section -->
+    <section class="sellers section-padding" id="sellers">
+        <div class="container">
+            <div class="sellers-content">
+                <div class="sellers-text" data-aos="fade-right">
+                    <h2>For Local Sellers</h2>
+                    <p>Join our network and reach more customers in your area. Expand your business with our fast delivery network and easy-to-use platform.</p>
+                    <a href="seller-register.html" class="btn btn-ghost">
+                        <i class="fas fa-arrow-right"></i>
+                        Join as Seller
+                    </a>
+                </div>
+                
+                <div class="sellers-features" data-aos="fade-left">
+                    <div class="seller-feature">
+                        <span class="seller-feature-icon">🚀</span>
+                        <h4 class="seller-feature-title">Expand Your Reach</h4>
+                        <p class="seller-feature-desc">Connect with customers in your neighborhood who want fast delivery.</p>
+                    </div>
+                    
+                    <div class="seller-feature">
+                        <span class="seller-feature-icon">📦</span>
+                        <h4 class="seller-feature-title">Fast Delivery Network</h4>
+                        <p class="seller-feature-desc">Our delivery agents handle the last-mile delivery for your orders.</p>
+                    </div>
+                    
+                    <div class="seller-feature">
+                        <span class="seller-feature-icon">📊</span>
+                        <h4 class="seller-feature-title">Easy Management</h4>
+                        <p class="seller-feature-desc">Simple dashboard to manage inventory, orders, and payments.</p>
+                    </div>
+                    
+                    <div class="seller-feature">
+                        <span class="seller-feature-icon">💰</span>
+                        <h4 class="seller-feature-title">Fair Commissions</h4>
+                        <p class="seller-feature-desc">Keep more earnings with our low, transparent commission structure.</p>
+                    </div>
+                </div>
+            </div>
         </div>
-        
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-          <div class="bg-gray-50 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow">
-            <div class="bg-blue-100 w-12 h-12 rounded-full flex items-center justify-center mb-4 text-blue-600">
-              <i class="fas fa-store text-xl"></i>
-            </div>
-            <h3 class="text-xl font-semibold text-gray-800 mb-2">Expand Your Reach</h3>
-            <p class="text-gray-600">Connect with customers in your neighborhood who want fast delivery of your products.</p>
-          </div>
-          
-          <div class="bg-gray-50 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow">
-            <div class="bg-green-100 w-12 h-12 rounded-full flex items-center justify-center mb-4 text-green-600">
-              <i class="fas fa-bolt text-xl"></i>
-            </div>
-            <h3 class="text-xl font-semibold text-gray-800 mb-2">Fast Delivery Network</h3>
-            <p class="text-gray-600">Our delivery agents will handle the last-mile delivery for your orders.</p>
-          </div>
-          
-          <div class="bg-gray-50 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow">
-            <div class="bg-purple-100 w-12 h-12 rounded-full flex items-center justify-center mb-4 text-purple-600">
-              <i class="fas fa-chart-line text-xl"></i>
-            </div>
-            <h3 class="text-xl font-semibold text-gray-800 mb-2">Easy Management</h3>
-            <p class="text-gray-600">Simple dashboard to manage your inventory, orders, and payments.</p>
-          </div>
-          
-          <div class="bg-gray-50 p-6 rounded-xl shadow-sm hover:shadow-md transition-shadow">
-            <div class="bg-orange-100 w-12 h-12 rounded-full flex items-center justify-center mb-4 text-orange-600">
-              <i class="fas fa-hand-holding-usd text-xl"></i>
-            </div>
-            <h3 class="text-xl font-semibold text-gray-800 mb-2">Fair Commissions</h3>
-            <p class="text-gray-600">Keep more of your earnings with our low, transparent commission structure.</p>
-          </div>
-        </div>
-        
-        <div class="text-center mt-12">
-          <a href="seller.html" class="bg-green-600 text-white px-8 py-3 rounded-lg hover:bg-green-700 transition-colors font-semibold">
-            <i class="fas fa-user-plus mr-2"></i>
-            Sign Up as a Seller
-          </a>
-        </div>
-      </div>
     </section>
 
     <!-- Testimonials Section -->
-    <section class="py-16 bg-gray-50">
-      <div class="container mx-auto px-4">
-        <div class="text-center mb-12">
-          <h2 class="text-3xl md:text-4xl font-bold text-gray-800 mb-4">What Our Customers Say</h2>
-          <p class="text-lg text-gray-600">Real experiences from our community</p>
+    <section class="testimonials section-padding" id="testimonials">
+        <div class="container">
+            <div class="section-header" data-aos="fade-up">
+                <h2 class="section-title">What Our Customers Say</h2>
+                <p class="section-subtitle">Real experiences from our community</p>
+            </div>
+            
+            <div class="testimonials-grid">
+                <div class="testimonial-card" data-aos="fade-up" data-aos-delay="100">
+                    <p class="testimonial-quote">I needed ingredients for dinner and got them in 15 minutes! QuickLocal saved my evening.</p>
+                    <div class="testimonial-author">
+                        <div class="author-avatar">SK</div>
+                        <div class="author-info">
+                            <h4>Sarah Kumar</h4>
+                            <p>Regular Customer</p>
+                            <div class="testimonial-rating">
+                                <i class="fas fa-star star"></i>
+                                <i class="fas fa-star star"></i>
+                                <i class="fas fa-star star"></i>
+                                <i class="fas fa-star star"></i>
+                                <i class="fas fa-star star"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="testimonial-card" data-aos="fade-up" data-aos-delay="200">
+                    <p class="testimonial-quote">The quality of produce is amazing and delivery is lightning fast. I use QuickLocal weekly now.</p>
+                    <div class="testimonial-author">
+                        <div class="author-avatar">RP</div>
+                        <div class="author-info">
+                            <h4>Raj Patel</h4>
+                            <p>Local Business Owner</p>
+                            <div class="testimonial-rating">
+                                <i class="fas fa-star star"></i>
+                                <i class="fas fa-star star"></i>
+                                <i class="fas fa-star star"></i>
+                                <i class="fas fa-star star"></i>
+                                <i class="fas fa-star star"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="testimonial-card" data-aos="fade-up" data-aos-delay="300">
+                    <p class="testimonial-quote">Forgot milk for my baby's breakfast. QuickLocal delivered before we finished getting dressed!</p>
+                    <div class="testimonial-author">
+                        <div class="author-avatar">PM</div>
+                        <div class="author-info">
+                            <h4>Priya Mehta</h4>
+                            <p>New Parent</p>
+                            <div class="testimonial-rating">
+                                <i class="fas fa-star star"></i>
+                                <i class="fas fa-star star"></i>
+                                <i class="fas fa-star star"></i>
+                                <i class="fas fa-star star"></i>
+                                <i class="fas fa-star star"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
-        
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl mx-auto">
-          <div class="bg-white p-6 rounded-xl shadow-sm">
-            <div class="flex items-center mb-4">
-              <div class="flex items-center text-yellow-400 mr-2">
-                <i class="fas fa-star"></i>
-                <i class="fas fa-star"></i>
-                <i class="fas fa-star"></i>
-                <i class="fas fa-star"></i>
-                <i class="fas fa-star"></i>
-              </div>
-              <span class="text-sm text-gray-500">2 days ago</span>
-            </div>
-            <p class="text-gray-700 mb-4">"I needed ingredients for dinner and got them in 15 minutes! QuickLocal saved my evening."</p>
-            <div class="flex items-center">
-              <div class="w-10 h-10 rounded-full bg-gray-300 mr-3 overflow-hidden">
-                <img src="https://randomuser.me/api/portraits/women/32.jpg" alt="Sarah K." class="w-full h-full object-cover">
-              </div>
-              <div>
-                <h4 class="font-medium text-gray-800">Sarah K.</h4>
-                <p class="text-sm text-gray-500">Regular Customer</p>
-              </div>
-            </div>
-          </div>
-          
-          <div class="bg-white p-6 rounded-xl shadow-sm">
-            <div class="flex items-center mb-4">
-              <div class="flex items-center text-yellow-400 mr-2">
-                <i class="fas fa-star"></i>
-                <i class="fas fa-star"></i>
-                <i class="fas fa-star"></i>
-                <i class="fas fa-star"></i>
-                <i class="fas fa-star"></i>
-              </div>
-              <span class="text-sm text-gray-500">1 week ago</span>
-            </div>
-            <p class="text-gray-700 mb-4">"The quality of produce is amazing and delivery is lightning fast. I use QuickLocal weekly now."</p>
-            <div class="flex items-center">
-              <div class="w-10 h-10 rounded-full bg-gray-300 mr-3 overflow-hidden">
-                <img src="https://randomuser.me/api/portraits/men/45.jpg" alt="Raj P." class="w-full h-full object-cover">
-              </div>
-              <div>
-                <h4 class="font-medium text-gray-800">Raj P.</h4>
-                <p class="text-sm text-gray-500">Local Business Owner</p>
-              </div>
-            </div>
-          </div>
-          
-          <div class="bg-white p-6 rounded-xl shadow-sm">
-            <div class="flex items-center mb-4">
-              <div class="flex items-center text-yellow-400 mr-2">
-                <i class="fas fa-star"></i>
-                <i class="fas fa-star"></i>
-                <i class="fas fa-star"></i>
-                <i class="fas fa-star"></i>
-                <i class="fas fa-star-half-alt"></i>
-              </div>
-              <span class="text-sm text-gray-500">3 days ago</span>
-            </div>
-            <p class="text-gray-700 mb-4">"Forgot milk for my baby's breakfast. QuickLocal delivered before we finished getting dressed!"</p>
-            <div class="flex items-center">
-              <div class="w-10 h-10 rounded-full bg-gray-300 mr-3 overflow-hidden">
-                <img src="https://randomuser.me/api/portraits/women/68.jpg" alt="Priya M." class="w-full h-full object-cover">
-              </div>
-              <div>
-                <h4 class="font-medium text-gray-800">Priya M.</h4>
-                <p class="text-sm text-gray-500">New Parent</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
     </section>
 
     <!-- CTA Section -->
-    <section class="py-16 gradient-bg text-white">
-      <div class="container mx-auto px-4 text-center">
-        <div class="max-w-3xl mx-auto">
-          <h2 class="text-3xl md:text-4xl font-bold mb-6">Ready to Experience Lightning-Fast Delivery?</h2>
-          <p class="text-xl text-blue-100 mb-8">Start shopping from local sellers in your neighborhood</p>
-          
-          <div class="flex flex-col sm:flex-row justify-center gap-4 mb-8">
-            <a href="marketplace.html" class="bg-white text-blue-600 px-8 py-4 rounded-lg hover:bg-gray-100 transition-colors font-semibold text-lg">
-              <i class="fas fa-shopping-cart mr-2"></i>
-              Start Shopping Now
-            </a>
-            <a href="seller.html" class="bg-transparent border-2 border-white text-white px-8 py-4 rounded-lg hover:bg-white hover:text-blue-600 transition-colors font-semibold text-lg">
-              <i class="fas fa-store mr-2"></i>
-              Become a Seller
-            </a>
-          </div>
-          
-          <p class="text-blue-100 text-sm">
-            <i class="fas fa-shield-alt mr-2"></i>
-            Safe and secure payments • Fast delivery guarantee • 24/7 support
-          </p>
+    <section class="cta section-padding">
+        <div class="container">
+            <div data-aos="fade-up">
+                <h2>Ready to Experience Lightning-Fast Delivery?</h2>
+                <p>Start shopping from local sellers in your neighborhood</p>
+                <a href="marketplace.html" class="btn btn-ghost btn-lg">
+                    <i class="fas fa-shopping-cart"></i>
+                    Start Shopping Now
+                </a>
+                
+                <div class="cta-features">
+                    <div class="cta-feature">
+                        <i class="fas fa-shield-alt"></i>
+                        Safe and secure payments
+                    </div>
+                    <div class="cta-feature">
+                        <i class="fas fa-clock"></i>
+                        Fast delivery guarantee
+                    </div>
+                    <div class="cta-feature">
+                        <i class="fas fa-headset"></i>
+                        24/7 support
+                    </div>
+                </div>
+            </div>
         </div>
-      </div>
     </section>
-  </main>
 
-  <!-- Footer -->
-  <footer class="bg-gray-800 text-white py-12">
-    <div class="container mx-auto px-4">
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
-        <div>
-          <div class="text-2xl font-bold mb-4 flex items-center">
-            <i class="fas fa-bolt mr-2" aria-hidden="true"></i>
-            QuickLocal
-          </div>
-          <p class="text-gray-300 mb-4">Your neighborhood marketplace for 20-minute delivery</p>
-          
-          <div class="flex space-x-4">
-            <a href="#" aria-label="Facebook" class="text-gray-300 hover:text-white transition-colors">
-              <i class="fab fa-facebook-f"></i>
-            </a>
-            <a href="#" aria-label="Twitter" class="text-gray-300 hover:text-white transition-colors">
-              <i class="fab fa-twitter"></i>
-            </a>
-            <a href="#" aria-label="Instagram" class="text-gray-300 hover:text-white transition-colors">
-              <i class="fab fa-instagram"></i>
-            </a>
-          </div>
-        </div>
-        
-        <div>
-          <h4 class="text-lg font-semibold mb-4">Quick Links</h4>
-          <ul class="space-y-2">
-            <li><a href="marketplace.html" class="text-gray-300 hover:text-white transition-colors">Shop Now</a></li>
-            <li><a href="#how-it-works" class="text-gray-300 hover:text-white transition-colors">How It Works</a></li>
-            <li><a href="seller.html" class="text-gray-300 hover:text-white transition-colors">Become a Seller</a></li>
-            <li><a href="#" class="text-gray-300 hover:text-white transition-colors">Careers</a></li>
-          </ul>
-        </div>
-        
-        <div>
-          <h4 class="text-lg font-semibold mb-4">Support</h4>
-          <ul class="space-y-2">
-            <li><a href="#" class="text-gray-300 hover:text-white transition-colors">Help Center</a></li>
-            <li><a href="#" class="text-gray-300 hover:text-white transition-colors">Privacy Policy</a></li>
-            <li><a href="#" class="text-gray-300 hover:text-white transition-colors">Terms of Service</a></li>
-            <li><a href="#" class="text-gray-300 hover:text-white transition-colors">Refund Policy</a></li>
-          </ul>
-        </div>
-        
-        <div>
-          <h4 class="text-lg font-semibold mb-4">Contact Us</h4>
-          <ul class="space-y-2">
-            <li class="flex items-center">
-              <i class="fas fa-map-marker-alt mr-2 text-gray-400"></i>
-              <span class="text-gray-300">Ludhiana, Punjab, India</span>
-            </li>
-            <li class="flex items-center">
-              <i class="fas fa-phone mr-2 text-gray-400"></i>
-              <a href="tel:+919876543210" class="text-gray-300 hover:text-white">+91 98765 43210</a>
-            </li>
-            <li class="flex items-center">
-              <i class="fas fa-envelope mr-2 text-gray-400"></i>
-              <a href="mailto:hello@quicklocal.com" class="text-gray-300 hover:text-white">hello@quicklocal.com</a>
-            </li>
-          </ul>
-        </div>
-      </div>
-      
-      <div class="border-t border-gray-700 mt-8 pt-8 text-center">
-        <p class="text-gray-300">&copy; 2024 QuickLocal. All rights reserved.</p>
-      </div>
-    </div>
-  </footer>
-
-  <!-- Login Modal -->
-  <div id="loginModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden" aria-hidden="true">
-    <div class="bg-white rounded-xl shadow-xl max-w-md w-full mx-4">
-      <div class="p-6">
-        <div class="flex justify-between items-center mb-6">
-          <h3 class="text-2xl font-bold text-gray-800">Sign In</h3>
-          <button id="closeLoginModal" class="text-gray-400 hover:text-gray-600" aria-label="Close login modal">
-            <i class="fas fa-times text-xl"></i>
-          </button>
-        </div>
-        
-        <form id="loginForm" class="space-y-4">
-          <div>
-            <label for="loginEmail" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <input type="email" id="loginEmail" class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" required>
-          </div>
-          
-          <div>
-            <label for="loginPassword" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
-            <input type="password" id="loginPassword" class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" required>
-          </div>
-          
-          <div class="flex items-center justify-between">
-            <div class="flex items-center">
-              <input type="checkbox" id="rememberMe" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
-              <label for="rememberMe" class="ml-2 block text-sm text-gray-700">Remember me</label>
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-brand">
+                    <h3>QuickLocal</h3>
+                    <p>India's fastest local delivery platform connecting you with neighborhood sellers for ultra-fast delivery in just 20 minutes.</p>
+                    <div class="social-links">
+                        <a href="#" class="social-link"><i class="fab fa-facebook-f"></i></a>
+                        <a href="#" class="social-link"><i class="fab fa-twitter"></i></a>
+                        <a href="#" class="social-link"><i class="fab fa-instagram"></i></a>
+                        <a href="#" class="social-link"><i class="fab fa-linkedin-in"></i></a>
+                    </div>
+                </div>
+                
+                <div class="footer-section">
+                    <h4>Company</h4>
+                    <ul class="footer-links">
+                        <li><a href="about.html">About Us</a></li>
+                        <li><a href="careers.html">Careers</a></li>
+                        <li><a href="press.html">Press</a></li>
+                        <li><a href="blog.html">Blog</a></li>
+                        <li><a href="investor.html">Investor Relations</a></li>
+                    </ul>
+                </div>
+                
+                <div class="footer-section">
+                    <h4>Support</h4>
+                    <ul class="footer-links">
+                        <li><a href="help.html">Help Center</a></li>
+                        <li><a href="contact.html">Contact Us</a></li>
+                        <li><a href="track-order.html">Track Order</a></li>
+                        <li><a href="returns.html">Returns & Refunds</a></li>
+                        <li><a href="shipping.html">Shipping Info</a></li>
+                    </ul>
+                </div>
+                
+                <div class="footer-section">
+                    <h4>Legal</h4>
+                    <ul class="footer-links">
+                        <li><a href="privacy.html">Privacy Policy</a></li>
+                        <li><a href="terms.html">Terms of Service</a></li>
+                        <li><a href="cookies.html">Cookie Policy</a></li>
+                        <li><a href="disclaimer.html">Disclaimer</a></li>
+                        <li><a href="seller-terms.html">Seller Terms</a></li>
+                    </ul>
+                </div>
             </div>
             
-            <a href="#" class="text-sm text-blue-600 hover:text-blue-800">Forgot password?</a>
-          </div>
-          
-          <button type="submit" class="w-full bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors">
-            Sign In
-          </button>
-          
-          <div class="text-center text-sm text-gray-600">
-            Don't have an account? <a href="#" class="text-blue-600 hover:text-blue-800">Sign up</a>
-          </div>
-          
-          <div class="relative mt-6">
-            <div class="absolute inset-0 flex items-center">
-              <div class="w-full border-t border-gray-300"></div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 QuickLocal. All rights reserved. Made with ❤️ in India.</p>
             </div>
-            <div class="relative flex justify-center text-sm">
-              <span class="px-2 bg-white text-gray-500">Or continue with</span>
-            </div>
-          </div>
-          
-          <div class="grid grid-cols-2 gap-3 mt-4">
-            <button type="button" class="flex items-center justify-center space-x-2 border border-gray-300 rounded-lg px-4 py-2 hover:bg-gray-50">
-              <i class="fab fa-google text-red-500"></i>
-              <span>Google</span>
-            </button>
-            
-            <button type="button" class="flex items-center justify-center space-x-2 border border-gray-300 rounded-lg px-4 py-2 hover:bg-gray-50">
-              <i class="fab fa-facebook text-blue-600"></i>
-              <span>Facebook</span>
-            </button>
-          </div>
-        </form>
-      </div>
+        </div>
+    </footer>
+
+    <!-- Floating Action Buttons -->
+    <div class="floating-actions">
+        <button class="fab scroll-top" id="scrollTop" onclick="scrollToTop()">
+            <i class="fas fa-arrow-up"></i>
+        </button>
+        <a href="marketplace.html" class="fab" title="Shop Now">
+            <i class="fas fa-shopping-cart"></i>
+        </a>
+        <a href="help.html" class="fab" title="Help & Support">
+            <i class="fas fa-question-circle"></i>
+        </a>
     </div>
-  </div>
 
-  <!-- Scripts -->
-  <script>
-    // Enhanced Landing Page functionality
-    class QuickLocalLanding {
-      constructor() {
-        this.init();
-      }
-      
-      init() {
-        this.setupEventListeners();
-        this.loadStats();
-      }
-      
-      setupEventListeners() {
-        // Mobile menu toggle
-        document.getElementById('mobileMenuButton')?.addEventListener('click', () => {
-          const menu = document.getElementById('mobileMenu');
-          const expanded = menu.classList.toggle('hidden');
-          document.getElementById('mobileMenuButton').setAttribute('aria-expanded', !expanded);
+    <!-- Scripts -->
+    <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+    <script>
+        // Initialize AOS animations
+        AOS.init({
+            duration: 800,
+            easing: 'ease-in-out',
+            once: true,
+            offset: 100
         });
-        
-        // Location detection
-        document.getElementById('detectLocationBtn')?.addEventListener('click', () => {
-          this.detectLocation();
-        });
-        
-        // Login modal
-        document.getElementById('loginBtn')?.addEventListener('click', (e) => {
-          e.preventDefault();
-          this.showLoginModal();
-        });
-        
-        document.getElementById('closeLoginModal')?.addEventListener('click', () => {
-          this.closeLoginModal();
-        });
-        
-        // Login form
-        document.getElementById('loginForm')?.addEventListener('submit', (e) => {
-          e.preventDefault();
-          this.handleLogin();
-        });
-        
-        // Category clicks redirect to marketplace
-        document.querySelectorAll('.category-card').forEach(card => {
-          card.addEventListener('click', (e) => {
-            e.preventDefault();
-            const category = card.getAttribute('data-category');
-            window.location.href = `marketplace.html${category ? '?category=' + category : ''}`;
-          });
-        });
-      }
-      
-      detectLocation() {
-        const btn = document.getElementById('detectLocationBtn');
-        const display = document.getElementById('locationDisplay');
-        
-        if (!btn || !display) return;
-        
-        // Show loading state
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Detecting...';
-        btn.disabled = true;
-        
-        display.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i><span>Finding your location...</span>';
-        
-        if ('geolocation' in navigator) {
-          navigator.geolocation.getCurrentPosition(
-            (position) => {
-              // Success - location detected
-              const { latitude, longitude } = position.coords;
-              
-              // Save location for marketplace
-              localStorage.setItem('userLocation', JSON.stringify({
-                lat: latitude,
-                lng: longitude
-              }));
-              
-              // Update display
-              display.innerHTML = '<i class="fas fa-map-marker-alt mr-2 text-green-600"></i><span class="text-green-600 font-medium">Location detected! Ready to show nearby products.</span>';
-              
-              // Reset button
-              btn.innerHTML = '<i class="fas fa-check mr-2"></i>Location Set';
-              btn.classList.add('bg-green-600', 'hover:bg-green-700');
-              btn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
-              
-              // Show success message
-              this.showToast('Location detected successfully! You can now browse products near you.', 'success');
-              
-              // Enable button after 2 seconds
-              setTimeout(() => {
-                btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-crosshairs mr-2"></i>Detect Location';
-                btn.classList.remove('bg-green-600', 'hover:bg-green-700');
-                btn.classList.add('bg-blue-600', 'hover:bg-blue-700');
-              }, 2000);
-            },
-            (error) => {
-              // Error handling
-              let errorMessage = 'Could not detect location. Please enter manually.';
-              
-              switch(error.code) {
-                case error.PERMISSION_DENIED:
-                  errorMessage = 'Location access denied. Please enable location in your browser.';
-                  break;
-                case error.POSITION_UNAVAILABLE:
-                  errorMessage = 'Location information unavailable.';
-                  break;
-                case error.TIMEOUT:
-                  errorMessage = 'Location request timed out.';
-                  break;
-              }
-              
-              display.innerHTML = '<i class="fas fa-exclamation-triangle mr-2 text-red-600"></i><span class="text-red-600">' + errorMessage + '</span>';
-              
-              // Reset button
-              btn.innerHTML = '<i class="fas fa-crosshairs mr-2"></i>Try Again';
-              btn.disabled = false;
-              
-              this.showToast(errorMessage, 'error');
-            },
-            {
-              enableHighAccuracy: true,
-              timeout: 10000,
-              maximumAge: 60000
-            }
-          );
-        } else {
-          display.innerHTML = '<i class="fas fa-exclamation-triangle mr-2 text-red-600"></i><span class="text-red-600">Geolocation not supported by this browser.</span>';
-          btn.innerHTML = '<i class="fas fa-crosshairs mr-2"></i>Detect Location';
-          btn.disabled = false;
-          
-          this.showToast('Geolocation not supported. Please enter your address manually.', 'error');
-        }
-      }
-      
-      loadStats() {
-        // Animate stats numbers
-        this.animateCounter('deliveryTime', 20, 'min');
-        this.animateCounter('localSellers', 500, '+');
-        this.animateCounter('happyCustomers', 10000, '+', 'K');
-      }
-      
-      animateCounter(elementId, target, suffix = '', prefix = '') {
-        const element = document.getElementById(elementId);
-        if (!element) return;
-        
-        let current = 0;
-        const increment = target / 100;
-        const timer = setInterval(() => {
-          current += increment;
-          if (current >= target) {
-            current = target;
-            clearInterval(timer);
-          }
-          
-          let displayValue = Math.floor(current);
-          if (prefix === 'K' && target >= 1000) {
-            displayValue = Math.floor(current / 1000);
-          }
-          
-          element.textContent = displayValue + (prefix === 'K' ? 'K' : '') + suffix;
-        }, 20);
-      }
-      
-      showLoginModal() {
-        document.getElementById('loginModal').classList.remove('hidden');
-        document.getElementById('loginModal').setAttribute('aria-hidden', 'false');
-      }
-      
-      closeLoginModal() {
-        document.getElementById('loginModal').classList.add('hidden');
-        document.getElementById('loginModal').setAttribute('aria-hidden', 'true');
-      }
-      
-      handleLogin() {
-        // Simulate login process
-        const email = document.getElementById('loginEmail').value;
-        
-        if (email) {
-          this.closeLoginModal();
-          this.showToast('Login successful! Welcome to QuickLocal.', 'success');
-          
-          // Update UI to show logged in state
-          const loginBtn = document.getElementById('loginBtn');
-          if (loginBtn) {
-            loginBtn.innerHTML = '<i class="fas fa-user-circle mr-2"></i>Welcome!';
-            loginBtn.classList.add('bg-green-600', 'hover:bg-green-700');
-            loginBtn.classList.remove('bg-blue-600', 'hover:bg-blue-700');
-          }
-          
-          // Reset form
-          document.getElementById('loginForm').reset();
-        }
-      }
-      
-      showToast(message, type = 'info') {
-        // Remove existing toasts
-        document.querySelectorAll('.toast-notification').forEach(el => el.remove());
-        
-        const toast = document.createElement('div');
-        toast.className = `toast-notification fixed top-4 right-4 z-50 px-6 py-4 rounded-lg shadow-lg text-white transition-all duration-300 transform translate-x-full max-w-sm`;
-        
-        const colors = {
-          success: 'bg-green-600',
-          error: 'bg-red-600',
-          info: 'bg-blue-600'
-        };
-        
-        const icons = {
-          success: 'fas fa-check-circle',
-          error: 'fas fa-exclamation-circle',
-          info: 'fas fa-info-circle'
-        };
-        
-        toast.classList.add(colors[type]);
-        toast.innerHTML = `
-          <div class="flex items-start">
-            <i class="${icons[type]} mr-3 mt-1"></i>
-            <span>${message}</span>
-          </div>
-        `;
-        
-        document.body.appendChild(toast);
-        
-        // Animate in
-        setTimeout(() => {
-          toast.classList.remove('translate-x-full');
-        }, 100);
-        
-        // Remove after 5 seconds
-        setTimeout(() => {
-          toast.classList.add('translate-x-full');
-          setTimeout(() => {
-            if (document.body.contains(toast)) {
-              document.body.removeChild(toast);
-            }
-          }, 300);
-        }, 5000);
-      }
-    }
 
-    // Initialize when DOM is loaded
-    document.addEventListener('DOMContentLoaded', () => {
-      new QuickLocalLanding();
-    });
-  </script>
+        // Global state
+        let currentUser = JSON.parse(localStorage.getItem('quicklocal_user')) || null;
+        let cart = JSON.parse(localStorage.getItem('quicklocal_cart')) || [];
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeNavigation();
+            updateCartCount();
+            updateUserInterface();
+        });
+
+        // Page loader
+        window.addEventListener('load', function() {
+            const loader = document.getElementById('pageLoader');
+            setTimeout(() => {
+                loader.classList.add('hidden');
+                setTimeout(() => {
+                    loader.remove();
+                }, 500);
+            }, 1500);
+        });
+
+        // Navigation Functions
+        function initializeNavigation() {
+            // Check if user is logged in
+            if (currentUser) {
+                showUserNavigation();
+            } else {
+                showGuestNavigation();
+            }
+        }
+
+        function showUserNavigation() {
+            document.getElementById('guestNav').style.display = 'none';
+            document.getElementById('userMenu').style.display = 'block';
+            document.getElementById('userName').textContent = currentUser.name || currentUser.email.split('@')[0];
+            
+            // Update mobile menu
+            document.querySelectorAll('.guest-only').forEach(el => el.style.display = 'none');
+            document.querySelectorAll('.user-only').forEach(el => el.style.display = 'block');
+        }
+
+        function showGuestNavigation() {
+            document.getElementById('guestNav').style.display = 'flex';
+            document.getElementById('userMenu').style.display = 'none';
+            
+            // Update mobile menu
+            document.querySelectorAll('.guest-only').forEach(el => el.style.display = 'block');
+            document.querySelectorAll('.user-only').forEach(el => el.style.display = 'none');
+        }
+
+        function toggleUserDropdown() {
+            const dropdown = document.getElementById('userDropdown');
+            dropdown.classList.toggle('show');
+        }
+
+        function logout() {
+            localStorage.removeItem('quicklocal_user');
+            currentUser = null;
+            showGuestNavigation();
+            
+            // Close dropdown
+            document.getElementById('userDropdown').classList.remove('show');
+            
+            // Show logout message
+            alert('Logged out successfully!');
+        }
+
+        // Mobile menu functions
+        function toggleMobileMenu() {
+            const mobileMenu = document.getElementById('mobileMenu');
+            const mobileOverlay = document.getElementById('mobileOverlay');
+            const hamburger = document.getElementById('hamburger');
+            
+            mobileMenu.classList.toggle('open');
+            mobileOverlay.classList.toggle('show');
+            hamburger.classList.toggle('active');
+        }
+
+        // Cart functions
+        function updateCartCount() {
+            const cartCount = document.getElementById('cartCount');
+            const totalItems = cart.reduce((sum, item) => sum + (item.quantity || 1), 0);
+            cartCount.textContent = totalItems;
+            
+            if (totalItems > 0) {
+                cartCount.style.display = 'flex';
+            } else {
+                cartCount.style.display = 'none';
+            }
+        }
+
+        function toggleCart() {
+            // This would typically open a cart sidebar or redirect to cart page
+            window.location.href = 'cart.html';
+        }
+
+        // Header scroll effect
+        window.addEventListener('scroll', function() {
+            const header = document.getElementById('header');
+            const scrollTop = document.getElementById('scrollTop');
+            
+            if (window.scrollY > 100) {
+                header.classList.add('scrolled');
+                scrollTop.classList.add('show');
+            } else {
+                header.classList.remove('scrolled');
+                scrollTop.classList.remove('show');
+            }
+        });
+
+        // Close dropdowns when clicking outside
+        document.addEventListener('click', function(e) {
+            const userDropdown = document.getElementById('userDropdown');
+            const userBtn = document.querySelector('.user-btn');
+            
+            if (!userBtn?.contains(e.target)) {
+                userDropdown?.classList.remove('show');
+            }
+        });
+
+        // Smooth scroll for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+
+        // Counter animation for stats
+        function animateCounter(element) {
+            const target = parseInt(element.getAttribute('data-count'));
+            const increment = target / 100;
+            let current = 0;
+            
+            const timer = setInterval(() => {
+                current += increment;
+                if (current >= target) {
+                    current = target;
+                    clearInterval(timer);
+                }
+                element.textContent = Math.floor(current).toLocaleString();
+            }, 20);
+        }
+
+        // Trigger counter animation when stats section is visible
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const counters = entry.target.querySelectorAll('[data-count]');
+                    counters.forEach(counter => {
+                        if (!counter.classList.contains('animated')) {
+                            counter.classList.add('animated');
+                            animateCounter(counter);
+                        }
+                    });
+                }
+            });
+        });
+
+        const statsSection = document.querySelector('.hero-stats');
+        if (statsSection) {
+            observer.observe(statsSection);
+        }
+
+        // Scroll to top function
+        function scrollToTop() {
+            window.scrollTo({
+                top: 0,
+                behavior: 'smooth'
+            });
+        }
+
+        // Location search function
+        function searchLocation() {
+            const location = document.getElementById('locationInput').value;
+            if (location.trim()) {
+                // Redirect to marketplace with location parameter
+                window.location.href = `marketplace.html?location=${encodeURIComponent(location)}`;
+            } else {
+                alert('Please enter your location to continue');
+            }
+        }
+
+        // Category navigation function
+        function shopCategory(category) {
+            window.location.href = `marketplace.html?category=${category}`;
+        }
+
+        // User interface update
+        function updateUserInterface() {
+            // This function would update UI elements based on user state
+            // Example: Show different content for logged in users
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            // Press 'S' to focus on search
+            if (e.key.toLowerCase() === 's' && !e.ctrlKey && !e.metaKey) {
+                const input = document.getElementById('locationInput');
+                if (input && document.activeElement !== input) {
+                    e.preventDefault();
+                    input.focus();
+                }
+            }
+            
+            // Press 'M' to go to marketplace
+            if (e.key.toLowerCase() === 'm' && !e.ctrlKey && !e.metaKey) {
+                if (document.activeElement.tagName !== 'INPUT') {
+                    window.location.href = 'marketplace.html';
+                }
+            }
+            
+            // Press 'L' to login (if not logged in)
+            if (e.key.toLowerCase() === 'l' && !e.ctrlKey && !e.metaKey && !currentUser) {
+                if (document.activeElement.tagName !== 'INPUT') {
+                    window.location.href = 'login.html';
+                }
+            }
+            
+            // Press 'C' to open cart
+            if (e.key.toLowerCase() === 'c' && !e.ctrlKey && !e.metaKey) {
+                if (document.activeElement.tagName !== 'INPUT') {
+                    toggleCart();
+                }
+            }
+        });
+
+        // Performance: Preload critical resources
+        const preloadLinks = [
+            'marketplace.html',
+            'login.html',
+            'register.html'
+        ];
+
+        preloadLinks.forEach(href => {
+            const preloadLink = document.createElement('link');
+            preloadLink.rel = 'preload';
+            preloadLink.href = href;
+            preloadLink.as = 'document';
+            document.head.appendChild(preloadLink);
+        });
+
+        // Service Worker registration for PWA
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then((registration) => {
+                        console.log('SW registered: ', registration);
+                    })
+                    .catch((registrationError) => {
+                        console.log('SW registration failed: ', registrationError);
+                    });
+            });
+        }
+
+        // Theme toggle (optional)
+        function toggleTheme() {
+            const body = document.body;
+            const currentTheme = body.getAttribute('data-theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            
+            body.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+        }
+
+        // Apply saved theme
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme) {
+            document.body.setAttribute('data-theme', savedTheme);
+        }
+
+        // Console welcome message
+        console.log(`
+            🛒 Welcome to QuickLocal!
+            
+            🚀 Features:
+            - Ultra-premium design with complete navigation
+            - Login, Register, Checkout integration
+            - User account management
+            - Mobile-first responsive design
+            - PWA capabilities
+            - Accessibility optimized
+            
+            📱 Shortcuts:
+            - Press 'S' to search
+            - Press 'M' for marketplace
+            - Press 'L' to login
+            - Press 'C' for cart
+            
+            🔗 Navigation:
+            - Complete user authentication flow
+            - Profile, orders, wishlist management
+            - Seller registration and dashboard
+            - Help center and support pages
+            
+            Made with ❤️ for local communities
+        `);
+
+        // Error handling
+        window.addEventListener('error', function(e) {
+            console.error('QuickLocal Error:', e.error);
+        });
+
+        // Analytics tracking (placeholder)
+        function trackEvent(category, action, label) {
+            // Analytics tracking would go here
+            console.log('Event:', category, action, label);
+        }
+
+        // Track user interactions
+        document.querySelectorAll('.btn, .category-card, .nav-btn').forEach(element => {
+            element.addEventListener('click', function() {
+                const action = this.textContent.trim() || this.className;
+                trackEvent('User Interaction', 'Click', action);
+            });
+        });
+    </script>
 </body>
 </html>
