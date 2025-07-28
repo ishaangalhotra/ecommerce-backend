@@ -1,7 +1,6 @@
-// disable-redis.js - Hot patch to stop Redis connections
-process.env.DISABLE_REDIS = 'true';      // double-lock
+process.env.DISABLE_REDIS = 'true';
 
-const fake = {                           // minimal stub
+const fake = {
   on()           { /* noop */ },
   connect()      { return Promise.resolve(); },
   quit()         { return Promise.resolve(); },
@@ -17,12 +16,15 @@ const fake = {                           // minimal stub
   flushall()     { return Promise.resolve('OK'); }
 };
 
-require('module')._load = ((orig) => (id, parent, isMain) => {
-  if (id === 'redis' || id.startsWith('ioredis')) {
+const originalLoad = require('module')._load;
+require('module')._load = function(id, parent, isMain) {
+  // ONLY block Redis modules - be very specific
+  if (id === 'redis' || id === 'ioredis' || id === '@socket.io/redis-adapter') {
     console.log(`🔴 Redis require blocked for: ${id}`);
     return () => fake;
   }
-  return orig(id, parent, isMain);
-})(require('module')._load);
+  // Allow ALL other modules to load normally
+  return originalLoad.apply(this, arguments);
+};
 
-console.log('🔴 Redis module completely disabled via hot patch');
+console.log('🔴 Redis hot patch active - blocking only Redis modules');
