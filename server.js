@@ -47,7 +47,7 @@ if (process.env.DISABLE_REDIS !== 'true' && process.env.REDIS_URL) {
     });
     
     redisClient.on('connect', () => {
-      console.log('✅ Redis connected');
+      console.log('✅ Redis connected successfully');
     });
     
     // Connect to Redis
@@ -357,32 +357,35 @@ app.get('/health', (req, res) => {
   res.json(health);
 });
 
-// --------------------- API Routes ---------------------
-const routes = [
-  { path: '/api/auth', module: './routes/auth' },
-  { path: '/api/users', module: './routes/users' },
-  { path: '/api/products', module: './routes/products' },
-  { path: '/api/orders', module: './routes/orders' },
-  { path: '/api/delivery', module: './routes/delivery' },
-  { path: '/api/cart', module: './routes/cart' },
-  { path: '/api/seller', module: './routes/seller' },
-  { path: '/api/admin', module: './routes/admin' },
-  { path: '/api/wishlist', module: './routes/wishlist' },
-  { path: '/api/v1/payment', module: './routes/payment-routes' },
-  { path: '/api/v1/webhooks', module: './routes/webhook-routes' }
-];
+// --------------------- Route Loading Function ---------------------
+const loadRoutes = () => {
+  const routes = [
+    { path: '/api/auth', module: './routes/auth' },
+    { path: '/api/users', module: './routes/users' },
+    { path: '/api/products', module: './routes/products' },
+    { path: '/api/orders', module: './routes/orders' },
+    { path: '/api/delivery', module: './routes/delivery' },
+    { path: '/api/cart', module: './routes/cart' },
+    { path: '/api/seller', module: './routes/seller' },
+    { path: '/api/admin', module: './routes/admin' },
+    { path: '/api/wishlist', module: './routes/wishlist' },
+    { path: '/api/v1/payment', module: './routes/payment-routes' },
+    { path: '/api/v1/webhooks', module: './routes/webhook-routes' }
+  ];
 
-// Load routes with better error handling
-routes.forEach(({ path, module }) => {
-  try {
-    const routeModule = require(module);
-    app.use(path, routeModule);
-    logger.info(`✅ Loaded route: ${path}`);
-  } catch (error) {
-    logger.error(`❌ Failed to load route ${path}:`, error.message);
-    // Don't exit - continue with other routes
-  }
-});
+  // Load routes with better error handling
+  routes.forEach(({ path, module }) => {
+    try {
+      const routeModule = require(module);
+      app.use(path, routeModule);
+      logger.info(`✅ Loaded route: ${path}`);
+    } catch (error) {
+      logger.error(`❌ Failed to load route ${path}:`, error.message);
+      // Log the full error for debugging
+      logger.error(`Full error details for ${path}:`, error);
+    }
+  });
+};
 
 // --------------------- Additional API Routes ---------------------
 app.get('/', (req, res) => {
@@ -533,13 +536,24 @@ const startServer = async () => {
     // Connect to MongoDB first
     await connectDB();
     
-    const PORT = process.env.PORT || 3000;
+    // Load routes AFTER database connection
+    loadRoutes();
+    
+    const PORT = process.env.PORT || 10000;
     const HOST = process.env.HOST || '0.0.0.0';
     
     httpServer.listen(PORT, HOST, () => {
       logger.info(`🚀 Server running on http://${HOST}:${PORT}`);
       logger.info(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
       logger.info(`🔒 Redis: ${redisClient ? 'enabled' : 'disabled'}`);
+      
+      // Show configuration summary
+      console.log('📋 Configuration Summary:');
+      console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`   Port: ${PORT}`);
+      console.log(`   Database: ${mongoose.connection.db.databaseName}`);
+      console.log(`   Redis: ${redisClient ? 'Enabled' : 'Disabled'}`);
+      console.log(`   Features: ${process.env.FEATURES || 'healthChecks'}`);
     });
     
     // Handle server errors
