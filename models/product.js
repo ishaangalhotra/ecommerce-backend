@@ -181,8 +181,6 @@ productSchema.index({ name: 'text', description: 'text', tags: 'text' });
 productSchema.index({ category: 1, status: 1, isDeleted: 1 });
 productSchema.index({ seller: 1, status: 1, isDeleted: 1 });
 productSchema.index({ status: 1, isDeleted: 1, createdAt: -1 });
-productSchema.index({ slug: 1 });
-productSchema.index({ sku: 1 });
 productSchema.index({ price: 1 });
 productSchema.index({ averageRating: -1 });
 productSchema.index({ totalSales: -1 });
