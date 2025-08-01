@@ -11,7 +11,8 @@ const mongoose = require('mongoose');
 const cookieParser = require('cookie-parser');
 const compression = require('compression');
 const logger = require('./utils/logger');
-const connectDB = require('./config/database');
+const { connectDB } = require('./config/database');
+
 
 // Setup logs directory
 if (!fs.existsSync('logs')) {
