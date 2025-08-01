@@ -10,7 +10,7 @@ const {
   bulkUpdateProducts,
   exportProducts
 } = require('../controllers/sellercontroller');
-const upload = require('../utils/fileUpload');
+const upload = require('../utils/fileupload');
 const { body, param, query, validationResult } = require('express-validator');
 const rateLimit = require('express-rate-limit');
 const logger = require('../utils/logger');
