@@ -13,6 +13,7 @@ const PaymentStatus = {
   REFUNDED: 'refunded',
   FAILED: 'failed'
 };
+
 const express = require('express');
 const mongoose = require('mongoose');
 const { body, query, validationResult } = require('express-validator');
@@ -29,7 +30,16 @@ const { calculateDeliveryFee, estimateDeliveryTime } = require('../utils/deliver
 const { generateInvoice } = require('../utils/invoice');
 const logger = require('../utils/logger');
 const redis = require('../config/redis');
-// const { io } = require');
+
+// Safe Socket.IO import - prevents crashes if not properly set up
+let io = null;
+try {
+  const app = require('../app');
+  io = app.io;
+} catch (error) {
+  console.log('Socket.IO not available, real-time features disabled');
+}
+
 const router = express.Router();
 
 // Enhanced rate limiting with Redis
@@ -62,7 +72,7 @@ const validateOrder = [
   body('items.*.product')
     .isMongoId()
     .withMessage('Invalid product ID')
-    .customSanitizer(value => mongoose.Types.ObjectId(value)),
+    .customSanitizer(value => new mongoose.Types.ObjectId(value)),
   
   body('items.*.quantity')
     .isInt({ min: 1, max: 100 })
@@ -239,12 +249,14 @@ router.post('/',
       // Send notifications (async)
       sendOrderNotifications(orderData.order, 'created');
 
-      // Emit real-time event
-      io.to(`user-${req.user.id}`).emit('order-created', {
-        orderId: orderData.order._id,
-        orderNumber: orderData.order.orderNumber,
-        total: orderData.pricing.total
-      });
+      // Emit real-time event (only if Socket.IO is available)
+      if (io) {
+        io.to(`user-${req.user.id}`).emit('order-created', {
+          orderId: orderData.order._id,
+          orderNumber: orderData.order.orderNumber,
+          total: orderData.pricing.total
+        });
+      }
 
       logger.info(`Order created: ${orderData.order.orderNumber}`, {
         orderId: orderData.order._id,
@@ -784,11 +796,13 @@ router.patch('/:id/cancel',
       // Send notifications
       sendOrderNotifications(result.order, 'cancelled');
 
-      // Emit real-time event
-      io.to(`user-${req.user.id}`).emit('order-cancelled', {
-        orderId: result.order._id,
-        orderNumber: result.order.orderNumber
-      });
+      // Emit real-time event (only if Socket.IO is available)
+      if (io) {
+        io.to(`user-${req.user.id}`).emit('order-cancelled', {
+          orderId: result.order._id,
+          orderNumber: result.order.orderNumber
+        });
+      }
 
       logger.info(`Order cancelled: ${result.order.orderNumber}`, {
         orderId: result.order._id,
@@ -1100,7 +1114,7 @@ async function getSellerOrders(sellerId, queryParams) {
         sellerItems: {
           $filter: {
             input: '$items',
-            cond: { $eq: ['$$this.seller', sellerId] }
+            cond: { $eq: ['$this.seller', sellerId] }
           }
         }
       }
@@ -1168,7 +1182,7 @@ async function getSellerAnalytics(sellerId) {
         sellerItems: {
           $filter: {
             input: '$items',
-            cond: { $eq: ['$$this.seller', sellerId] }
+            cond: { $eq: ['$this.seller', sellerId] }
           }
         }
       }
@@ -1239,13 +1253,15 @@ router.patch('/:id/status',
       // Send notifications
       sendOrderNotifications(result.order, 'status_updated', result.previousStatus);
 
-      // Emit real-time event
-      io.to(`user-${result.order.customer._id}`).emit('order-status-updated', {
-        orderId: result.order._id,
-        orderNumber: result.order.orderNumber,
-        status: result.order.status,
-        estimatedDeliveryTime: result.order.estimatedDeliveryTime
-      });
+      // Emit real-time event (only if Socket.IO is available)
+      if (io) {
+        io.to(`user-${result.order.customer._id}`).emit('order-status-updated', {
+          orderId: result.order._id,
+          orderNumber: result.order.orderNumber,
+          status: result.order.status,
+          estimatedDeliveryTime: result.order.estimatedDeliveryTime
+        });
+      }
 
       logger.info(`Order status updated: ${result.order.orderNumber}`, {
         orderId: result.order._id,
