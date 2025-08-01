@@ -6,7 +6,7 @@ const {
   getWishlist,
   clearWishlist,
   checkWishlistStatus
-} = require('../controllers/wishlistController');
+} = require('../controllers/wishlistcontroller');
 const { protect } = require('../middleware/authMiddleware'); // FIXED: Corrected 'middlewares' to 'middleware'
 
 // Protected routes

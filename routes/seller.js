@@ -9,7 +9,7 @@ const {
   getProductAnalytics,
   bulkUpdateProducts,
   exportProducts
-} = require('../controllers/sellerController');
+} = require('../controllers/sellercontroller');
 const upload = require('../utils/fileUpload');
 const { body, param, query, validationResult } = require('express-validator');
 const rateLimit = require('express-rate-limit');
