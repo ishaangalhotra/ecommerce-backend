@@ -14,10 +14,10 @@ class DatabaseManager {
       heartbeatFrequencyMS: 30000,
       retryWrites: true,
       retryReads: true,
-      bufferCommands: false,
-      bufferMaxEntries: 0
+      bufferCommands: false
+      // bufferMaxEntries: 0 - REMOVED (deprecated option)
     };
-    
+
     // Event listeners for connection monitoring
     this.setupEventListeners();
   }
@@ -52,7 +52,7 @@ class DatabaseManager {
       logger.debug('Database already connected');
       return;
     }
-    
+
     const uri = process.env.MONGO_URI;
     const dbName = process.env.MONGO_DB_NAME;
 
@@ -68,10 +68,10 @@ class DatabaseManager {
               ...this.connectionOptions,
               dbName
             });
-            
+
             this.db = conn.connection;
             this.connected = true;
-            
+
             logger.info('✅ MongoDB connected successfully', {
               host: this.db.host,
               name: this.db.name,
@@ -156,7 +156,7 @@ class DatabaseManager {
 
   async executeTransaction(fn, options = {}) {
     if (!this.connected) throw new Error('Database not connected');
-    
+
     const session = await mongoose.startSession();
     session.startTransaction({
       readConcern: { level: 'snapshot' },
@@ -173,9 +173,9 @@ class DatabaseManager {
       return result;
     } catch (error) {
       await session.abortTransaction();
-      logger.error('❌ Transaction aborted', { 
+      logger.error('❌ Transaction aborted', {
         error: error.message,
-        stack: error.stack 
+        stack: error.stack
       });
       throw error;
     } finally {
@@ -187,11 +187,11 @@ class DatabaseManager {
     if (!this.connected) {
       throw new Error('Cannot create indexes - database not connected');
     }
-    
+
     try {
       logger.info('📌 Creating MongoDB indexes...');
       await this.registerModels();
-      
+
       // Sync indexes for all registered models
       const models = mongoose.modelNames();
       for (const modelName of models) {
@@ -199,12 +199,12 @@ class DatabaseManager {
         await model.syncIndexes();
         logger.debug(`Indexes synced for model: ${modelName}`);
       }
-      
+
       logger.info(`✅ Created indexes for ${models.length} models`);
     } catch (error) {
-      logger.error('Failed to create indexes', { 
+      logger.error('Failed to create indexes', {
         error: error.message,
-        stack: error.stack 
+        stack: error.stack
       });
       throw error;
     }
@@ -215,7 +215,7 @@ class DatabaseManager {
     if (process.env.NODE_ENV !== 'test') {
       throw new Error('Database can only be dropped in test environment');
     }
-    
+
     try {
       logger.warn('🔥 Dropping database...');
       await this.db.dropDatabase();
@@ -236,9 +236,9 @@ class DatabaseManager {
           logger.debug(`Registered model: ${file.replace('.js', '')}`);
         });
     } catch (error) {
-      logger.error('Failed to register models', { 
+      logger.error('Failed to register models', {
         error: error.message,
-        stack: error.stack 
+        stack: error.stack
       });
       throw error;
     }
