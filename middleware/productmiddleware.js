@@ -1,5 +1,5 @@
 const { body, param, query, validationResult } = require('express-validator');
-const Product = require('../models/Product');
+const Product = require('../models/product');
 const { PRODUCT_STATUSES, BUSINESS_CONFIG, ERROR_CODES } = require('../constants');
 const logger = require('../utils/logger');
 const mongoose = require('mongoose');
