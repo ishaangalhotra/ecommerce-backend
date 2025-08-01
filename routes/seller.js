@@ -16,7 +16,7 @@ const rateLimit = require('express-rate-limit');
 const logger = require('../utils/logger');
 
 // CORRECTED IMPORTS - match what's actually exported
-const { checkProductOwnership } = require('../middleware/productMiddleware');
+const { checkProductOwnership } = require('../middleware/productmiddleware');
 const { uploadImages, validateFileRequirements } = require('../middleware/fileValidation');
 
 const router = express.Router();
