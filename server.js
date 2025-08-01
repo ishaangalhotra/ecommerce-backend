@@ -1,5 +1,5 @@
-// --------------------- Imports & Setup ---------------------
 require('dotenv').config();
+const fs = require('fs');
 const express = require('express');
 const mongoose = require('mongoose');
 const helmet = require('helmet');
@@ -14,53 +14,13 @@ const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const { createLogger, format, transports } = require('winston');
-const fs = require('fs');
 
-// --------------------- Create logs directory ---------------------
+// ✅ Ensure logs directory exists
 if (!fs.existsSync('logs')) {
   fs.mkdirSync('logs', { recursive: true });
 }
 
-// --------------------- Redis Setup with Proper Fallback ---------------------
-let redisClient = null;
-if (process.env.DISABLE_REDIS !== 'true' && process.env.REDIS_URL) {
-  try {
-    const redis = require('redis');
-    redisClient = redis.createClient({
-      url: process.env.REDIS_URL,
-      retry_strategy: (options) => {
-        if (options.error && options.error.code === 'ECONNREFUSED') {
-          return new Error('Redis server connection refused');
-        }
-        if (options.total_retry_time > 1000 * 60 * 60) {
-          return new Error('Redis retry time exhausted');
-        }
-        if (options.attempt > 10) {
-          return undefined;
-        }
-        return Math.min(options.attempt * 100, 3000);
-      }
-    });
-    
-    redisClient.on('error', (err) => {
-      console.error('Redis Client Error:', err);
-    });
-    
-    redisClient.on('connect', () => {
-      console.log('✅ Redis connected successfully');
-    });
-    
-    // Connect to Redis
-    redisClient.connect().catch(console.error);
-  } catch (error) {
-    console.log('🔴 Redis not available, continuing without Redis');
-    redisClient = null;
-  }
-} else {
-  console.log('🔴 Redis disabled - running without Redis');
-}
-
-// --------------------- Winston Logger ---------------------
+// ✅ Winston Logger
 const logger = createLogger({
   level: process.env.LOG_LEVEL || 'info',
   format: format.combine(
@@ -69,82 +29,63 @@ const logger = createLogger({
     format.json()
   ),
   transports: [
-    new transports.File({ 
-      filename: 'logs/error.log', 
-      level: 'error', 
-      maxsize: 5_000_000, 
-      maxFiles: 5, 
-      handleExceptions: true 
-    }),
-    new transports.File({ 
-      filename: 'logs/combined.log', 
-      maxsize: 5_000_000, 
-      maxFiles: 5 
-    })
-  ],
-  exitOnError: false,
-  exceptionHandlers: [
-    new transports.File({ filename: 'logs/exceptions.log' })
+    new transports.File({ filename: 'logs/error.log', level: 'error', maxsize: 5_000_000, maxFiles: 5 }),
+    new transports.File({ filename: 'logs/combined.log', maxsize: 5_000_000, maxFiles: 5 })
   ]
 });
 
 if (process.env.NODE_ENV !== 'production') {
-  logger.add(new transports.Console({ 
-    format: format.combine(
-      format.colorize(), 
-      format.simple()
-    ) 
-  }));
+  logger.add(new transports.Console({ format: format.combine(format.colorize(), format.simple()) }));
 }
 
-// --------------------- Environment Checks ---------------------
-const requiredEnv = ['MONGODB_URI', 'JWT_SECRET', 'COOKIE_SECRET', 'FRONTEND_URLS'];
-const missingEnv = requiredEnv.filter(env => !process.env[env]);
+// ✅ Validate Environment Variables
+['MONGODB_URI', 'JWT_SECRET', 'COOKIE_SECRET', 'FRONTEND_URLS'].forEach(env => {
+  if (!process.env[env]) {
+    logger.error(`❌ Missing required env variable: ${env}`);
+    process.exit(1);
+  }
+});
 
-if (missingEnv.length > 0) {
-  logger.error(`❌ Missing required environment variables: ${missingEnv.join(', ')}`);
-  process.exit(1);
-}
-
-// --------------------- Express App Init ---------------------
+// ✅ Express App Init
 const app = express();
 const httpServer = createServer(app);
 const allowedOrigins = process.env.FRONTEND_URLS.split(',').map(url => url.trim());
 
-// --------------------- Security Middleware ---------------------
+// ✅ Middleware
 app.set('trust proxy', 1);
 
-// Enhanced Helmet configuration
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
       connectSrc: ["'self'", ...allowedOrigins, 'ws:', 'wss:'],
-      scriptSrc: ["'self'", "'unsafe-inline'", 'cdn.jsdelivr.net', 'cdnjs.cloudflare.com'],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
-      styleSrc: ["'self'", "'unsafe-inline'", 'fonts.googleapis.com'],
-      fontSrc: ["'self'", 'fonts.gstatic.com']
+      styleSrc: ["'self'", "'unsafe-inline'"]
     }
-  },
-  crossOriginEmbedderPolicy: false
+  }
 }));
 
-// Enhanced CORS configuration
 app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, Postman)
     if (!origin) return callback(null, true);
     
-    // Allow localhost and local IPs for development
+    // Allow localhost, 127.0.0.1, and local IPs for development
     if (origin.includes('localhost') || 
         origin.includes('127.0.0.1') || 
         origin.includes('192.168.') ||
-        origin.includes('10.0.') ||
         allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
     
     logger.warn(`CORS blocked: ${origin}`);
+    
+    // In development, allow but log warning
+    if (process.env.NODE_ENV === 'development') {
+      return callback(null, true);
+    }
+    
     return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
@@ -152,36 +93,12 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin']
 }));
 
-// --------------------- Request Processing Middleware ---------------------
-app.use(express.json({ 
-  limit: '10mb', 
-  verify: (req, res, buf) => req.rawBody = buf 
-}));
-app.use(express.urlencoded({ 
-  extended: true, 
-  limit: '10mb' 
-}));
+app.use(express.json({ limit: '10mb', verify: (req, res, buf) => req.rawBody = buf }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser(process.env.COOKIE_SECRET));
-app.use(compression({ 
-  level: 6, 
-  threshold: 1024 
-}));
+app.use(compression({ level: 6 }));
 
-// Morgan logging with proper error handling
-app.use(morgan('combined', {
-  stream: { 
-    write: (msg) => {
-      try {
-        logger.info(msg.trim());
-      } catch (error) {
-        console.error('Logging error:', error);
-      }
-    }
-  },
-  skip: (req) => req.path === '/health' || req.path === '/favicon.ico'
-}));
-
-// Request ID and timing middleware
+// Request ID middleware
 app.use((req, res, next) => {
   req.requestId = uuidv4();
   req.startTime = process.hrtime.bigint();
@@ -189,12 +106,17 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use(morgan('combined', {
+  stream: { write: msg => logger.info(msg.trim()) },
+  skip: req => req.path === '/health' || req.path === '/favicon.ico'
+}));
+
 // Response time logging
 app.use((req, res, next) => {
   res.on('finish', () => {
     try {
       const endTime = process.hrtime.bigint();
-      const responseTime = Number(endTime - req.startTime) / 1_000_000; // Convert to milliseconds
+      const responseTime = Number(endTime - req.startTime) / 1_000_000;
       
       logger.info('Request completed', {
         method: req.method,
@@ -202,40 +124,37 @@ app.use((req, res, next) => {
         statusCode: res.statusCode,
         responseTime: `${responseTime.toFixed(2)}ms`,
         requestId: req.requestId,
-        userAgent: req.get('User-Agent'),
         ip: req.ip
       });
     } catch (error) {
-      console.error('Error logging request:', error);
+      // Silently handle logging errors
     }
   });
   next();
 });
 
-// --------------------- Rate Limiting ---------------------
-const createRateLimit = (windowMs, max, message = 'Too many requests') => {
-  return rateLimit({
-    windowMs,
-    max,
-    message: { error: message },
-    standardHeaders: true,
-    legacyHeaders: false,
-    handler: (req, res) => {
-      logger.warn(`Rate limit exceeded for ${req.ip} on ${req.path}`);
-      res.status(429).json({ 
-        error: message, 
-        requestId: req.requestId,
-        retryAfter: Math.ceil(windowMs / 1000)
-      });
-    }
-  });
-};
+// ✅ Rate Limiting
+const createRateLimit = (windowMs, max, message) => rateLimit({
+  windowMs,
+  max,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: message },
+  handler: (req, res) => {
+    logger.warn(`Rate limit exceeded for ${req.ip} on ${req.path}`);
+    res.status(429).json({ 
+      error: message, 
+      requestId: req.requestId,
+      retryAfter: Math.ceil(windowMs / 1000)
+    });
+  }
+});
 
-app.use('/api/', createRateLimit(15 * 60 * 1000, 1000, 'Too many API requests'));
+app.use('/api/', createRateLimit(15 * 60 * 1000, 1000, 'Too many requests'));
 app.use('/api/auth/', createRateLimit(60 * 60 * 1000, 20, 'Too many authentication attempts'));
 app.use('/api/orders', createRateLimit(60 * 1000, 10, 'Too many order requests'));
 
-// --------------------- MongoDB Connection ---------------------
+// ✅ MongoDB Connection
 const connectDB = async (retries = 5) => {
   try {
     const options = {
@@ -263,7 +182,7 @@ const connectDB = async (retries = 5) => {
     mongoose.connection.on('reconnected', () => {
       logger.info('MongoDB reconnected');
     });
-    
+
   } catch (err) {
     logger.error(`MongoDB connection attempt failed:`, err.message);
     
@@ -278,7 +197,7 @@ const connectDB = async (retries = 5) => {
   }
 };
 
-// --------------------- Socket.IO with Better Error Handling ---------------------
+// ✅ Socket.IO Setup
 const io = new Server(httpServer, {
   cors: { 
     origin: allowedOrigins, 
@@ -308,7 +227,6 @@ io.use((socket, next) => {
   }
 });
 
-// Socket.IO connection handling
 io.on('connection', (socket) => {
   logger.info(`🔗 Socket connected: ${socket.id} (User: ${socket.user.id})`);
   
@@ -342,14 +260,14 @@ io.on('connection', (socket) => {
 // Make io available to routes
 app.set('io', io);
 
-// --------------------- Health Check Route (before other routes) ---------------------
+// ✅ Health Check Route (before other routes)
 app.get('/health', (req, res) => {
   const health = {
     status: 'ok',
     uptime: Math.floor(process.uptime()),
     timestamp: new Date().toISOString(),
     database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-    redis: redisClient ? 'enabled' : 'disabled',
+    redis: 'disabled',
     memory: process.memoryUsage(),
     requestId: req.requestId
   };
@@ -357,37 +275,32 @@ app.get('/health', (req, res) => {
   res.json(health);
 });
 
-// --------------------- Route Loading Function ---------------------
-const loadRoutes = () => {
-  const routes = [
-    { path: '/api/auth', module: './routes/auth' },
-    { path: '/api/users', module: './routes/users' },
-    { path: '/api/products', module: './routes/products' },
-    { path: '/api/orders', module: './routes/orders' },
-    { path: '/api/delivery', module: './routes/delivery' },
-    { path: '/api/cart', module: './routes/cart' },
-    { path: '/api/seller', module: './routes/seller' },
-    { path: '/api/admin', module: './routes/admin' },
-    { path: '/api/wishlist', module: './routes/wishlist' },
-    { path: '/api/v1/payment', module: './routes/payment-routes' },
-    { path: '/api/v1/webhooks', module: './routes/webhook-routes' }
-  ];
+// ✅ API Routes
+const routeDefs = [
+  { path: '/api/auth', module: './routes/auth' },
+  { path: '/api/users', module: './routes/users' },
+  { path: '/api/products', module: './routes/products' },
+  { path: '/api/orders', module: './routes/orders' },
+  { path: '/api/delivery', module: './routes/delivery' },
+  { path: '/api/cart', module: './routes/cart' },
+  { path: '/api/seller', module: './routes/seller' },
+  { path: '/api/admin', module: './routes/admin' },
+  { path: '/api/wishlist', module: './routes/wishlist' },
+  { path: '/api/v1/payment', module: './routes/payment-routes' },
+  { path: '/api/v1/webhooks', module: './routes/webhook-routes' }
+];
 
-  // Load routes with better error handling
-  routes.forEach(({ path, module }) => {
-    try {
-      const routeModule = require(module);
-      app.use(path, routeModule);
-      logger.info(`✅ Loaded route: ${path}`);
-    } catch (error) {
-      logger.error(`❌ Failed to load route ${path}:`, error.message);
-      // Log the full error for debugging
-      logger.error(`Full error details for ${path}:`, error);
-    }
-  });
-};
+routeDefs.forEach(({ path, module }) => {
+  try {
+    const routeModule = require(module);
+    app.use(path, routeModule);
+    logger.info(`✅ Loaded route: ${path}`);
+  } catch (error) {
+    logger.error(`❌ Failed to load route ${path}:`, error.message);
+  }
+});
 
-// --------------------- Additional API Routes ---------------------
+// ✅ Additional API Routes
 app.get('/', (req, res) => {
   res.json({
     name: 'QuickLocal Backend API',
@@ -397,42 +310,18 @@ app.get('/', (req, res) => {
     requestId: req.requestId,
     services: {
       mongo: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-      redis: redisClient ? 'enabled' : 'disabled',
+      redis: 'disabled',
       socketio: 'enabled'
     }
   });
 });
 
-app.get('/api-docs', (req, res) => {
-  const docsPath = path.join(__dirname, 'public/docs/index.html');
-  if (fs.existsSync(docsPath)) {
-    res.sendFile(docsPath);
-  } else {
-    res.status(404).json({ 
-      error: 'API documentation not found',
-      requestId: req.requestId 
-    });
-  }
-});
-
-app.get('/api/status', (req, res) => {
-  res.json({
-    status: 'OK',
-    uptime: Math.floor(process.uptime()),
-    environment: process.env.NODE_ENV || 'development',
-    timestamp: new Date().toISOString(),
-    requestId: req.requestId,
-    version: process.env.APP_VERSION || '2.0.0'
-  });
-});
-
-// --------------------- Static Files ---------------------
+// ✅ Static files
 app.use(express.static(path.join(__dirname, 'public'), {
   maxAge: process.env.NODE_ENV === 'production' ? '1d' : 0
 }));
 
-// --------------------- Error Handling ---------------------
-// 404 handler
+// ✅ 404 handler
 app.use((req, res) => {
   logger.warn(`404 - Route not found: ${req.method} ${req.url}`);
   res.status(404).json({ 
@@ -441,7 +330,7 @@ app.use((req, res) => {
   });
 });
 
-// Global error handler
+// ✅ Global Error Handler
 app.use((err, req, res, next) => {
   const statusCode = err.status || err.statusCode || 500;
   const message = err.message || 'Internal Server Error';
@@ -455,7 +344,6 @@ app.use((err, req, res, next) => {
     statusCode
   });
   
-  // Don't leak error details in production
   const errorResponse = {
     error: process.env.NODE_ENV === 'production' ? 'Internal Server Error' : message,
     requestId: req.requestId
@@ -468,16 +356,24 @@ app.use((err, req, res, next) => {
   res.status(statusCode).json(errorResponse);
 });
 
-// --------------------- Graceful Shutdown ---------------------
+// ✅ Process Handlers
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  logger.error('Uncaught Exception:', err);
+  process.exit(1);
+});
+
+// ✅ Graceful Shutdown
 const gracefulShutdown = async (signal) => {
   logger.info(`Received ${signal}, initiating graceful shutdown...`);
   
   try {
-    // Stop accepting new connections
     httpServer.close(async () => {
       logger.info('HTTP server closed');
       
-      // Close database connection
       try {
         await mongoose.connection.close();
         logger.info('MongoDB connection closed');
@@ -485,17 +381,6 @@ const gracefulShutdown = async (signal) => {
         logger.error('Error closing MongoDB:', err);
       }
       
-      // Close Redis connection
-      if (redisClient) {
-        try {
-          await redisClient.quit();
-          logger.info('Redis connection closed');
-        } catch (err) {
-          logger.error('Error closing Redis:', err);
-        }
-      }
-      
-      // Close Socket.IO
       io.close(() => {
         logger.info('Socket.IO closed');
         process.exit(0);
@@ -514,30 +399,14 @@ const gracefulShutdown = async (signal) => {
   }
 };
 
-// Handle shutdown signals
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
-// Handle uncaught exceptions
-process.on('uncaughtException', (err) => {
-  logger.error('Uncaught Exception:', err);
-  gracefulShutdown('uncaughtException');
-});
-
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (reason, promise) => {
-  logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
-  gracefulShutdown('unhandledRejection');
-});
-
-// --------------------- Server Startup ---------------------
+// ✅ Start Server
 const startServer = async () => {
   try {
     // Connect to MongoDB first
     await connectDB();
-    
-    // Load routes AFTER database connection
-    loadRoutes();
     
     const PORT = process.env.PORT || 10000;
     const HOST = process.env.HOST || '0.0.0.0';
@@ -545,18 +414,15 @@ const startServer = async () => {
     httpServer.listen(PORT, HOST, () => {
       logger.info(`🚀 Server running on http://${HOST}:${PORT}`);
       logger.info(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
-      logger.info(`🔒 Redis: ${redisClient ? 'enabled' : 'disabled'}`);
+      logger.info(`🔒 Redis: disabled`);
       
-      // Show configuration summary
       console.log('📋 Configuration Summary:');
       console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`   Port: ${PORT}`);
       console.log(`   Database: ${mongoose.connection.db.databaseName}`);
-      console.log(`   Redis: ${redisClient ? 'Enabled' : 'Disabled'}`);
-      console.log(`   Features: ${process.env.FEATURES || 'healthChecks'}`);
+      console.log(`   Redis: Disabled`);
     });
     
-    // Handle server errors
     httpServer.on('error', (err) => {
       if (err.code === 'EADDRINUSE') {
         logger.error(`❌ Port ${PORT} is already in use`);
@@ -576,4 +442,4 @@ const startServer = async () => {
 startServer();
 
 // Export for testing
-module.exports = { app, io, logger, redisClient };
+module.exports = { app, io, logger };
