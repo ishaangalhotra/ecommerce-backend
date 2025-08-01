@@ -1,6 +1,6 @@
 // wishlistController.js
-const Wishlist = require('../models/Wishlist');
-const Product = require('../models/Product');
+const Wishlist = require('../models/wishlist');
+const Product = require('../models/product');
 const ErrorResponse = require('../utils/errorResponse');
 const asyncHandler = require('../middleware/asyncHandler');
 const mongoose = require('mongoose'); // Needed for isValidObjectId
