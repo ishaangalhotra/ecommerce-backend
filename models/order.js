@@ -120,4 +120,4 @@ orderSchema.pre('save', async function(next) {
   next();
 });
 
-module.exports = mongoose.model('Order', orderSchema);
+module.exports = mongoose.models.order || mongoose.model('order', orderSchema);

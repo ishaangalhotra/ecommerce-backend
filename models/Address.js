@@ -79,4 +79,4 @@ addressSchema.pre('save', async function(next) {
   next();
 });
 
-module.exports = mongoose.model('Address', addressSchema);
+module.exports = mongoose.models.Address' || mongoose.model('Address', addressSchema);

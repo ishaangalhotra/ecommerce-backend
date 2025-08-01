@@ -363,4 +363,5 @@ wishlistSchema.statics = {
   }
 };
 
-module.exports = mongoose.model('Wishlist', wishlistSchema);
+module.exports = mongoose.models.wishlist || mongoose.model('wishlist', wishlistSchema);
+

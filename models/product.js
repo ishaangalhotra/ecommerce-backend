@@ -258,4 +258,6 @@ productSchema.methods.calculateDeliveryDetails = function(userLocation) {
   };
 };
 
-module.exports = mongoose.model('Product', productSchema);
+module.exports = mongoose.models.product || mongoose.model('product', ProductSchema);
+
+

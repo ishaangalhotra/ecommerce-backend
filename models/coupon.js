@@ -150,4 +150,4 @@ couponSchema.methods.calculateDiscount = function(orderValue, applicableAmount =
   return Math.min(discount, orderValue);
 };
 
-module.exports = mongoose.model('Coupon', couponSchema);
+module.exports = mongoose.models.coupon || mongoose.model('coupon', couponSchema);

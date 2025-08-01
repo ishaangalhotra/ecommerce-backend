@@ -115,4 +115,5 @@ cartSchema.index({ status: 1, lastModified: -1 });
 cartSchema.index({ status: 1, lastModified: -1, 'metadata.abandonedRemindersSent': 1 });
 cartSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 }); // TTL index for auto-delete
 
-module.exports = mongoose.model('Cart', cartSchema);
+module.exports = mongoose.models.cart || mongoose.model('cart', cartSchema);
+
