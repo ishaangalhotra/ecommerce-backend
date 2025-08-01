@@ -232,15 +232,33 @@ class DatabaseManager {
       require('fs').readdirSync(require('path').join(__dirname, '../models'))
         .filter(file => file.endsWith('.js') && !file.startsWith('_'))
         .forEach(file => {
-          require(`../models/${file}`);
-          logger.debug(`Registered model: ${file.replace('.js', '')}`);
+          const modelName = file.replace('.js', '');
+          
+          // Check if model is already registered to avoid overwrite error
+          const capitalizedModelName = modelName.charAt(0).toUpperCase() + modelName.slice(1);
+          
+          if (!mongoose.models[modelName] && !mongoose.models[capitalizedModelName]) {
+            try {
+              require(`../models/${file}`);
+              logger.debug(`Registered model: ${modelName}`);
+            } catch (error) {
+              if (error.name === 'OverwriteModelError') {
+                logger.debug(`Model ${modelName} already exists, skipping...`);
+              } else {
+                throw error;
+              }
+            }
+          } else {
+            logger.debug(`Model ${modelName} already registered, skipping...`);
+          }
         });
     } catch (error) {
       logger.error('Failed to register models', {
         error: error.message,
         stack: error.stack
       });
-      throw error;
+      // Don't throw here - let the app continue even if some models fail
+      // throw error;
     }
   }
 
