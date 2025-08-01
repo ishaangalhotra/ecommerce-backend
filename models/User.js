@@ -7,6 +7,7 @@ const { v4: uuidv4 } = require('uuid');
 
 /**
  * Enhanced User Model with Authentication Features
+ * Fixed duplicate index warnings
  */
 
 const UserSchema = new mongoose.Schema({
@@ -26,6 +27,7 @@ const UserSchema = new mongoose.Schema({
       message: 'Please provide a valid email'
     }
   },
+  // FIXED: Removed index: true to prevent duplicate index warning
   phone: {
     type: String,
     sparse: true,
@@ -112,6 +114,22 @@ const UserSchema = new mongoose.Schema({
     }
   },
 
+  // FIXED: Privacy settings (removed index from shareToken field definition)
+  privacy: {
+    shareToken: {
+      type: String,
+      // Removed index: true - will be defined in schema.index() instead
+    },
+    isProfilePublic: {
+      type: Boolean,
+      default: false
+    },
+    allowLocationSharing: {
+      type: Boolean,
+      default: true
+    }
+  },
+
   // Wallet & Finance
   walletBalance: {
     type: Number,
@@ -162,19 +180,20 @@ const UserSchema = new mongoose.Schema({
   versionKey: '__v'
 });
 
-// ==================== ENHANCED INDEXES ====================
+// ==================== CONSOLIDATED INDEXES (FIXED DUPLICATES) ====================
 
-// Core unique indexes
+// Core unique indexes - only define here, not in field definitions
 UserSchema.index({ uuid: 1 }, { unique: true });
 UserSchema.index({ email: 1 }, { unique: true });
-UserSchema.index({ phone: 1 }, { unique: true, sparse: true });
+UserSchema.index({ phone: 1 }, { unique: true, sparse: true }); // Only here
 
 // Security-related indexes
-UserSchema.index({ emailVerificationToken: 1 });
-UserSchema.index({ passwordResetToken: 1 });
+UserSchema.index({ emailVerificationToken: 1 }, { sparse: true });
+UserSchema.index({ passwordResetToken: 1 }, { sparse: true });
+UserSchema.index({ 'privacy.shareToken': 1 }, { unique: true, sparse: true }); // Only here
 
-// NEW: Enhanced authentication indexes
-UserSchema.index({ refreshToken: 1 });
+// Enhanced authentication indexes
+UserSchema.index({ refreshToken: 1 }, { sparse: true });
 UserSchema.index({ tokenVersion: 1 });
 UserSchema.index({ lastActiveAt: -1 });
 
@@ -182,6 +201,10 @@ UserSchema.index({ lastActiveAt: -1 });
 UserSchema.index({ role: 1, isActive: 1, createdAt: -1 });
 UserSchema.index({ isActive: 1, isVerified: 1 });
 UserSchema.index({ isDeleted: 1 });
+
+// Compound indexes for common queries
+UserSchema.index({ role: 1, isVerified: 1, isActive: 1 });
+UserSchema.index({ loginAttempts: 1, lockUntil: 1 });
 
 // Text search index
 UserSchema.index({
@@ -209,7 +232,7 @@ UserSchema.pre('save', async function(next) {
   }
 });
 
-// NEW: Auto-update lastActiveAt when lastLoginAt changes
+// Auto-update lastActiveAt when lastLoginAt changes
 UserSchema.pre('save', function(next) {
   if (this.isModified('lastLoginAt')) {
     this.lastActiveAt = new Date();
@@ -217,6 +240,15 @@ UserSchema.pre('save', function(next) {
   next();
 });
 
+// Generate privacy.shareToken if not exists
+UserSchema.pre('save', function(next) {
+  if (!this.privacy.shareToken && this.privacy.isProfilePublic) {
+    this.privacy.shareToken = crypto.randomBytes(16).toString('hex');
+  }
+  next();
+});
+
+// Exclude deleted users by default
 UserSchema.pre(/^find/, function(next) {
   if (this.getFilter().isDeleted === undefined) {
     this.where({ isDeleted: false });
@@ -241,7 +273,6 @@ UserSchema.virtual('isLocked').get(function() {
   return !!(this.lockUntil && this.lockUntil > Date.now());
 });
 
-// NEW: Check if user has active sessions
 UserSchema.virtual('hasActiveSessions').get(function() {
   return !!(this.refreshToken);
 });
@@ -261,7 +292,6 @@ UserSchema.methods.getSignedJwtToken = function() {
   );
 };
 
-// NEW: Generate refresh token
 UserSchema.methods.generateRefreshToken = function() {
   return jwt.sign(
     { 
@@ -274,12 +304,10 @@ UserSchema.methods.generateRefreshToken = function() {
   );
 };
 
-// NEW: Validate refresh token
 UserSchema.methods.isRefreshTokenValid = function(token) {
   return this.refreshToken === token;
 };
 
-// NEW: Invalidate all tokens
 UserSchema.methods.invalidateAllTokens = async function() {
   this.tokenVersion = (this.tokenVersion || 0) + 1;
   this.refreshToken = undefined;
@@ -338,7 +366,6 @@ UserSchema.methods.incLoginAttempts = function() {
   return this.updateOne(updates);
 };
 
-// ENHANCED: Add login history with remember me support
 UserSchema.methods.addLoginHistory = function(ip, userAgent, location, rememberMe = false) {
   this.loginHistory.unshift({
     ip,
@@ -355,9 +382,7 @@ UserSchema.methods.addLoginHistory = function(ip, userAgent, location, rememberM
   return this.save();
 };
 
-// NEW: Clean up expired tokens (useful for cleanup jobs)
 UserSchema.methods.cleanupExpiredTokens = async function() {
-  // This would be called by a scheduled job
   if (this.passwordResetExpires && this.passwordResetExpires < Date.now()) {
     this.passwordResetToken = undefined;
     this.passwordResetExpires = undefined;
@@ -400,7 +425,6 @@ UserSchema.statics.getUserStats = async function() {
   ]);
 };
 
-// NEW: Get users with active sessions
 UserSchema.statics.getActiveSessionStats = async function() {
   return this.aggregate([
     {
@@ -417,7 +441,6 @@ UserSchema.statics.getActiveSessionStats = async function() {
   ]);
 };
 
-// NEW: Cleanup expired tokens for all users
 UserSchema.statics.cleanupExpiredTokens = async function() {
   const now = Date.now();
   
@@ -464,7 +487,6 @@ UserSchema.query.notLocked = function() {
   });
 };
 
-// NEW: Query helpers for session management
 UserSchema.query.withActiveSessions = function() {
   return this.where({
     refreshToken: { $exists: true, $ne: null }
