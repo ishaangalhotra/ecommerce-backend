@@ -1923,7 +1923,8 @@ if (require.main === module) {
   // Start server (with or without clustering)
   QuickLocalClusterManager.start();
 }Status: Connected
-   🏪 Database: ${mongoose.connection.db?.databaseName}
+   console.log(`🏪 Database: ${mongoose.connection.db?.databaseName}`);
+
    🖥️  Host: ${mongoose.connection.host}
    ⚡ Pool Size: ${this.config.DB_POOL_SIZE}
 
