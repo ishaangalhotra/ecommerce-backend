@@ -11,6 +11,7 @@ const http = require('http');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const cors = require('cors');
+const applySecurity = require('./middleware/security');
 const mongoose = require('mongoose');
 const cookieParser = require('cookie-parser');
 const compression = require('compression');
@@ -19,6 +20,7 @@ const slowDown = require('express-slow-down');
 const ExpressBrute = require('express-brute');
 const MongooseStore = require('express-brute-mongoose');
 const BruteForceSchema = require('express-brute-mongoose/dist/schema');
+applySecurity(app);
 
 // Custom imports
 const logger = require('./utils/logger');
