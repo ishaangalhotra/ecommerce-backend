@@ -1923,37 +1923,37 @@ if (require.main === module) {
   // Start server (with or without clustering)
   QuickLocalClusterManager.start();
 }Status: Connected
-   console.log(`🏪 Database: ${mongoose.connection.db?.databaseName}`);
-
+   console.log(`Status: Connected
+🏪 Database: ${mongoose.connection.db?.databaseName}
    🖥️  Host: ${mongoose.connection.host}
-   ⚡ Pool Size: ${this.config.DB_POOL_SIZE}
+⚡ Pool Size: ${this.config.DB_POOL_SIZE}
 
 🛡️  Security Features:
-   🔒 Helmet Security: ${this.config.HELMET_ENABLED ? '✅' : '❌'}
-   🚦 Rate Limiting: ${this.config.RATE_LIMIT_ENABLED ? '✅' : '❌'} (${this.config.RATE_LIMIT_MAX}/${this.config.RATE_LIMIT_WINDOW / 60000}min)
-   🛑 Brute Force Protection: ✅
-   🌐 CORS Origins: ${CORSManager.getOrigins().length} configured
-   🔐 Session Management: ✅
-   💪 Password Hashing: ${this.config.BCRYPT_SALT_ROUNDS} rounds
-
+🔒 Helmet Security: ${this.config.HELMET_ENABLED ? '✅' : '❌'}
+🚦 Rate Limiting: ${this.config.RATE_LIMIT_ENABLED ? '✅' : '❌'} (${this.config.RATE_LIMIT_MAX}/${this.config.RATE_LIMIT_WINDOW / 60000}min)
+🛑 Brute Force Protection: ✅
+🌐 CORS Origins: ${CORSManager.getOrigins().length} configured
+🔐 Session Management: ✅
+💪 Password Hashing: ${this.config.BCRYPT_SALT_ROUNDS} rounds
 🚀 Performance Features:
-   📦 Compression: ${this.config.COMPRESSION_ENABLED ? '✅' : '❌'} (Level: ${this.config.COMPRESSION_LEVEL})
-   📊 Metrics: ${this.config.ENABLE_METRICS ? '✅' : '❌'}
-   🔌 Socket.IO: ${this.io ? '✅' : '❌'}
-   ⚡ Circuit Breaker: ✅
-   🕐 Request Timeout: ${this.config.REQUEST_TIMEOUT / 1000}s
-   🎯 Clustering: ${this.config.CLUSTER_MODE ? '✅' : '❌'}
+📦 Compression: ${this.config.COMPRESSION_ENABLED ? '✅' : '❌'} (Level: ${this.config.COMPRESSION_LEVEL})
+📊 Metrics: ${this.config.ENABLE_METRICS ? '✅' : '❌'}
+🔌 Socket.IO: ${this.io ? '✅' : '❌'}
+⚡ Circuit Breaker: ✅
+🕐 Request Timeout: ${this.config.REQUEST_TIMEOUT / 1000}s
+🎯 Clustering: ${this.config.CLUSTER_MODE ? '✅' : '❌'}
+
 
 🏪 Marketplace Features:
-   💳 Payment Gateways: ${Object.values(this.getPaymentGatewayStatus()).filter(p => p.enabled).length} enabled
-   🚚 Delivery System: ${process.env.DELIVERY_ENABLED === 'true' ? '✅' : '❌'}
-   ⭐ Reviews & Ratings: ${process.env.FEATURE_REVIEWS === 'true' ? '✅' : '❌'}
-   💝 Wishlist: ${process.env.FEATURE_WISHLIST === 'true' ? '✅' : '❌'}
-   📍 Live Tracking: ${process.env.FEATURE_LIVE_TRACKING === 'true' ? '✅' : '❌'}
-   💬 Chat System: ${process.env.FEATURE_CHAT === 'true' ? '✅' : '❌'}
-   🎁 Loyalty Program: ${process.env.FEATURE_LOYALTY_PROGRAM === 'true' ? '✅' : '❌'}
+💳 Payment Gateways: ${Object.values(this.getPaymentGatewayStatus()).filter(p => p.enabled).length} enabled
+🚚 Delivery System: ${process.env.DELIVERY_ENABLED === 'true' ? '✅' : '❌'}
+⭐ Reviews & Ratings: ${process.env.FEATURE_REVIEWS === 'true' ? '✅' : '❌'}
+💝 Wishlist: ${process.env.FEATURE_WISHLIST === 'true' ? '✅' : '❌'}
+📍 Live Tracking: ${process.env.FEATURE_LIVE_TRACKING === 'true' ? '✅' : '❌'}
+💬 Chat System: ${process.env.FEATURE_CHAT === 'true' ? '✅' : '❌'}
+🎁 Loyalty Program: ${process.env.FEATURE_LOYALTY_PROGRAM === 'true' ? '✅' : '❌'}
 
 📚 API Information:
-   📖 Documentation: /api/v1/docs
-   ❤️  Health Check: /health
-   📊
+📖 Documentation: /api/v1/docs
+❤️  Health Check: /health
+`);
