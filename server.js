@@ -753,12 +753,25 @@ stream: {
     req.url === '/favicon.ico'
   );
 }
+class QuickLocalServer {
+  constructor(config) {
+    this.config = config;
+    this.app = express();
+  }
 
-    // Correlation ID and metrics
+  setupMiddleware() {
+    // ✅ Safe to use `this.app` here
     this.app.use((req, res, next) => {
       const startTime = process.hrtime.bigint();
       req.correlationId = `${this.config.INSTANCE_ID}-${Date.now().toString(36)}-${Math.random().toString(36).substr(2)}`;
       req.startTime = startTime;
+      next();
+    });
+
+    // ...other middleware setup
+  }
+}
+
       
       res.setHeader('X-Correlation-ID', req.correlationId);
       res.setHeader('X-Instance-ID', this.config.INSTANCE_ID);
