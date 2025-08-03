@@ -887,6 +887,333 @@ class QuickLocalServer {
       logger.info('📝 Redis session store disabled - using MongoDB');
     }
   }
+// ImageKit integration for your Render backend
+
+const express = require('express');
+const multer = require('multer');
+const ImageKit = require('imagekit');
+const fs = require('fs');
+const cors = require('cors');
+
+const app = express();
+
+app.use(cors({
+  origin: ['https://quicklocal.shop', 'http://localhost:3000'],
+  credentials: true
+}));
+
+app.use(express.json());
+
+// Configure ImageKit
+const imagekit = new ImageKit({
+  publicKey: process.env.IMAGEKIT_PUBLIC_KEY,
+  privateKey: process.env.IMAGEKIT_PRIVATE_KEY,
+  urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT // https://ik.imagekit.io/your_imagekit_id
+});
+
+// Configure multer for file uploads
+const upload = multer({ 
+  dest: 'uploads/',
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB (ImageKit supports larger files)
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed!'), false);
+    }
+  }
+});
+
+// Test ImageKit connection
+app.get('/api/test-imagekit', (req, res) => {
+  res.json({
+    success: true,
+    urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT,
+    message: 'ImageKit configured successfully'
+  });
+});
+
+// Single image upload to ImageKit
+app.post('/api/upload-image', upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image file provided' });
+    }
+
+    // Read file as base64
+    const fileBuffer = fs.readFileSync(req.file.path);
+    const base64File = fileBuffer.toString('base64');
+
+    // Upload to ImageKit
+    const uploadResponse = await imagekit.upload({
+      file: base64File,
+      fileName: `product-${Date.now()}-${req.file.originalname}`,
+      folder: '/quicklocal-products',
+      useUniqueFileName: true,
+      tags: ['product', 'ecommerce'],
+      customMetadata: {
+        uploadedAt: new Date().toISOString()
+      }
+    });
+
+    // Clean up temporary file
+    fs.unlinkSync(req.file.path);
+
+    // Generate different sizes using ImageKit transformations
+    const baseUrl = uploadResponse.url;
+    const fileId = uploadResponse.fileId;
+
+    const imageVariants = {
+      original: baseUrl,
+      large: `${baseUrl}?tr=w-1000,h-1000,c-maintain_ratio,q-80,f-auto`,
+      medium: `${baseUrl}?tr=w-600,h-600,c-maintain_ratio,q-80,f-auto`,
+      thumbnail: `${baseUrl}?tr=w-300,h-300,c-maintain_ratio,q-70,f-auto`,
+      small: `${baseUrl}?tr=w-150,h-150,c-maintain_ratio,q-70,f-auto`
+    };
+
+    res.json({
+      success: true,
+      image: {
+        id: fileId,
+        name: uploadResponse.name,
+        url: baseUrl,
+        variants: imageVariants,
+        size: uploadResponse.size,
+        format: uploadResponse.fileType
+      },
+      message: 'Image uploaded successfully'
+    });
+
+  } catch (error) {
+    console.error('ImageKit upload error:', error);
+    
+    // Clean up temp file if it exists
+    if (req.file && req.file.path) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (cleanupError) {
+        console.error('Cleanup error:', cleanupError);
+      }
+    }
+    
+    res.status(500).json({ 
+      error: 'Failed to upload image',
+      details: error.message 
+    });
+  }
+});
+
+// Multiple image upload
+app.post('/api/upload-multiple-images', upload.array('images', 5), async (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ error: 'No image files provided' });
+    }
+
+    const uploadPromises = req.files.map(async (file) => {
+      const fileBuffer = fs.readFileSync(file.path);
+      const base64File = fileBuffer.toString('base64');
+
+      const uploadResponse = await imagekit.upload({
+        file: base64File,
+        fileName: `product-${Date.now()}-${file.originalname}`,
+        folder: '/quicklocal-products',
+        useUniqueFileName: true,
+        tags: ['product', 'ecommerce']
+      });
+
+      // Clean up temp file
+      fs.unlinkSync(file.path);
+
+      const baseUrl = uploadResponse.url;
+      return {
+        id: uploadResponse.fileId,
+        name: uploadResponse.name,
+        url: baseUrl,
+        variants: {
+          original: baseUrl,
+          large: `${baseUrl}?tr=w-1000,h-1000,c-maintain_ratio,q-80,f-auto`,
+          medium: `${baseUrl}?tr=w-600,h-600,c-maintain_ratio,q-80,f-auto`,
+          thumbnail: `${baseUrl}?tr=w-300,h-300,c-maintain_ratio,q-70,f-auto`
+        }
+      };
+    });
+
+    const uploadedImages = await Promise.all(uploadPromises);
+
+    res.json({
+      success: true,
+      images: uploadedImages,
+      message: `${uploadedImages.length} images uploaded successfully`
+    });
+
+  } catch (error) {
+    console.error('Multiple upload error:', error);
+    
+    // Clean up temp files
+    if (req.files) {
+      req.files.forEach(file => {
+        try {
+          fs.unlinkSync(file.path);
+        } catch (cleanupError) {
+          console.error('Cleanup error:', cleanupError);
+        }
+      });
+    }
+    
+    res.status(500).json({ 
+      error: 'Failed to upload images',
+      details: error.message 
+    });
+  }
+});
+
+// Delete image from ImageKit
+app.delete('/api/delete-image/:fileId', async (req, res) => {
+  try {
+    const fileId = req.params.fileId;
+    
+    const result = await imagekit.deleteFile(fileId);
+    
+    res.json({
+      success: true,
+      message: 'Image deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete error:', error);
+    res.status(500).json({ 
+      error: 'Failed to delete image',
+      details: error.message 
+    });
+  }
+});
+
+// Get image details
+app.get('/api/image-details/:fileId', async (req, res) => {
+  try {
+    const fileId = req.params.fileId;
+    
+    const fileDetails = await imagekit.getFileDetails(fileId);
+    
+    res.json({
+      success: true,
+      file: fileDetails
+    });
+  } catch (error) {
+    console.error('Get file details error:', error);
+    res.status(404).json({ 
+      error: 'File not found',
+      details: error.message 
+    });
+  }
+});
+
+// Create product with images
+app.post('/api/products', upload.array('images', 5), async (req, res) => {
+  try {
+    const { name, description, price, category, brand, sku, stock_quantity } = req.body;
+    
+    let imageUrls = [];
+    
+    // Upload images if provided
+    if (req.files && req.files.length > 0) {
+      const uploadPromises = req.files.map(async (file) => {
+        const fileBuffer = fs.readFileSync(file.path);
+        const base64File = fileBuffer.toString('base64');
+
+        const uploadResponse = await imagekit.upload({
+          file: base64File,
+          fileName: `${sku}-${Date.now()}-${file.originalname}`,
+          folder: '/quicklocal-products',
+          useUniqueFileName: true,
+          tags: ['product', sku || 'no-sku']
+        });
+        
+        fs.unlinkSync(file.path); // Clean up temp file
+        return {
+          id: uploadResponse.fileId,
+          url: uploadResponse.url,
+          thumbnail: `${uploadResponse.url}?tr=w-300,h-300,c-maintain_ratio,q-70,f-auto`
+        };
+      });
+      
+      imageUrls = await Promise.all(uploadPromises);
+    }
+    
+    // Create product object (replace with your actual database logic)
+    const product = {
+      name,
+      description,
+      price: parseFloat(price),
+      category,
+      brand,
+      sku,
+      stock_quantity: parseInt(stock_quantity),
+      images: imageUrls,
+      created_at: new Date()
+    };
+    
+    // TODO: Save to your database
+    // const savedProduct = await db.products.create(product);
+    
+    res.json({
+      success: true,
+      product: product,
+      message: 'Product created successfully'
+    });
+    
+  } catch (error) {
+    console.error('Product creation error:', error);
+    
+    // Clean up temp files on error
+    if (req.files) {
+      req.files.forEach(file => {
+        try {
+          fs.unlinkSync(file.path);
+        } catch (cleanupError) {
+          console.error('Cleanup error:', cleanupError);
+        }
+      });
+    }
+    
+    res.status(500).json({ 
+      error: 'Failed to create product',
+      details: error.message 
+    });
+  }
+});
+
+// ImageKit authentication endpoint for frontend
+app.get('/api/imagekit-auth', (req, res) => {
+  const authenticationParameters = imagekit.getAuthenticationParameters();
+  res.json(authenticationParameters);
+});
+
+// Error handling middleware
+app.use((error, req, res, next) => {
+  if (error instanceof multer.MulterError) {
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: 'File too large. Maximum size is 10MB.' });
+    }
+    if (error.code === 'LIMIT_FILE_COUNT') {
+      return res.status(400).json({ error: 'Too many files. Maximum is 5 files.' });
+    }
+  }
+  
+  if (error.message === 'Only image files are allowed!') {
+    return res.status(400).json({ error: 'Only image files are allowed!' });
+  }
+  
+  res.status(500).json({ error: error.message });
+});
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+  console.log(`ImageKit endpoint: ${process.env.IMAGEKIT_URL_ENDPOINT}`);
+});
+
+module.exports = { imagekit };
 
   async loadRoutes() {
     const result = await this.routeManager.loadRoutes(this.app);
@@ -1980,3 +2307,33 @@ if (require.main === module) {
 ❤️  Health Check: /health
 `);
 }
+// In your main app.js or index.js
+const express = require('express');
+const cors = require('cors');
+
+// Import your new image routes
+const imageRoutes = require('./routes/imageRoutes');
+
+const app = express();
+
+app.use(cors({
+  origin: ['https://quicklocal.shop', 'http://localhost:3000'],
+  credentials: true
+}));
+
+app.use(express.json());
+
+// Your existing routes
+app.get('/api/test', (req, res) => {
+  res.json({ message: 'Backend is working!' });
+});
+
+// ADD THIS: Use image routes
+app.use('/api/images', imageRoutes);
+
+// Your other existing routes...
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
