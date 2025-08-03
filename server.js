@@ -1,5 +1,10 @@
 // server.js - QuickLocal Production-Ready Server with Complete Integration
 // Version: 2.0.0 - Integrated with Environment Configuration
+require('dotenv').config(); // Load .env variables
+
+// Ensure NODE_ENV has a fallback:
+process.env.NODE_ENV = process.env.NODE_ENV || 'development';
+
 
 require('dotenv').config();
 
