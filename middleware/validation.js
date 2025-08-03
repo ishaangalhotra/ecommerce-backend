@@ -61,12 +61,23 @@ const orderValidation = {
     handleValidationErrors
   ]
 };
+
 function validateEnvironment(env) {
-  const allowedEnvs = ['development', 'production', 'test'];
-  if (!allowedEnvs.includes(env)) {
-    throw new Error(`❌ Invalid NODE_ENV: "${env}". Allowed: ${allowedEnvs.join(', ')}`);
+  // If no env is passed, get it from process.env.NODE_ENV
+  const nodeEnv = env || process.env.NODE_ENV || 'development';
+  
+  // Set the environment variable if it's not set or undefined
+  if (!process.env.NODE_ENV || process.env.NODE_ENV === 'undefined') {
+    process.env.NODE_ENV = nodeEnv;
+    console.log(`🔧 NODE_ENV was ${process.env.NODE_ENV || 'undefined'}, setting to: ${nodeEnv}`);
   }
-  console.log(`✅ Environment validated: ${env}`);
+  
+  const allowedEnvs = ['development', 'production', 'test'];
+  if (!allowedEnvs.includes(nodeEnv)) {
+    throw new Error(`❌ Invalid NODE_ENV: "${nodeEnv}". Allowed: ${allowedEnvs.join(', ')}`);
+  }
+  console.log(`✅ Environment validated: ${nodeEnv}`);
+  return nodeEnv;
 }
 
 module.exports = {

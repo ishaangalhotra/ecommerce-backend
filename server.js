@@ -487,7 +487,7 @@ class QuickLocalServer {
     this.server = null;
     this.io = null;
     this.routeManager = new QuickLocalRouteManager();
-    this.circuitBreaker = new CircuitBreaker();
+    this.circuitBreaker = CircuitBreaker();
     this.isShuttingDown = false;
     
     // Set process title
