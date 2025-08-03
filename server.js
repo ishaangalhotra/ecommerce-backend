@@ -745,17 +745,14 @@ stream: {
     }
   }
 }
-          skip: (req) => {
-            return this.config.IS_PRODUCTION && (
-              req.method === 'OPTIONS' || 
-              req.url === '/health' ||
-              req.url === '/metrics' ||
-              req.url === '/favicon.ico'
-            );
-          }
-        }
-      ));
-    }
+          skip: function(req) {
+  return this.config.IS_PRODUCTION && (
+    req.method === 'OPTIONS' || 
+    req.url === '/health' ||
+    req.url === '/metrics' ||
+    req.url === '/favicon.ico'
+  );
+}
 
     // Correlation ID and metrics
     this.app.use((req, res, next) => {
