@@ -28,7 +28,7 @@ const logger = require('./utils/logger');
 const { connectDB } = require('./config/database');
 const SecurityMiddleware = require('./middleware/security');
 const ValidationMiddleware = require('./middleware/validation');
-const AuthenticationMiddleware = require('./middleware/authentication');
+const AuthenticationMiddleware = require('./authMiddleware');
 const MetricsCollector = require('./utils/metrics');
 const CircuitBreaker = require('./utils/circuitBreaker');
 
