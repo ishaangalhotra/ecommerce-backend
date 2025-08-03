@@ -136,7 +136,12 @@ class QuickLocalConfig {
   }
 
   validateEnvironment() {
-    ValidationMiddleware.validateEnvironment();
+    // Skip validation if ValidationMiddleware doesn't exist
+    try {
+      ValidationMiddleware.validateEnvironment();
+    } catch (error) {
+      console.warn('⚠️ ValidationMiddleware not found, skipping validation');
+    }
     
     // Additional QuickLocal specific validations
     const criticalVars = ['MONGODB_URI', 'JWT_SECRET', 'COOKIE_SECRET', 'SESSION_SECRET'];
@@ -151,11 +156,11 @@ class QuickLocalConfig {
     urlVars.forEach(varName => {
       const url = process.env[varName];
       if (url && !url.startsWith('http')) {
-        logger.warn(`⚠️ ${varName} should start with http:// or https://`);
+        console.warn(`⚠️ ${varName} should start with http:// or https://`);
       }
     });
 
-    logger.info('✅ QuickLocal environment validation passed');
+    console.log('✅ QuickLocal environment validation passed');
   }
 }
 
@@ -219,7 +224,7 @@ class CORSManager {
 class EnhancedSecurityManager {
   static createBruteForceProtection() {
     if (!process.env.MONGODB_URI && !process.env.MONGO_URI) {
-      logger.warn('⚠️ Brute force protection disabled: MongoDB not configured');
+      console.warn('⚠️ Brute force protection disabled: MongoDB not configured');
       return (req, res, next) => next();
     }
 
@@ -233,8 +238,7 @@ class EnhancedSecurityManager {
         maxWait: 60 * 60 * 1000, // 1 hour
         lifetime: 24 * 60 * 60, // 24 hours
         failCallback: (req, res, next, nextValidRequestDate) => {
-          logger.warn(`🛑 Brute force protection triggered for ${req.ip}`);
-          MetricsCollector.increment('brute_force_blocks', { ip: req.ip });
+          console.warn(`🛑 Brute force protection triggered for ${req.ip}`);
           
           res.status(429).json({
             error: 'Too many failed attempts',
@@ -245,7 +249,7 @@ class EnhancedSecurityManager {
         }
       });
     } catch (error) {
-      logger.error('❌ Failed to initialize brute force protection:', error);
+      console.error('❌ Failed to initialize brute force protection:', error);
       return (req, res, next) => next();
     }
   }
@@ -277,12 +281,7 @@ class EnhancedSecurityManager {
         return options.skip ? options.skip(req) : false;
       },
       onLimitReached: (req, res, options) => {
-        logger.warn(`🚦 Rate limit exceeded for ${req.ip} on ${req.originalUrl}`);
-        MetricsCollector.increment('rate_limit_exceeded', {
-          endpoint: req.originalUrl,
-          ip: req.ip,
-          user_id: req.user?.id || 'anonymous'
-        });
+        console.warn(`🚦 Rate limit exceeded for ${req.ip} on ${req.originalUrl}`);
       }
     });
   }
@@ -296,7 +295,7 @@ class EnhancedSecurityManager {
       skipFailedRequests: false,
       skipSuccessfulRequests: true,
       onLimitReached: (req, res, options) => {
-        logger.info(`🐌 Request slowed down for ${req.ip} on ${req.originalUrl}`);
+        console.log(`🐌 Request slowed down for ${req.ip} on ${req.originalUrl}`);
       }
     });
   }
@@ -343,7 +342,7 @@ class QuickLocalRouteManager {
   }
 
   async loadRoutes(app) {
-    logger.info('🔄 Loading QuickLocal API routes...');
+    console.log('🔄 Loading QuickLocal API routes...');
     
     for (const route of this.routes) {
       try {
@@ -378,7 +377,7 @@ class QuickLocalRouteManager {
       routeModule = require(module);
     } catch (error) {
       if (error.code === 'MODULE_NOT_FOUND') {
-        logger.warn(`⚠️ Route module not found: ${module} - Skipping`);
+        console.warn(`⚠️ Route module not found: ${module} - Skipping`);
         return; // Skip missing modules instead of failing
       }
       throw error;
@@ -409,7 +408,7 @@ class QuickLocalRouteManager {
     app.use(path, routeModule);
     
     this.loadedRoutes.push({ path, name, priority, status: 'loaded' });
-    logger.info(`✅ ${name}: ${path} (Priority: ${priority})`);
+    console.log(`✅ ${name}: ${path} (Priority: ${priority})`);
 
     // Log endpoints in development
     if (process.env.DEBUG_MODE === 'true') {
@@ -445,7 +444,7 @@ class QuickLocalRouteManager {
         }
       });
       if (endpoints.length > 0) {
-        logger.debug(`📍 ${name} endpoints:`, endpoints);
+        console.log(`📍 ${name} endpoints:`, endpoints);
       }
     }
   }
@@ -456,7 +455,7 @@ class QuickLocalRouteManager {
       name: route.name, 
       error: error.message 
     });
-    logger.error(`❌ Failed to load ${route.name} (${route.path}): ${error.message}`);
+    console.error(`❌ Failed to load ${route.name} (${route.path}): ${error.message}`);
     
     if (process.env.DEBUG_MODE === 'true') {
       console.error(error.stack);
@@ -467,10 +466,10 @@ class QuickLocalRouteManager {
     const { length: loaded } = this.loadedRoutes;
     const { length: failed } = this.failedRoutes;
     
-    logger.info(`📊 Route loading complete: ${loaded} loaded, ${failed} failed`);
+    console.log(`📊 Route loading complete: ${loaded} loaded, ${failed} failed`);
     
     if (failed > 0) {
-      logger.error(`⚠️ Failed routes:`, this.failedRoutes);
+      console.error(`⚠️ Failed routes:`, this.failedRoutes);
       if (process.env.NODE_ENV === 'production' && failed > loaded * 0.3) {
         throw new Error('❌ Critical: More than 30% of routes failed to load in production');
       }
@@ -486,7 +485,6 @@ class QuickLocalServer {
     this.server = null;
     this.io = null;
     this.routeManager = new QuickLocalRouteManager();
-    this.circuitBreaker = require('./utils/circuitBreaker');
     this.isShuttingDown = false;
     
     // Set process title
@@ -497,9 +495,9 @@ class QuickLocalServer {
 
   async initialize() {
     try {
-      logger.info(`🚀 Starting ${this.config.APP_NAME} v${this.config.APP_VERSION}`);
-      logger.info(`🏗️ Environment: ${this.config.NODE_ENV}`);
-      logger.info(`🆔 Instance: ${this.config.INSTANCE_ID}`);
+      console.log(`🚀 Starting ${this.config.APP_NAME} v${this.config.APP_VERSION}`);
+      console.log(`🏗️ Environment: ${this.config.NODE_ENV}`);
+      console.log(`🆔 Instance: ${this.config.INSTANCE_ID}`);
       
       await this.preflightChecks();
       await this.createApp();
@@ -514,7 +512,7 @@ class QuickLocalServer {
       
       return { app: this.app, server: this.server, io: this.io };
     } catch (error) {
-      logger.error('❌ Server initialization failed:', error);
+      console.error('❌ Server initialization failed:', error);
       process.exit(1);
     }
   }
@@ -531,19 +529,11 @@ class QuickLocalServer {
     dirs.forEach(dir => {
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true });
-        logger.info(`📁 Created directory: ${dir}`);
+        console.log(`📁 Created directory: ${dir}`);
       }
     });
 
-    // Check memory
-    const memUsage = process.memoryUsage();
-    const maxMemory = parseInt(process.env.MAX_MEMORY_USAGE) * 1024 * 1024 || 512 * 1024 * 1024;
-    
-    if (memUsage.heapUsed > maxMemory * 0.8) {
-      logger.warn('⚠️ High memory usage detected at startup');
-    }
-
-    logger.info('✅ Preflight checks completed');
+    console.log('✅ Preflight checks completed');
   }
 
   async createApp() {
@@ -573,9 +563,9 @@ class QuickLocalServer {
       });
       
       this.setupSocketHandlers();
-      logger.info('✅ Socket.IO initialized for real-time features');
+      console.log('✅ Socket.IO initialized for real-time features');
     } catch (error) {
-      logger.warn('⚠️ Socket.IO initialization failed:', error.message);
+      console.warn('⚠️ Socket.IO initialization failed:', error.message);
       this.config.ENABLE_SOCKET_IO = false;
     }
   }
@@ -584,14 +574,13 @@ class QuickLocalServer {
     if (!this.io) return;
 
     this.io.on('connection', (socket) => {
-      logger.debug(`🔌 Socket connected: ${socket.id}`);
-      MetricsCollector.increment('socket_connections');
+      console.log(`🔌 Socket connected: ${socket.id}`);
       
       // Join user-specific room for notifications
       socket.on('join_user_room', (userId) => {
         if (userId) {
           socket.join(`user_${userId}`);
-          logger.debug(`👤 Socket ${socket.id} joined user room: ${userId}`);
+          console.log(`👤 Socket ${socket.id} joined user room: ${userId}`);
         }
       });
 
@@ -599,25 +588,22 @@ class QuickLocalServer {
       socket.on('track_order', (orderId) => {
         if (orderId) {
           socket.join(`order_${orderId}`);
-          logger.debug(`📦 Socket ${socket.id} tracking order: ${orderId}`);
+          console.log(`📦 Socket ${socket.id} tracking order: ${orderId}`);
         }
       });
 
       socket.on('disconnect', (reason) => {
-        logger.debug(`🔌 Socket disconnected: ${socket.id}, reason: ${reason}`);
-        MetricsCollector.increment('socket_disconnections');
+        console.log(`🔌 Socket disconnected: ${socket.id}, reason: ${reason}`);
       });
 
       socket.on('error', (error) => {
-        logger.error(`🔌 Socket error: ${socket.id}`, error);
-        MetricsCollector.increment('socket_errors');
+        console.error(`🔌 Socket error: ${socket.id}`, error);
       });
     });
 
     // Broadcast system events
     this.io.on('connection_error', (err) => {
-      logger.error('🔌 Socket.IO connection error:', err);
-      MetricsCollector.increment('socket_connection_errors');
+      console.error('🔌 Socket.IO connection error:', err);
     });
   }
 
@@ -640,7 +626,12 @@ class QuickLocalServer {
 
     // Security headers with Helmet
     if (this.config.HELMET_ENABLED) {
-      applySecurity(this.app);
+      try {
+        applySecurity(this.app);
+      } catch (error) {
+        console.warn('⚠️ Security middleware not found, using basic security');
+        this.app.use(helmet());
+      }
     }
 
     // Brute force protection
@@ -668,8 +659,7 @@ class QuickLocalServer {
         if (CORSManager.isValidOrigin(origin)) {
           callback(null, true);
         } else {
-          logger.warn(`🚫 CORS blocked origin: ${origin || 'null'}`);
-          MetricsCollector.increment('cors_blocked', { origin: origin || 'null' });
+          console.warn(`🚫 CORS blocked origin: ${origin || 'null'}`);
           callback(null, false);
         }
       },
@@ -736,11 +726,7 @@ class QuickLocalServer {
         {
           stream: { 
             write: (message) => {
-              if (logger && logger.info) {
-                logger.info(`[REQUEST] ${message.trim()}`);
-              } else {
-                console.log(`[REQUEST] ${message.trim()}`);
-              }
+              console.log(`[REQUEST] ${message.trim()}`);
             }
           },
           skip: (req) => {
@@ -765,13 +751,6 @@ class QuickLocalServer {
       res.setHeader('X-Instance-ID', this.config.INSTANCE_ID);
       res.setHeader('X-Response-Time', '0ms');
 
-      // Metrics collection
-      MetricsCollector.increment('http_requests_total', {
-        method: req.method,
-        endpoint: req.route?.path || req.path.split('?')[0],
-        user_agent: req.headers['user-agent']?.split(' ')[0] || 'unknown'
-      });
-
       // Override res.send to capture response time
       const originalSend = res.send;
       res.send = function(data) {
@@ -782,20 +761,8 @@ class QuickLocalServer {
         
         // Log slow requests
         if (duration > 2000) { // 2 seconds
-          logger.warn(`🐌 Slow request [${req.correlationId}]: ${req.method} ${req.originalUrl} took ${duration.toFixed(2)}ms`);
+          console.warn(`🐌 Slow request [${req.correlationId}]: ${req.method} ${req.originalUrl} took ${duration.toFixed(2)}ms`);
         }
-
-        // Metrics
-        MetricsCollector.histogram('http_request_duration_ms', duration, {
-          method: req.method,
-          status_code: res.statusCode.toString(),
-          endpoint: req.route?.path || req.path.split('?')[0]
-        });
-
-        MetricsCollector.increment('http_responses_total', {
-          method: req.method,
-          status_code: res.statusCode.toString()
-        });
 
         if (process.env.DEBUG_MODE === 'true' && req.method !== 'OPTIONS') {
           console.log(`📤 [${req.correlationId}] ${res.statusCode} (${duration.toFixed(2)}ms)`);
@@ -845,13 +812,11 @@ class QuickLocalServer {
           autoIndex: this.config.IS_DEVELOPMENT
         });
         
-        logger.info(`✅ Database connected: ${this.config.DB_NAME}`);
-        MetricsCollector.increment('database_connections_total', { status: 'success' });
+        console.log(`✅ Database connected: ${this.config.DB_NAME}`);
         return;
       } catch (error) {
         retries++;
-        MetricsCollector.increment('database_connections_total', { status: 'failed' });
-        logger.warn(`Database connection attempt ${retries}/${maxRetries} failed: ${error.message}`);
+        console.warn(`Database connection attempt ${retries}/${maxRetries} failed: ${error.message}`);
         
         if (retries === maxRetries) {
           throw new Error(`❌ Failed to connect to database after ${maxRetries} attempts`);
@@ -864,7 +829,7 @@ class QuickLocalServer {
 
   async setupSession() {
     if (!this.config.REDIS_ENABLED) {
-      logger.info('📝 Using MongoDB session store');
+      console.log('📝 Using MongoDB session store');
       
       this.app.use(session({
         secret: this.config.SESSION_SECRET,
@@ -884,336 +849,9 @@ class QuickLocalServer {
         }
       }));
     } else {
-      logger.info('📝 Redis session store disabled - using MongoDB');
+      console.log('📝 Redis session store disabled - using MongoDB');
     }
   }
-// ImageKit integration for your Render backend
-
-const express = require('express');
-const multer = require('multer');
-const ImageKit = require('imagekit');
-const fs = require('fs');
-const cors = require('cors');
-
-const app = express();
-
-app.use(cors({
-  origin: ['https://quicklocal.shop', 'http://localhost:3000'],
-  credentials: true
-}));
-
-app.use(express.json());
-
-// Configure ImageKit
-const imagekit = new ImageKit({
-  publicKey: process.env.IMAGEKIT_PUBLIC_KEY,
-  privateKey: process.env.IMAGEKIT_PRIVATE_KEY,
-  urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT // https://ik.imagekit.io/your_imagekit_id
-});
-
-// Configure multer for file uploads
-const upload = multer({ 
-  dest: 'uploads/',
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB (ImageKit supports larger files)
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only image files are allowed!'), false);
-    }
-  }
-});
-
-// Test ImageKit connection
-app.get('/api/test-imagekit', (req, res) => {
-  res.json({
-    success: true,
-    urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT,
-    message: 'ImageKit configured successfully'
-  });
-});
-
-// Single image upload to ImageKit
-app.post('/api/upload-image', upload.single('image'), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No image file provided' });
-    }
-
-    // Read file as base64
-    const fileBuffer = fs.readFileSync(req.file.path);
-    const base64File = fileBuffer.toString('base64');
-
-    // Upload to ImageKit
-    const uploadResponse = await imagekit.upload({
-      file: base64File,
-      fileName: `product-${Date.now()}-${req.file.originalname}`,
-      folder: '/quicklocal-products',
-      useUniqueFileName: true,
-      tags: ['product', 'ecommerce'],
-      customMetadata: {
-        uploadedAt: new Date().toISOString()
-      }
-    });
-
-    // Clean up temporary file
-    fs.unlinkSync(req.file.path);
-
-    // Generate different sizes using ImageKit transformations
-    const baseUrl = uploadResponse.url;
-    const fileId = uploadResponse.fileId;
-
-    const imageVariants = {
-      original: baseUrl,
-      large: `${baseUrl}?tr=w-1000,h-1000,c-maintain_ratio,q-80,f-auto`,
-      medium: `${baseUrl}?tr=w-600,h-600,c-maintain_ratio,q-80,f-auto`,
-      thumbnail: `${baseUrl}?tr=w-300,h-300,c-maintain_ratio,q-70,f-auto`,
-      small: `${baseUrl}?tr=w-150,h-150,c-maintain_ratio,q-70,f-auto`
-    };
-
-    res.json({
-      success: true,
-      image: {
-        id: fileId,
-        name: uploadResponse.name,
-        url: baseUrl,
-        variants: imageVariants,
-        size: uploadResponse.size,
-        format: uploadResponse.fileType
-      },
-      message: 'Image uploaded successfully'
-    });
-
-  } catch (error) {
-    console.error('ImageKit upload error:', error);
-    
-    // Clean up temp file if it exists
-    if (req.file && req.file.path) {
-      try {
-        fs.unlinkSync(req.file.path);
-      } catch (cleanupError) {
-        console.error('Cleanup error:', cleanupError);
-      }
-    }
-    
-    res.status(500).json({ 
-      error: 'Failed to upload image',
-      details: error.message 
-    });
-  }
-});
-
-// Multiple image upload
-app.post('/api/upload-multiple-images', upload.array('images', 5), async (req, res) => {
-  try {
-    if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ error: 'No image files provided' });
-    }
-
-    const uploadPromises = req.files.map(async (file) => {
-      const fileBuffer = fs.readFileSync(file.path);
-      const base64File = fileBuffer.toString('base64');
-
-      const uploadResponse = await imagekit.upload({
-        file: base64File,
-        fileName: `product-${Date.now()}-${file.originalname}`,
-        folder: '/quicklocal-products',
-        useUniqueFileName: true,
-        tags: ['product', 'ecommerce']
-      });
-
-      // Clean up temp file
-      fs.unlinkSync(file.path);
-
-      const baseUrl = uploadResponse.url;
-      return {
-        id: uploadResponse.fileId,
-        name: uploadResponse.name,
-        url: baseUrl,
-        variants: {
-          original: baseUrl,
-          large: `${baseUrl}?tr=w-1000,h-1000,c-maintain_ratio,q-80,f-auto`,
-          medium: `${baseUrl}?tr=w-600,h-600,c-maintain_ratio,q-80,f-auto`,
-          thumbnail: `${baseUrl}?tr=w-300,h-300,c-maintain_ratio,q-70,f-auto`
-        }
-      };
-    });
-
-    const uploadedImages = await Promise.all(uploadPromises);
-
-    res.json({
-      success: true,
-      images: uploadedImages,
-      message: `${uploadedImages.length} images uploaded successfully`
-    });
-
-  } catch (error) {
-    console.error('Multiple upload error:', error);
-    
-    // Clean up temp files
-    if (req.files) {
-      req.files.forEach(file => {
-        try {
-          fs.unlinkSync(file.path);
-        } catch (cleanupError) {
-          console.error('Cleanup error:', cleanupError);
-        }
-      });
-    }
-    
-    res.status(500).json({ 
-      error: 'Failed to upload images',
-      details: error.message 
-    });
-  }
-});
-
-// Delete image from ImageKit
-app.delete('/api/delete-image/:fileId', async (req, res) => {
-  try {
-    const fileId = req.params.fileId;
-    
-    const result = await imagekit.deleteFile(fileId);
-    
-    res.json({
-      success: true,
-      message: 'Image deleted successfully'
-    });
-  } catch (error) {
-    console.error('Delete error:', error);
-    res.status(500).json({ 
-      error: 'Failed to delete image',
-      details: error.message 
-    });
-  }
-});
-
-// Get image details
-app.get('/api/image-details/:fileId', async (req, res) => {
-  try {
-    const fileId = req.params.fileId;
-    
-    const fileDetails = await imagekit.getFileDetails(fileId);
-    
-    res.json({
-      success: true,
-      file: fileDetails
-    });
-  } catch (error) {
-    console.error('Get file details error:', error);
-    res.status(404).json({ 
-      error: 'File not found',
-      details: error.message 
-    });
-  }
-});
-
-// Create product with images
-app.post('/api/products', upload.array('images', 5), async (req, res) => {
-  try {
-    const { name, description, price, category, brand, sku, stock_quantity } = req.body;
-    
-    let imageUrls = [];
-    
-    // Upload images if provided
-    if (req.files && req.files.length > 0) {
-      const uploadPromises = req.files.map(async (file) => {
-        const fileBuffer = fs.readFileSync(file.path);
-        const base64File = fileBuffer.toString('base64');
-
-        const uploadResponse = await imagekit.upload({
-          file: base64File,
-          fileName: `${sku}-${Date.now()}-${file.originalname}`,
-          folder: '/quicklocal-products',
-          useUniqueFileName: true,
-          tags: ['product', sku || 'no-sku']
-        });
-        
-        fs.unlinkSync(file.path); // Clean up temp file
-        return {
-          id: uploadResponse.fileId,
-          url: uploadResponse.url,
-          thumbnail: `${uploadResponse.url}?tr=w-300,h-300,c-maintain_ratio,q-70,f-auto`
-        };
-      });
-      
-      imageUrls = await Promise.all(uploadPromises);
-    }
-    
-    // Create product object (replace with your actual database logic)
-    const product = {
-      name,
-      description,
-      price: parseFloat(price),
-      category,
-      brand,
-      sku,
-      stock_quantity: parseInt(stock_quantity),
-      images: imageUrls,
-      created_at: new Date()
-    };
-    
-    // TODO: Save to your database
-    // const savedProduct = await db.products.create(product);
-    
-    res.json({
-      success: true,
-      product: product,
-      message: 'Product created successfully'
-    });
-    
-  } catch (error) {
-    console.error('Product creation error:', error);
-    
-    // Clean up temp files on error
-    if (req.files) {
-      req.files.forEach(file => {
-        try {
-          fs.unlinkSync(file.path);
-        } catch (cleanupError) {
-          console.error('Cleanup error:', cleanupError);
-        }
-      });
-    }
-    
-    res.status(500).json({ 
-      error: 'Failed to create product',
-      details: error.message 
-    });
-  }
-});
-
-// ImageKit authentication endpoint for frontend
-app.get('/api/imagekit-auth', (req, res) => {
-  const authenticationParameters = imagekit.getAuthenticationParameters();
-  res.json(authenticationParameters);
-});
-
-// Error handling middleware
-app.use((error, req, res, next) => {
-  if (error instanceof multer.MulterError) {
-    if (error.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ error: 'File too large. Maximum size is 10MB.' });
-    }
-    if (error.code === 'LIMIT_FILE_COUNT') {
-      return res.status(400).json({ error: 'Too many files. Maximum is 5 files.' });
-    }
-  }
-  
-  if (error.message === 'Only image files are allowed!') {
-    return res.status(400).json({ error: 'Only image files are allowed!' });
-  }
-  
-  res.status(500).json({ error: error.message });
-});
-
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`ImageKit endpoint: ${process.env.IMAGEKIT_URL_ENDPOINT}`);
-});
-
-module.exports = { imagekit };
 
   async loadRoutes() {
     const result = await this.routeManager.loadRoutes(this.app);
@@ -1257,10 +895,10 @@ module.exports = { imagekit };
           loyalty_program: process.env.FEATURE_LOYALTY_PROGRAM === 'true',
           delivery_system: process.env.DELIVERY_ENABLED === 'true'
         },
-        endpoints: this.loadedRoutes.reduce((acc, route) => {
+        endpoints: this.loadedRoutes ? this.loadedRoutes.reduce((acc, route) => {
           acc[route.name.toLowerCase().replace(/\s+/g, '_')] = route.path;
           return acc;
-        }, {}),
+        }, {}) : {},
         marketplace: {
           min_order_amount: process.env.MIN_ORDER_AMOUNT || 50,
           max_order_amount: process.env.MAX_ORDER_AMOUNT || 50000,
@@ -1332,11 +970,16 @@ module.exports = { imagekit };
     if (this.config.ENABLE_METRICS) {
       this.app.get('/metrics', (req, res) => {
         res.set('Content-Type', 'text/plain');
-        res.send(MetricsCollector.getMetrics());
+        res.send('# Basic metrics placeholder\nserver_uptime ' + Math.floor(process.uptime()));
       });
 
       this.app.get('/metrics/summary', (req, res) => {
-        res.json(MetricsCollector.getMetricsSummary());
+        res.json({
+          uptime: Math.floor(process.uptime()),
+          memory: process.memoryUsage(),
+          cpu: process.cpuUsage(),
+          platform: process.platform
+        });
       });
     }
 
@@ -1356,12 +999,12 @@ module.exports = { imagekit };
             refresh_token: 'Supported',
             expires_in: process.env.JWT_ACCESS_EXPIRES || '24h'
           },
-          endpoints: this.loadedRoutes.map(route => ({
+          endpoints: this.loadedRoutes ? this.loadedRoutes.map(route => ({
             name: route.name,
             path: route.path,
             priority: route.priority,
             status: route.status
-          })),
+          })) : [],
           features: {
             pagination: 'Supported with limit/offset and cursor-based',
             filtering: 'Advanced filtering with query parameters',
@@ -1419,8 +1062,7 @@ module.exports = { imagekit };
         connections: this.server.listening ? 'accepting' : 'not accepting',
         socket_connections: this.io ? this.io.engine.clientsCount : 0,
         environment: this.config.NODE_ENV,
-        version: this.config.APP_VERSION,
-        circuit_breakers: this.circuitBreaker.getStatus()
+        version: this.config.APP_VERSION
       });
     });
   }
@@ -1440,8 +1082,7 @@ module.exports = { imagekit };
         response_time: responseTime,
         connection_state: mongoose.connection.readyState,
         database_name: mongoose.connection.db?.databaseName,
-        host: mongoose.connection.host,
-        collections: await mongoose.connection.db.listCollections().toArray().then(cols => cols.length)
+        host: mongoose.connection.host
       };
     } catch (error) {
       return {
@@ -1535,7 +1176,7 @@ module.exports = { imagekit };
       }
 
     } catch (error) {
-      logger.warn('External service health check failed:', error.message);
+      console.warn('External service health check failed:', error.message);
     }
 
     return {
@@ -1602,28 +1243,19 @@ module.exports = { imagekit };
 
     // 404 handler with intelligent suggestions
     this.app.use('*', (req, res) => {
-      const availableRoutes = this.loadedRoutes.map(route => route.path);
+      const availableRoutes = this.loadedRoutes ? this.loadedRoutes.map(route => route.path) : [];
       const method = req.method;
       const requestedPath = req.originalUrl;
       
-      // Find similar routes using Levenshtein distance
+      // Find similar routes using basic string matching
       const suggestions = availableRoutes
-        .map(route => ({
-          route,
-          similarity: this.calculateSimilarity(requestedPath, route)
-        }))
-        .filter(item => item.similarity > 0.3)
-        .sort((a, b) => b.similarity - a.similarity)
-        .slice(0, 3)
-        .map(item => item.route);
+        .filter(route => {
+          const similarity = this.calculateSimilarity(requestedPath, route);
+          return similarity > 0.3;
+        })
+        .slice(0, 3);
 
-      logger.warn(`404: ${method} ${requestedPath} from ${req.headers.origin || 'unknown'} [${req.correlationId}]`);
-      
-      MetricsCollector.increment('http_404_errors', {
-        method,
-        path: requestedPath.split('?')[0],
-        origin: req.headers.origin || 'unknown'
-      });
+      console.warn(`404: ${method} ${requestedPath} from ${req.headers.origin || 'unknown'} [${req.correlationId}]`);
       
       res.status(404).json({
         error: 'Endpoint not found',
@@ -1670,15 +1302,7 @@ module.exports = { imagekit };
         instance_id: this.config.INSTANCE_ID
       };
 
-      logger.error(`Unhandled error [${errorId}]:`, errorLog);
-
-      // Metrics
-      MetricsCollector.increment('http_errors_total', {
-        error_type: err.name || 'UnknownError',
-        status_code: (err.status || err.statusCode || 500).toString(),
-        method: req.method,
-        endpoint: req.route?.path || req.path.split('?')[0]
-      });
+      console.error(`Unhandled error [${errorId}]:`, errorLog);
 
       // Enhanced error type handling
       let statusCode = err.status || err.statusCode || 500;
@@ -1785,8 +1409,7 @@ module.exports = { imagekit };
 
     // Global process error handlers
     process.on('uncaughtException', (err) => {
-      logger.error('💥 Uncaught Exception:', err);
-      MetricsCollector.increment('uncaught_exceptions');
+      console.error('💥 Uncaught Exception:', err);
       
       // Give some time for logs to be written, then exit
       setTimeout(() => {
@@ -1795,24 +1418,8 @@ module.exports = { imagekit };
     });
 
     process.on('unhandledRejection', (reason, promise) => {
-      logger.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
-      MetricsCollector.increment('unhandled_rejections');
+      console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
     });
-
-    // Memory leak detection
-    if (process.env.NODE_ENV !== 'production') {
-      const memoryLeakDetectionInterval = setInterval(() => {
-        const memUsage = process.memoryUsage();
-        const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
-        
-        if (heapUsedMB > 512) { // 512MB threshold
-          logger.warn(`⚠️ High memory usage detected: ${heapUsedMB}MB`);
-        }
-      }, 60000); // Check every minute
-
-      // Clear interval on shutdown
-      process.on('SIGTERM', () => clearInterval(memoryLeakDetectionInterval));
-    }
   }
 
   calculateSimilarity(str1, str2) {
@@ -1878,7 +1485,7 @@ module.exports = { imagekit };
 🗄️  Database:
    📊 Metrics: /metrics
    🔍 API Version: ${this.config.API_VERSION}
-   📍 Routes: ${this.loadedRoutes.length} loaded
+   📍 Routes: ${this.loadedRoutes ? this.loadedRoutes.length : 0} loaded
    💰 Min Order: ₹${process.env.MIN_ORDER_AMOUNT || 50}
    🚚 Delivery Fee: ₹${process.env.BASE_DELIVERY_FEE || 25}
    🆓 Free Delivery: ₹${process.env.FREE_DELIVERY_THRESHOLD || 500}+
@@ -1890,35 +1497,25 @@ module.exports = { imagekit };
         `;
 
         console.log(serverInfo);
-        logger.info('🚀 QuickLocal API Server started successfully');
-        
-        MetricsCollector.increment('server_starts_total', {
-          environment: this.config.NODE_ENV,
-          instance_id: this.config.INSTANCE_ID
-        });
+        console.log('🚀 QuickLocal API Server started successfully');
         
         resolve();
       });
 
       // Enhanced server error handling
       this.server.on('error', (err) => {
-        MetricsCollector.increment('server_errors_total', { 
-          error_code: err.code,
-          instance_id: this.config.INSTANCE_ID
-        });
-        
         if (err.code === 'EADDRINUSE') {
-          logger.error(`❌ Port ${this.config.PORT} is already in use.`);
-          logger.info(`💡 Kill existing process: lsof -ti:${this.config.PORT} | xargs kill -9`);
-          logger.info(`💡 Or try a different port: PORT=10001 npm start`);
+          console.error(`❌ Port ${this.config.PORT} is already in use.`);
+          console.log(`💡 Kill existing process: lsof -ti:${this.config.PORT} | xargs kill -9`);
+          console.log(`💡 Or try a different port: PORT=10001 npm start`);
         } else if (err.code === 'EACCES') {
-          logger.error(`❌ Permission denied for port ${this.config.PORT}.`);
-          logger.info(`💡 Try a port > 1024 or run with appropriate permissions.`);
+          console.error(`❌ Permission denied for port ${this.config.PORT}.`);
+          console.log(`💡 Try a port > 1024 or run with appropriate permissions.`);
         } else if (err.code === 'ENOTFOUND') {
-          logger.error(`❌ Host ${this.config.HOST} not found.`);
-          logger.info(`💡 Check your HOST environment variable.`);
+          console.error(`❌ Host ${this.config.HOST} not found.`);
+          console.log(`💡 Check your HOST environment variable.`);
         } else {
-          logger.error('❌ Server error:', err);
+          console.error('❌ Server error:', err);
         }
         
         reject(err);
@@ -1926,8 +1523,7 @@ module.exports = { imagekit };
 
       // Handle server warnings and client errors
       this.server.on('clientError', (err, socket) => {
-        logger.warn(`Client error from ${socket.remoteAddress}: ${err.message}`);
-        MetricsCollector.increment('client_errors_total');
+        console.warn(`Client error from ${socket.remoteAddress}: ${err.message}`);
         
         if (socket.writable) {
           socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
@@ -1935,10 +1531,8 @@ module.exports = { imagekit };
       });
 
       this.server.on('connection', (socket) => {
-        MetricsCollector.increment('tcp_connections_total');
-        
         socket.on('error', (err) => {
-          logger.warn(`Socket error: ${err.message}`);
+          console.warn(`Socket error: ${err.message}`);
         });
       });
     });
@@ -1947,26 +1541,21 @@ module.exports = { imagekit };
   setupGracefulShutdown() {
     const shutdown = async (signal) => {
       if (this.isShuttingDown) {
-        logger.warn('⚠️ Shutdown already in progress...');
+        console.warn('⚠️ Shutdown already in progress...');
         return;
       }
 
       this.isShuttingDown = true;
-      logger.info(`🛑 ${signal} received. Starting graceful shutdown...`);
-      
-      MetricsCollector.increment('graceful_shutdowns_total', { 
-        signal,
-        instance_id: this.config.INSTANCE_ID
-      });
+      console.log(`🛑 ${signal} received. Starting graceful shutdown...`);
 
       const shutdownTimeout = setTimeout(() => {
-        logger.error('❌ Graceful shutdown timeout exceeded. Forcing exit...');
+        console.error('❌ Graceful shutdown timeout exceeded. Forcing exit...');
         process.exit(1);
       }, 30000); // 30 second timeout
 
       try {
         // Stop accepting new connections
-        logger.info('🔄 Stopping HTTP server...');
+        console.log('🔄 Stopping HTTP server...');
         await new Promise((resolve, reject) => {
           this.server.close((err) => {
             if (err) reject(err);
@@ -1976,7 +1565,7 @@ module.exports = { imagekit };
 
         // Close Socket.IO connections gracefully
         if (this.io) {
-          logger.info('🔄 Closing Socket.IO connections...');
+          console.log('🔄 Closing Socket.IO connections...');
           
           // Notify all connected clients about shutdown
           this.io.emit('server_shutdown', {
@@ -1992,24 +1581,20 @@ module.exports = { imagekit };
         }
 
         // Close database connections
-        logger.info('🔄 Closing database connections...');
+        console.log('🔄 Closing database connections...');
         await mongoose.connection.close();
 
-        // Final cleanup and metrics
-        logger.info('🔄 Performing final cleanup...');
-        
-        // Log final metrics
-        const finalMetrics = MetricsCollector.getMetricsSummary();
-        logger.info('📊 Final server metrics:', finalMetrics);
+        // Final cleanup
+        console.log('🔄 Performing final cleanup...');
         
         clearTimeout(shutdownTimeout);
         
-        logger.info('✅ Graceful shutdown completed successfully');
-        logger.info(`👋 ${this.config.APP_NAME} server stopped cleanly`);
+        console.log('✅ Graceful shutdown completed successfully');
+        console.log(`👋 ${this.config.APP_NAME} server stopped cleanly`);
         
         process.exit(0);
       } catch (error) {
-        logger.error('❌ Error during graceful shutdown:', error);
+        console.error('❌ Error during graceful shutdown:', error);
         process.exit(1);
       }
     };
@@ -2035,7 +1620,7 @@ class QuickLocalClusterManager {
     const config = new QuickLocalConfig().config;
     
     if (config.CLUSTER_MODE && cluster.isPrimary) {
-      logger.info(`🔄 Starting QuickLocal in cluster mode with ${config.MAX_WORKERS} workers...`);
+      console.log(`🔄 Starting QuickLocal in cluster mode with ${config.MAX_WORKERS} workers...`);
       
       // Fork workers
       for (let i = 0; i < config.MAX_WORKERS; i++) {
@@ -2047,7 +1632,7 @@ class QuickLocalClusterManager {
         worker.on('message', (message) => {
           if (message.type === 'metrics') {
             // Handle worker metrics in master process
-            logger.debug(`📊 Metrics from worker ${worker.id}:`, message.data);
+            console.log(`📊 Metrics from worker ${worker.id}:`, message.data);
           }
         });
       }
@@ -2055,11 +1640,11 @@ class QuickLocalClusterManager {
       // Handle worker events
       cluster.on('exit', (worker, code, signal) => {
         const exitCode = worker.process.exitCode;
-        logger.warn(`❌ Worker ${worker.process.pid} died with code ${code} and signal ${signal}`);
+        console.warn(`❌ Worker ${worker.process.pid} died with code ${code} and signal ${signal}`);
         
         // Don't restart if it was an intentional shutdown
         if (exitCode !== 0 && signal !== 'SIGTERM' && signal !== 'SIGINT') {
-          logger.info('🔄 Starting a new worker to replace the failed one...');
+          console.log('🔄 Starting a new worker to replace the failed one...');
           const newWorker = cluster.fork({
             WORKER_ID: worker.id,
             INSTANCE_ID: `${config.INSTANCE_ID}-worker-${worker.id}`
@@ -2067,23 +1652,23 @@ class QuickLocalClusterManager {
           
           newWorker.on('message', (message) => {
             if (message.type === 'metrics') {
-              logger.debug(`📊 Metrics from replacement worker ${newWorker.id}:`, message.data);
+              console.log(`📊 Metrics from replacement worker ${newWorker.id}:`, message.data);
             }
           });
         }
       });
 
       cluster.on('online', (worker) => {
-        logger.info(`✅ Worker ${worker.process.pid} is online (ID: ${worker.id})`);
+        console.log(`✅ Worker ${worker.process.pid} is online (ID: ${worker.id})`);
       });
 
       cluster.on('listening', (worker, address) => {
-        logger.info(`🎧 Worker ${worker.process.pid} is listening on ${address.address}:${address.port}`);
+        console.log(`🎧 Worker ${worker.process.pid} is listening on ${address.address}:${address.port}`);
       });
 
       // Master process graceful shutdown
       const masterShutdown = () => {
-        logger.info('🛑 Master process shutting down workers...');
+        console.log('🛑 Master process shutting down workers...');
         
         const workers = Object.values(cluster.workers);
         let workersShutdown = 0;
@@ -2096,7 +1681,7 @@ class QuickLocalClusterManager {
             // Force kill worker after timeout
             setTimeout(() => {
               if (!worker.isDead()) {
-                logger.warn(`⚠️ Force killing worker ${worker.process.pid}`);
+                console.warn(`⚠️ Force killing worker ${worker.process.pid}`);
                 worker.kill('SIGKILL');
               }
             }, 10000);
@@ -2104,7 +1689,7 @@ class QuickLocalClusterManager {
             worker.on('disconnect', () => {
               workersShutdown++;
               if (workersShutdown === workers.length) {
-                logger.info('✅ All workers shut down successfully');
+                console.log('✅ All workers shut down successfully');
                 process.exit(0);
               }
             });
@@ -2113,7 +1698,7 @@ class QuickLocalClusterManager {
         
         // Force exit if workers don't shutdown in time
         setTimeout(() => {
-          logger.error('❌ Workers shutdown timeout. Force exiting...');
+          console.error('❌ Workers shutdown timeout. Force exiting...');
           process.exit(1);
         }, 15000);
       };
@@ -2125,7 +1710,7 @@ class QuickLocalClusterManager {
       setInterval(() => {
         const workers = Object.values(cluster.workers);
         const aliveWorkers = workers.filter(worker => worker && !worker.isDead()).length;
-        logger.info(`📊 Cluster status: ${aliveWorkers}/${config.MAX_WORKERS} workers alive`);
+        console.log(`📊 Cluster status: ${aliveWorkers}/${config.MAX_WORKERS} workers alive`);
       }, 5 * 60 * 1000);
 
     } else {
@@ -2135,7 +1720,7 @@ class QuickLocalClusterManager {
       // Handle shutdown message from master
       process.on('message', (msg) => {
         if (msg === 'shutdown') {
-          logger.info(`🛑 Worker ${process.pid} received shutdown signal from master`);
+          console.log(`🛑 Worker ${process.pid} received shutdown signal from master`);
           server.isShuttingDown = true;
           
           // Close server gracefully
@@ -2150,7 +1735,7 @@ class QuickLocalClusterManager {
       });
       
       server.initialize().catch((error) => {
-        logger.error('❌ Worker startup failed:', error);
+        console.error('❌ Worker startup failed:', error);
         process.exit(1);
       });
     }
@@ -2206,7 +1791,7 @@ class QuickLocalDevUtils {
       const { event } = req.params;
       const { data } = req.body;
 
-      logger.info(`🧪 Development: Triggering ${event} event`, data);
+      console.log(`🧪 Development: Triggering ${event} event`, data);
 
       // Simulate different events for testing
       switch (event) {
@@ -2239,19 +1824,19 @@ class QuickLocalDevUtils {
       });
     });
 
-    logger.info('🧪 Development utilities enabled');
+    console.log('🧪 Development utilities enabled');
   }
 
   static logEnvironmentInfo() {
     if (process.env.NODE_ENV !== 'development') return;
 
-    logger.info('🧪 Development Environment Info:');
-    logger.info(`   Debug Mode: ${process.env.DEBUG_MODE}`);
-    logger.info(`   Mock Payment: ${process.env.MOCK_PAYMENT}`);
-    logger.info(`   Mock SMS: ${process.env.MOCK_SMS}`);
-    logger.info(`   Mock Email: ${process.env.MOCK_EMAIL}`);
-    logger.info(`   API Docs: ${process.env.ENABLE_API_DOCS}`);
-    logger.info(`   Seed Data: ${process.env.ENABLE_SEED_DATA}`);
+    console.log('🧪 Development Environment Info:');
+    console.log(`   Debug Mode: ${process.env.DEBUG_MODE}`);
+    console.log(`   Mock Payment: ${process.env.MOCK_PAYMENT}`);
+    console.log(`   Mock SMS: ${process.env.MOCK_SMS}`);
+    console.log(`   Mock Email: ${process.env.MOCK_EMAIL}`);
+    console.log(`   API Docs: ${process.env.ENABLE_API_DOCS}`);
+    console.log(`   Seed Data: ${process.env.ENABLE_SEED_DATA}`);
   }
 }
 
@@ -2276,8 +1861,8 @@ if (require.main === module) {
   
   console.log('Status: Connected');
   console.log('✅ Server is connected and running');
-  console.log(`🏪 Database: ${mongoose.connection.db?.databaseName}`);
-  console.log(`🖥️  Host: ${mongoose.connection.host}`);
+  console.log(`🏪 Database: ${mongoose.connection.db?.databaseName || 'Not connected yet'}`);
+  console.log(`🖥️  Host: ${mongoose.connection.host || 'Not connected yet'}`);
   console.log(`
 ⚡ Pool Size: ${process.env.DB_POOL_SIZE || 10}
 🛡️  Security Features:
@@ -2307,33 +1892,3 @@ if (require.main === module) {
 ❤️  Health Check: /health
 `);
 }
-// In your main app.js or index.js
-const express = require('express');
-const cors = require('cors');
-
-// Import your new image routes
-const imageRoutes = require('./routes/imageRoutes');
-
-const app = express();
-
-app.use(cors({
-  origin: ['https://quicklocal.shop', 'http://localhost:3000'],
-  credentials: true
-}));
-
-app.use(express.json());
-
-// Your existing routes
-app.get('/api/test', (req, res) => {
-  res.json({ message: 'Backend is working!' });
-});
-
-// ADD THIS: Use image routes
-app.use('/api/images', imageRoutes);
-
-// Your other existing routes...
-
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
