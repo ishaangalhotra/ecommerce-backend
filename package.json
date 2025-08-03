@@ -156,13 +156,8 @@
   },
   "jest": {
     "testEnvironment": "node",
-    "setupFilesAfterEnv": [
-      "<rootDir>/tests/setup.js"
-    ],
-    "testMatch": [
-      "**/tests/**/*.test.js",
-      "**/tests/**/*.spec.js"
-    ],
+    "setupFilesAfterEnv": ["<rootDir>/tests/setup.js"],
+    "testMatch": ["**/tests/**/*.test.js", "**/tests/**/*.spec.js"],
     "collectCoverageFrom": [
       "**/*.js",
       "!**/node_modules/**",
@@ -187,14 +182,8 @@
       "es2021": true,
       "jest": true
     },
-    "extends": [
-      "airbnb-base",
-      "prettier"
-    ],
-    "plugins": [
-      "security",
-      "jest"
-    ],
+    "extends": ["airbnb-base", "prettier"],
+    "plugins": ["security", "jest"],
     "rules": {
       "no-console": "warn",
       "no-unused-vars": "error",
@@ -202,13 +191,10 @@
       "import/no-extraneous-dependencies": [
         "error",
         {
-          "devDependencies": [
-            "**/*.test.js",
-            "**/*.spec.js"
-          ]
+          "devDependencies": ["**/*.test.js", "**/*.spec.js"]
         }
       ]
-    ]
+    }
   },
   "prettier": {
     "semi": true,
@@ -219,22 +205,11 @@
     "useTabs": false
   },
   "lint-staged": {
-    "*.js": [
-      "eslint --fix",
-      "prettier --write"
-    ],
-    "*.{json,md}": [
-      "prettier --write"
-    ]
+    "*.js": ["eslint --fix", "prettier --write"],
+    "*.{json,md}": ["prettier --write"]
   },
   "nodemonConfig": {
-    "ignore": [
-      "node_modules/",
-      "logs/",
-      "tests/",
-      "public/",
-      "uploads/"
-    ],
+    "ignore": ["node_modules/", "logs/", "tests/", "public/", "uploads/"],
     "ext": "js,json",
     "env": {
       "NODE_ENV": "development"
