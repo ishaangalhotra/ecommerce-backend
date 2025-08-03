@@ -5,7 +5,6 @@ require('dotenv').config(); // Load .env variables
 // Ensure NODE_ENV has a fallback:
 process.env.NODE_ENV = process.env.NODE_ENV || 'development';
 
-
 require('dotenv').config();
 
 const fs = require('fs');
@@ -640,9 +639,9 @@ class QuickLocalServer {
     });
 
     // Security headers with Helmet
-if (this.config.HELMET_ENABLED) {
-  applySecurity(this.app);
-}
+    if (this.config.HELMET_ENABLED) {
+      applySecurity(this.app);
+    }
 
     // Brute force protection
     const bruteForce = EnhancedSecurityManager.createBruteForceProtection();
@@ -735,43 +734,32 @@ if (this.config.HELMET_ENABLED) {
       this.app.use(morgan(
         this.config.IS_PRODUCTION ? 'combined' : 'dev',
         {
-          // ✅ This will work:
-stream: { 
-  write: (message) => {
-    if (logger && logger.info) {
-      logger.info(`[REQUEST] ${message.trim()}`);
-    } else {
-      console.log(`[REQUEST] ${message.trim()}`);
+          stream: { 
+            write: (message) => {
+              if (logger && logger.info) {
+                logger.info(`[REQUEST] ${message.trim()}`);
+              } else {
+                console.log(`[REQUEST] ${message.trim()}`);
+              }
+            }
+          },
+          skip: (req) => {
+            return process.env.NODE_ENV === 'production' && (
+              req.method === 'OPTIONS' || 
+              req.url === '/health' ||
+              req.url === '/metrics' ||
+              req.url === '/favicon.ico'
+            );
+          }
+        }
+      ));
     }
-  }
-},
-          skip: function(req) {
-  return this.config.IS_PRODUCTION && (
-    req.method === 'OPTIONS' || 
-    req.url === '/health' ||
-    req.url === '/metrics' ||
-    req.url === '/favicon.ico'
-  );
-}
-class QuickLocalServer {
-  constructor(config) {
-    this.config = config;
-    this.app = express();
-  }
 
-  setupMiddleware() {
-    // ✅ Safe to use `this.app` here
+    // Correlation ID and metrics
     this.app.use((req, res, next) => {
       const startTime = process.hrtime.bigint();
       req.correlationId = `${this.config.INSTANCE_ID}-${Date.now().toString(36)}-${Math.random().toString(36).substr(2)}`;
       req.startTime = startTime;
-      next();
-    });
-
-    // ...other middleware setup
-  }
-}
-
       
       res.setHeader('X-Correlation-ID', req.correlationId);
       res.setHeader('X-Instance-ID', this.config.INSTANCE_ID);
@@ -824,25 +812,20 @@ class QuickLocalServer {
     });
 
     // Security and validation middleware
-    // ❌ Remove these lines that are causing the error:
-// this.app.use(ValidationMiddleware.validateRequest);
-// this.app.use(SecurityMiddleware.checkSecurity);
-
-// ✅ Replace with this simple inline middleware:
-this.app.use((req, res, next) => {
-  // Security headers
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('X-XSS-Protection', '1; mode=block');
-  
-  // Basic validation
-  const userAgent = req.get('User-Agent');
-  if (!userAgent || userAgent.length < 5) {
-    return res.status(403).json({ success: false, message: 'Access denied' });
-  }
-  
-  next();
-});
+    this.app.use((req, res, next) => {
+      // Security headers
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('X-Frame-Options', 'DENY');
+      res.setHeader('X-XSS-Protection', '1; mode=block');
+      
+      // Basic validation
+      const userAgent = req.get('User-Agent');
+      if (!userAgent || userAgent.length < 5) {
+        return res.status(403).json({ success: false, message: 'Access denied' });
+      }
+      
+      next();
+    });
   }
 
   async connectDatabase() {
@@ -1960,13 +1943,15 @@ module.exports = {
 if (require.main === module) {
   // Log environment info in development
   QuickLocalDevUtils.logEnvironmentInfo();
- // Start server (with or without clustering)
-QuickLocalClusterManager.start();
-console.log('Status: Connected');
-console.log('✅ Server is connected and running');
-console.log(`🏪 Database: ${mongoose.connection.db?.databaseName}`);
-console.log(`🖥️  Host: ${mongoose.connection.host}`);
-console.log(`
+  
+  // Start server (with or without clustering)
+  QuickLocalClusterManager.start();
+  
+  console.log('Status: Connected');
+  console.log('✅ Server is connected and running');
+  console.log(`🏪 Database: ${mongoose.connection.db?.databaseName}`);
+  console.log(`🖥️  Host: ${mongoose.connection.host}`);
+  console.log(`
 ⚡ Pool Size: ${process.env.DB_POOL_SIZE || 10}
 🛡️  Security Features:
 🔒 Helmet Security: ${process.env.HELMET_ENABLED === 'true' ? '✅' : '❌'}
