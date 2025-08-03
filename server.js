@@ -744,7 +744,7 @@ stream: {
       console.log(`[REQUEST] ${message.trim()}`);
     }
   }
-}
+},
           skip: function(req) {
   return this.config.IS_PRODUCTION && (
     req.method === 'OPTIONS' || 
