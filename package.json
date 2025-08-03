@@ -24,7 +24,7 @@
   },
   "scripts": {
     "start": "node -r ./disable-redis.js --enable-source-maps server.js",
-    "dev": "cross-env NODE_ENV=development nodemon --inspect server.js",
+    "dev": "nodemon --inspect server.js",
     "debug": "cross-env NODE_ENV=development node --inspect-brk server.js",
     "prod": "NODE_ENV=production PM2_HOME=.pm2 pm2-runtime start ecosystem.config.js",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest --coverage --detectOpenHandles --forceExit",
@@ -208,7 +208,7 @@
           ]
         }
       ]
-    }
+    ]
   },
   "prettier": {
     "semi": true,
@@ -228,17 +228,19 @@
     ]
   },
   "nodemonConfig": {
-  "ignore": [
-    "node_modules/",
-    "logs/",
-    "tests/",
-    "public/",
-    "uploads/"
-  ],
-  "ext": "js,json",
-  "delay": "1000"
-}
-
+    "ignore": [
+      "node_modules/",
+      "logs/",
+      "tests/",
+      "public/",
+      "uploads/"
+    ],
+    "ext": "js,json",
+    "env": {
+      "NODE_ENV": "development"
+    },
+    "delay": "1000"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/quicklocal/quicklocal-backend.git"
