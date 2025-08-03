@@ -61,13 +61,20 @@ const orderValidation = {
     handleValidationErrors
   ]
 };
+function validateEnvironment(env) {
+  const allowedEnvs = ['development', 'production', 'test'];
+  if (!allowedEnvs.includes(env)) {
+    throw new Error(`❌ Invalid NODE_ENV: "${env}". Allowed: ${allowedEnvs.join(', ')}`);
+  }
+  console.log(`✅ Environment validated: ${env}`);
+}
 
 module.exports = {
   handleValidationErrors,
   userValidation,
   productValidation,
   orderValidation,
-  // Export individual functions for backwards compatibility
+  validateEnvironment, // ✅ Exported here
   validateUser: userValidation.register,
   validateLogin: userValidation.login,
   validateProduct: productValidation.create,
