@@ -735,7 +735,16 @@ if (this.config.HELMET_ENABLED) {
       this.app.use(morgan(
         this.config.IS_PRODUCTION ? 'combined' : 'dev',
         {
-          stream: { write: (message) => logger.request(message.trim()) },
+          // ✅ This will work:
+stream: { 
+  write: (message) => {
+    if (logger && logger.info) {
+      logger.info(`[REQUEST] ${message.trim()}`);
+    } else {
+      console.log(`[REQUEST] ${message.trim()}`);
+    }
+  }
+}
           skip: (req) => {
             return this.config.IS_PRODUCTION && (
               req.method === 'OPTIONS' || 
