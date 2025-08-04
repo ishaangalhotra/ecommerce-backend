@@ -1,3 +1,43 @@
+// Add this to the top of your server.js file for memory optimization
+
+// Memory optimization settings
+process.env.NODE_OPTIONS = '--max-old-space-size=1024';
+
+// Garbage collection helper
+const forceGarbageCollection = () => {
+  if (global.gc) {
+    global.gc();
+    console.log('🗑️ Garbage collection executed');
+  }
+};
+
+// Run garbage collection every 5 minutes
+setInterval(() => {
+  const memUsage = process.memoryUsage();
+  const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+  const heapTotalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
+  const usage = Math.round((memUsage.heapUsed / memUsage.heapTotal) * 100);
+  
+  if (usage > 80) {
+    console.log(`⚠️ High memory usage: ${usage}% (${heapUsedMB}MB/${heapTotalMB}MB)`);
+    forceGarbageCollection();
+  }
+}, 5 * 60 * 1000);
+
+// Handle memory warnings
+process.on('warning', (warning) => {
+  if (warning.name === 'MaxListenersExceededWarning') {
+    console.warn('⚠️ Memory warning:', warning.message);
+    forceGarbageCollection();
+  }
+});
+
+// Memory cleanup on exit
+process.on('SIGTERM', () => {
+  console.log('🛑 SIGTERM received, cleaning up...');
+  forceGarbageCollection();
+  process.exit(0);
+});
 // server.js - QuickLocal Production-Ready Server with Complete Integration
 // Version: 2.0.0 - Integrated with Environment Configuration
 require('dotenv').config(); // Load .env variables
