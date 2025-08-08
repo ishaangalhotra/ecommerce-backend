@@ -1,53 +1,62 @@
-// Add this to the top of your server.js file for memory optimization
-
-// Memory optimization settings
-process.env.NODE_OPTIONS = '--max-old-space-size=1024';
-
-// Garbage collection helper
-const forceGarbageCollection = () => {
-  if (global.gc) {
-    global.gc();
-    console.log('🗑️ Garbage collection executed');
+// Memory monitoring and optimization
+const memoryMonitor = {
+  checkInterval: null,
+  
+  start() {
+    console.log('🧠 Starting memory monitoring...');
+    
+    // Check memory every 2 minutes instead of 5
+    this.checkInterval = setInterval(() => {
+      const memUsage = process.memoryUsage();
+      const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+      const heapTotalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
+      const usage = Math.round((memUsage.heapUsed / memUsage.heapTotal) * 100);
+      
+      console.log(`💾 Memory: ${heapUsedMB}MB/${heapTotalMB}MB (${usage}%)`);
+      
+      // Alert at 80% instead of trying to force GC
+      if (usage > 80) {
+        console.warn(`⚠️ HIGH MEMORY USAGE: ${usage}% (${heapUsedMB}MB/${heapTotalMB}MB)`);
+        
+        // Log memory breakdown for debugging
+        console.log('Memory breakdown:', {
+          rss: Math.round(memUsage.rss / 1024 / 1024) + 'MB',
+          heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024) + 'MB',
+          heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024) + 'MB',
+          external: Math.round(memUsage.external / 1024 / 1024) + 'MB'
+        });
+      }
+      
+      // Critical memory warning at 95%
+      if (usage > 95) {
+        console.error(`🚨 CRITICAL MEMORY USAGE: ${usage}% - Server may crash soon!`);
+      }
+    }, 2 * 60 * 1000); // Every 2 minutes
+  },
+  
+  stop() {
+    if (this.checkInterval) {
+      clearInterval(this.checkInterval);
+      this.checkInterval = null;
+      console.log('🧠 Memory monitoring stopped');
+    }
   }
 };
 
-// Run garbage collection every 5 minutes
-setInterval(() => {
-  const memUsage = process.memoryUsage();
-  const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
-  const heapTotalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
-  const usage = Math.round((memUsage.heapUsed / memUsage.heapTotal) * 100);
-  
-  if (usage > 80) {
-    console.log(`⚠️ High memory usage: ${usage}% (${heapUsedMB}MB/${heapTotalMB}MB)`);
-    forceGarbageCollection();
-  }
-}, 5 * 60 * 1000);
-
 // Handle memory warnings
 process.on('warning', (warning) => {
-  if (warning.name === 'MaxListenersExceededWarning') {
-    console.warn('⚠️ Memory warning:', warning.message);
-    forceGarbageCollection();
-  }
-});
+  console.warn('⚠️ Node.js warning:', {
+    name: warning.name,
+    message: warning.message,
 
-// Memory cleanup on exit
-process.on('SIGTERM', () => {
-  console.log('🛑 SIGTERM received, cleaning up...');
-  forceGarbageCollection();
-  process.exit(0);
-});
-// server.js - QuickLocal Production-Ready Server with Complete Integration
-// Version: 2.0.0 - Integrated with Environment Configuration
-require('dotenv').config(); // Load .env variables
-
-// Ensure NODE_ENV has a fallback:
-process.env.NODE_ENV = process.env.NODE_ENV || 'development';
-
+// server.js - QuickLocal Production-Ready Server v2.1.0
+// Enhanced and Optimized E-commerce Platform Server
 require('dotenv').config();
 
-const fs = require('fs');
+// Ensure NODE_ENV has a fallback
+process.env.NODE_ENV = process.env.NODE_ENV || 'development';
+
+const fs = require('fs').promises;
 const path = require('path');
 const cluster = require('cluster');
 const os = require('os');
@@ -61,47 +70,188 @@ const cookieParser = require('cookie-parser');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const slowDown = require('express-slow-down');
-const ExpressBrute = require('express-brute');
-const MongooseStore = require('express-brute-mongoose');
-const BruteForceSchema = require('express-brute-mongoose/dist/schema');
 const session = require('express-session');
 const MongoStore = require('connect-mongo');
 
-// Custom imports - these would be your actual middleware files
-const logger = require('./utils/logger');
-const { connectDB } = require('./config/database');
-const applySecurity = require('./middleware/security');
-const ValidationMiddleware = require('./middleware/validation');
-const AuthenticationMiddleware = require('./middleware/authMiddleware');
-const MetricsCollector = require('./utils/metrics');
-const CircuitBreaker = require('./utils/circuitBreaker');
+// Enhanced Memory Monitor with Better Performance
+class MemoryMonitor {
+  constructor(options = {}) {
+    this.interval = options.interval || 2 * 60 * 1000; // 2 minutes
+    this.warningThreshold = options.warningThreshold || 80;
+    this.criticalThreshold = options.criticalThreshold || 95;
+    this.checkInterval = null;
+    this.lastGC = Date.now();
+  }
 
-// Enhanced Configuration Class with Environment Integration
+  start() {
+    console.log('🧠 Starting enhanced memory monitoring...');
+    
+    this.checkInterval = setInterval(() => {
+      this.checkMemory();
+    }, this.interval);
+
+    // Listen for memory pressure events
+    process.on('warning', this.handleWarning.bind(this));
+  }
+
+  checkMemory() {
+    const memUsage = process.memoryUsage();
+    const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+    const heapTotalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
+    const usage = Math.round((memUsage.heapUsed / memUsage.heapTotal) * 100);
+    
+    const systemMem = {
+      free: Math.round(os.freemem() / 1024 / 1024),
+      total: Math.round(os.totalmem() / 1024 / 1024)
+    };
+    
+    console.log(`💾 Memory: ${heapUsedMB}MB/${heapTotalMB}MB (${usage}%) | System: ${systemMem.total - systemMem.free}MB/${systemMem.total}MB`);
+    
+    if (usage > this.warningThreshold) {
+      this.handleHighMemory(usage, heapUsedMB, heapTotalMB);
+    }
+    
+    if (usage > this.criticalThreshold) {
+      this.handleCriticalMemory(usage, heapUsedMB, heapTotalMB);
+    }
+
+    // Suggest GC if memory is high and it's been a while since last GC
+    if (usage > 70 && (Date.now() - this.lastGC) > 5 * 60 * 1000) {
+      this.suggestGarbageCollection();
+    }
+  }
+
+  handleHighMemory(usage, heapUsed, heapTotal) {
+    console.warn(`⚠️ HIGH MEMORY USAGE: ${usage}% (${heapUsed}MB/${heapTotal}MB)`);
+    
+    const breakdown = this.getMemoryBreakdown();
+    console.log('Memory breakdown:', breakdown);
+    
+    // Emit warning event for monitoring systems
+    process.emit('memoryWarning', { usage, heapUsed, heapTotal, breakdown });
+  }
+
+  handleCriticalMemory(usage, heapUsed, heapTotal) {
+    console.error(`🚨 CRITICAL MEMORY USAGE: ${usage}% - Optimization needed!`);
+    
+    // Force garbage collection if available
+    if (global.gc) {
+      console.log('🗑️ Triggering garbage collection...');
+      global.gc();
+      this.lastGC = Date.now();
+    }
+    
+    // Emit critical event for monitoring systems
+    process.emit('memoryCritical', { usage, heapUsed, heapTotal });
+  }
+
+  suggestGarbageCollection() {
+    if (global.gc) {
+      console.log('🔄 Suggesting garbage collection for memory optimization...');
+      global.gc();
+      this.lastGC = Date.now();
+    }
+  }
+
+  getMemoryBreakdown() {
+    const memUsage = process.memoryUsage();
+    return {
+      rss: Math.round(memUsage.rss / 1024 / 1024) + 'MB',
+      heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024) + 'MB',
+      heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024) + 'MB',
+      external: Math.round(memUsage.external / 1024 / 1024) + 'MB',
+      arrayBuffers: Math.round(memUsage.arrayBuffers / 1024 / 1024) + 'MB'
+    };
+  }
+
+  handleWarning(warning) {
+    if (warning.name === 'MaxListenersExceededWarning' || 
+        warning.name === 'DeprecationWarning') {
+      console.warn(`⚠️ Node.js warning: ${warning.name}`, {
+        message: warning.message,
+        stack: process.env.NODE_ENV === 'development' ? warning.stack : undefined
+      });
+    }
+  }
+
+  stop() {
+    if (this.checkInterval) {
+      clearInterval(this.checkInterval);
+      this.checkInterval = null;
+      console.log('🧠 Memory monitoring stopped');
+    }
+  }
+
+  getStats() {
+    return {
+      ...this.getMemoryBreakdown(),
+      uptime: Math.floor(process.uptime()),
+      lastGC: new Date(this.lastGC).toISOString()
+    };
+  }
+}
+
+// Enhanced Configuration with Better Validation
 class QuickLocalConfig {
   constructor() {
-    // Validate environment first
     this.validateEnvironment();
+    this.config = this.buildConfig();
+    this.IS_PRODUCTION = this.config.NODE_ENV === 'production';
+    this.IS_DEVELOPMENT = this.config.NODE_ENV === 'development';
+  }
+
+  validateEnvironment() {
+    const criticalVars = [
+      'MONGODB_URI', 'JWT_SECRET', 'COOKIE_SECRET', 'SESSION_SECRET'
+    ];
     
-    this.config = {
+    const missing = criticalVars.filter(varName => {
+      const value = process.env[varName] || process.env[varName.replace('MONGODB_URI', 'MONGO_URI')];
+      return !value || value.trim().length === 0;
+    });
+    
+    if (missing.length > 0) {
+      throw new Error(`❌ Critical environment variables missing: ${missing.join(', ')}`);
+    }
+
+    // Validate configuration values
+    this.validateConfigValues();
+    console.log('✅ Environment validation passed');
+  }
+
+  validateConfigValues() {
+    const port = parseInt(process.env.PORT);
+    if (isNaN(port) || port < 1 || port > 65535) {
+      throw new Error('❌ Invalid PORT value. Must be between 1-65535');
+    }
+
+    const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS);
+    if (saltRounds && (isNaN(saltRounds) || saltRounds < 8 || saltRounds > 20)) {
+      console.warn('⚠️ BCRYPT_SALT_ROUNDS should be between 8-20 for optimal security');
+    }
+
+    // Validate JWT expiration format
+    const jwtExpires = process.env.JWT_ACCESS_EXPIRES;
+    if (jwtExpires && !/^\d+[smhd]$/.test(jwtExpires)) {
+      console.warn('⚠️ JWT_ACCESS_EXPIRES format may be invalid. Use format like "24h", "7d", "30m"');
+    }
+  }
+
+  buildConfig() {
+    return {
       // Application Core
-      NODE_ENV: process.env.NODE_ENV || 'development',
+      NODE_ENV: process.env.NODE_ENV,
       APP_NAME: process.env.APP_NAME || 'QuickLocal',
-      APP_VERSION: process.env.APP_VERSION || '2.0.0',
+      APP_VERSION: process.env.APP_VERSION || '2.1.0',
       PORT: this.getEnvNumber('PORT', 10000),
       HOST: process.env.HOST || '0.0.0.0',
-      INSTANCE_ID: process.env.INSTANCE_ID || 'ql-dev-001',
+      INSTANCE_ID: process.env.INSTANCE_ID || `ql-${Date.now().toString(36)}-${Math.random().toString(36).substr(2)}`,
       
       // API Configuration
       API_VERSION: process.env.API_VERSION || 'v1',
       API_BASE_PATH: process.env.API_BASE_PATH || '/api/v1',
       MAX_REQUEST_SIZE: process.env.MAX_REQUEST_SIZE || '10mb',
       REQUEST_TIMEOUT: this.getEnvNumber('REQUEST_TIMEOUT', 30000),
-      
-      // URLs and Domains
-      DOMAIN: process.env.DOMAIN || 'localhost',
-      API_URL: process.env.API_URL,
-      CLIENT_URL: process.env.CLIENT_URL,
-      ADMIN_URL: process.env.ADMIN_URL,
       
       // Database
       MONGODB_URI: process.env.MONGODB_URI || process.env.MONGO_URI,
@@ -118,7 +268,7 @@ class QuickLocalConfig {
       BCRYPT_SALT_ROUNDS: this.getEnvNumber('BCRYPT_SALT_ROUNDS', 12),
       
       // Rate Limiting
-      RATE_LIMIT_ENABLED: process.env.RATE_LIMIT_ENABLED === 'true',
+      RATE_LIMIT_ENABLED: process.env.RATE_LIMIT_ENABLED !== 'false',
       RATE_LIMIT_WINDOW: this.getEnvNumber('RATE_LIMIT_WINDOW_MS', 900000),
       RATE_LIMIT_MAX: this.getEnvNumber('RATE_LIMIT_MAX', 1000),
       AUTH_RATE_LIMIT_MAX: this.getEnvNumber('AUTH_RATE_LIMIT_MAX', 20),
@@ -128,20 +278,18 @@ class QuickLocalConfig {
       
       // Performance
       CLUSTER_MODE: process.env.ENABLE_CLUSTER_MODE === 'true',
-      MAX_WORKERS: process.env.CLUSTER_WORKERS === 'auto' ? 
-        os.cpus().length : 
-        this.getEnvNumber('CLUSTER_WORKERS', os.cpus().length),
-      COMPRESSION_ENABLED: process.env.ENABLE_COMPRESSION === 'true',
+      MAX_WORKERS: this.getWorkerCount(),
+      COMPRESSION_ENABLED: process.env.ENABLE_COMPRESSION !== 'false',
       COMPRESSION_LEVEL: this.getEnvNumber('COMPRESSION_LEVEL', 6),
       
       // Features
-      ENABLE_SOCKET_IO: process.env.FEATURE_LIVE_TRACKING === 'true' || process.env.FEATURE_CHAT === 'true',
+      ENABLE_SOCKET_IO: this.shouldEnableSocketIO(),
       ENABLE_METRICS: process.env.ENABLE_ERROR_TRACKING === 'true',
       ENABLE_CACHING: process.env.ENABLE_RESPONSE_CACHING === 'true',
       CACHE_TTL: this.getEnvNumber('CACHE_TTL', 3600),
       
       // Security Headers
-      HELMET_ENABLED: process.env.ENABLE_HELMET === 'true',
+      HELMET_ENABLED: process.env.ENABLE_HELMET !== 'false',
       CSP_ENABLED: process.env.HELMET_CSP_ENABLED === 'true',
       HSTS_MAX_AGE: this.getEnvNumber('HSTS_MAX_AGE', 63072000),
       HSTS_INCLUDE_SUBDOMAINS: process.env.HSTS_INCLUDE_SUBDOMAINS === 'true',
@@ -149,12 +297,12 @@ class QuickLocalConfig {
       // Logging
       LOG_LEVEL: process.env.LOG_LEVEL || 'info',
       LOG_DIR: process.env.LOG_DIR || './logs',
-      ENABLE_REQUEST_LOGGING: process.env.ENABLE_REQUEST_LOGGING === 'true',
+      ENABLE_REQUEST_LOGGING: process.env.ENABLE_REQUEST_LOGGING !== 'false',
       ENABLE_ERROR_TRACKING: process.env.ENABLE_ERROR_TRACKING === 'true',
       
       // File Upload
       MAX_FILE_SIZE: this.getEnvNumber('MAX_FILE_SIZE', 10485760),
-      ALLOWED_FILE_TYPES: process.env.ALLOWED_FILE_TYPES?.split(',') || ['image/jpeg', 'image/png', 'image/webp'],
+      ALLOWED_FILE_TYPES: this.parseFileTypes(),
       
       // External Services
       REDIS_ENABLED: process.env.REDIS_ENABLED === 'true' && !process.env.DISABLE_REDIS,
@@ -163,85 +311,102 @@ class QuickLocalConfig {
       // Development
       DEBUG_MODE: process.env.DEBUG_MODE === 'true',
       MOCK_PAYMENT: process.env.MOCK_PAYMENT === 'true',
-      ENABLE_API_DOCS: process.env.ENABLE_API_DOCS === 'true'
+      ENABLE_API_DOCS: process.env.ENABLE_API_DOCS !== 'false'
     };
-
-    this.IS_PRODUCTION = this.config.NODE_ENV === 'production';
-    this.IS_DEVELOPMENT = this.config.NODE_ENV === 'development';
   }
 
   getEnvNumber(key, defaultValue) {
     const value = process.env[key];
-    return value ? parseInt(value, 10) : defaultValue;
+    const parsed = parseInt(value, 10);
+    return !isNaN(parsed) && parsed > 0 ? parsed : defaultValue;
   }
 
-  validateEnvironment() {
-    // Skip validation if ValidationMiddleware doesn't exist
-    try {
-      ValidationMiddleware.validateEnvironment();
-    } catch (error) {
-      console.warn('⚠️ ValidationMiddleware not found, skipping validation');
+  getWorkerCount() {
+    const specified = process.env.CLUSTER_WORKERS;
+    if (specified === 'auto' || !specified) {
+      return Math.max(2, Math.min(os.cpus().length, 8)); // Cap at 8 workers
     }
-    
-    // Additional QuickLocal specific validations
-    const criticalVars = ['MONGODB_URI', 'JWT_SECRET', 'COOKIE_SECRET', 'SESSION_SECRET'];
-    const missing = criticalVars.filter(varName => !process.env[varName] && !process.env[varName.replace('MONGODB_URI', 'MONGO_URI')]);
-    
-    if (missing.length > 0) {
-      throw new Error(`❌ Critical environment variables missing: ${missing.join(', ')}`);
-    }
+    return this.getEnvNumber('CLUSTER_WORKERS', os.cpus().length);
+  }
 
-    // Validate URLs format
-    const urlVars = ['API_URL', 'CLIENT_URL', 'ADMIN_URL'];
-    urlVars.forEach(varName => {
-      const url = process.env[varName];
-      if (url && !url.startsWith('http')) {
-        console.warn(`⚠️ ${varName} should start with http:// or https://`);
-      }
-    });
+  shouldEnableSocketIO() {
+    return process.env.FEATURE_LIVE_TRACKING === 'true' || 
+           process.env.FEATURE_CHAT === 'true' ||
+           process.env.ENABLE_SOCKET_IO === 'true';
+  }
 
-    console.log('✅ QuickLocal environment validation passed');
+  parseFileTypes() {
+    const types = process.env.ALLOWED_FILE_TYPES;
+    return types ? types.split(',').map(t => t.trim()) : [
+      'image/jpeg', 'image/png', 'image/webp', 'image/gif'
+    ];
   }
 }
 
-// CORS Origins Configuration
+// Enhanced CORS Manager with Better Security
 class CORSManager {
   static getOrigins() {
-    const origins = [];
+    const origins = new Set();
     
-    // Add from FRONTEND_URLS
-    if (process.env.FRONTEND_URLS) {
-      origins.push(...process.env.FRONTEND_URLS.split(',').map(url => url.trim()));
-    }
-    
-    // Add from ALLOWED_ORIGINS
-    if (process.env.ALLOWED_ORIGINS) {
-      origins.push(...process.env.ALLOWED_ORIGINS.split(',').map(url => url.trim()));
-    }
+    // Add from environment variables
+    this.addOriginsFromEnv('FRONTEND_URLS', origins);
+    this.addOriginsFromEnv('ALLOWED_ORIGINS', origins);
     
     // Add individual URLs
-    [process.env.CLIENT_URL, process.env.ADMIN_URL, process.env.API_URL].forEach(url => {
-      if (url) origins.push(url.trim());
+    [
+      process.env.CLIENT_URL, 
+      process.env.ADMIN_URL, 
+      process.env.API_URL
+    ].forEach(url => {
+      if (url && this.isValidUrl(url)) {
+        origins.add(url.trim());
+      }
     });
     
-    // Development origins
-    if (process.env.NODE_ENV !== 'production') {
-      origins.push(
-        'http://localhost:3000',
-        'http://localhost:3001',
-        'http://localhost:5173',
-        'http://127.0.0.1:3000',
-        'http://127.0.0.1:3001',
-        'http://127.0.0.1:5173',
-        'http://127.0.0.1:5500'
-      );
+    // Development origins (only in development)
+    if (process.env.NODE_ENV === 'development') {
+      this.addDevelopmentOrigins(origins);
     }
     
-    return [...new Set(origins)].filter(Boolean);
+    return Array.from(origins);
+  }
+
+  static addOriginsFromEnv(envVar, origins) {
+    const urls = process.env[envVar];
+    if (urls) {
+      urls.split(',')
+         .map(url => url.trim())
+         .filter(url => this.isValidUrl(url))
+         .forEach(url => origins.add(url));
+    }
+  }
+
+  static addDevelopmentOrigins(origins) {
+    const devOrigins = [
+      'http://localhost:3000',
+      'http://localhost:3001', 
+      'http://localhost:5173',
+      'http://localhost:8080',
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:3001',
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:8080'
+    ];
+    
+    devOrigins.forEach(origin => origins.add(origin));
+  }
+
+  static isValidUrl(url) {
+    try {
+      new URL(url);
+      return url.startsWith('http://') || url.startsWith('https://');
+    } catch {
+      return false;
+    }
   }
 
   static isValidOrigin(origin) {
-    if (!origin) return true;
+    if (!origin) return true; // Allow requests without origin header
     
     const allowedOrigins = this.getOrigins();
     if (allowedOrigins.includes(origin)) return true;
@@ -253,75 +418,126 @@ class CORSManager {
       /^https:\/\/.*\.herokuapp\.com$/,
       /^https:\/\/.*\.railway\.app$/,
       /^https:\/\/.*\.render\.com$/,
-      /^https:\/\/.*\.onrender\.com$/
+      /^https:\/\/.*\.onrender\.com$/,
+      /^https:\/\/.*\.surge\.sh$/,
+      /^https:\/\/.*\.github\.io$/
     ];
     
     return platformPatterns.some(pattern => pattern.test(origin));
   }
+
+  static createCorsOptions() {
+    return {
+      origin: (origin, callback) => {
+        if (this.isValidOrigin(origin)) {
+          callback(null, true);
+        } else {
+          console.warn(`🚫 CORS blocked origin: ${origin}`);
+          callback(new Error('CORS policy violation'), false);
+        }
+      },
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+      allowedHeaders: [
+        'Content-Type', 
+        'Authorization', 
+        'x-auth-token', 
+        'X-Requested-With',
+        'Accept',
+        'Origin',
+        'Cache-Control',
+        'Pragma',
+        'X-API-Key',
+        'X-Client-Version'
+      ],
+      exposedHeaders: [
+        'X-Total-Count', 
+        'X-Page-Count', 
+        'X-Correlation-ID', 
+        'API-Version',
+        'X-Rate-Limit-Remaining',
+        'X-Rate-Limit-Reset',
+        'X-Response-Time'
+      ],
+      optionsSuccessStatus: 200,
+      maxAge: 86400 // 24 hours
+    };
+  }
 }
 
-// Enhanced Security Manager
-class EnhancedSecurityManager {
+// Enhanced Security Manager with Better Protection
+class SecurityManager {
   static createBruteForceProtection() {
-    if (!process.env.MONGODB_URI && !process.env.MONGO_URI) {
-      console.warn('⚠️ Brute force protection disabled: MongoDB not configured');
-      return (req, res, next) => next();
-    }
-
-    try {
-      const BruteForceModel = mongoose.model('bruteforce', BruteForceSchema);
-      const store = new MongooseStore(BruteForceModel);
-      
-      return new ExpressBrute(store, {
-        freeRetries: parseInt(process.env.MAX_LOGIN_ATTEMPTS) || 5,
-        minWait: (parseInt(process.env.LOGIN_LOCKOUT_TIME) || 15) * 60 * 1000,
-        maxWait: 60 * 60 * 1000, // 1 hour
-        lifetime: 24 * 60 * 60, // 24 hours
-        failCallback: (req, res, next, nextValidRequestDate) => {
+    // Simple in-memory store for basic brute force protection
+    const attempts = new Map();
+    
+    return {
+      prevent: (req, res, next) => {
+        const key = req.ip + req.originalUrl;
+        const now = Date.now();
+        const windowMs = 15 * 60 * 1000; // 15 minutes
+        const maxAttempts = parseInt(process.env.MAX_LOGIN_ATTEMPTS) || 5;
+        
+        if (!attempts.has(key)) {
+          attempts.set(key, { count: 0, resetTime: now + windowMs });
+        }
+        
+        const attempt = attempts.get(key);
+        
+        if (now > attempt.resetTime) {
+          attempt.count = 0;
+          attempt.resetTime = now + windowMs;
+        }
+        
+        if (attempt.count >= maxAttempts) {
+          const remainingTime = Math.ceil((attempt.resetTime - now) / 1000);
           console.warn(`🛑 Brute force protection triggered for ${req.ip}`);
           
-          res.status(429).json({
+          return res.status(429).json({
             error: 'Too many failed attempts',
             message: 'Account temporarily locked due to multiple failed login attempts',
-            nextValidRequestDate,
-            retryAfter: Math.ceil((nextValidRequestDate.getTime() - Date.now()) / 1000)
+            retryAfter: remainingTime,
+            lockoutTime: Math.ceil(remainingTime / 60) + ' minutes'
           });
         }
-      });
-    } catch (error) {
-      console.error('❌ Failed to initialize brute force protection:', error);
-      return (req, res, next) => next();
-    }
+        
+        // Increment attempt count on login failure
+        res.on('finish', () => {
+          if (res.statusCode === 401 || res.statusCode === 403) {
+            attempt.count++;
+          }
+        });
+        
+        next();
+      }
+    };
   }
 
-  static createRateLimit(windowMs, max, message, options = {}) {
-    if (process.env.RATE_LIMIT_ENABLED !== 'true') {
-      return (req, res, next) => next();
-    }
-
+  static createRateLimit(windowMs, max, message = 'Too many requests') {
     return rateLimit({
       windowMs,
       max,
-      message: { 
-        error: 'Rate limit exceeded', 
+      message: {
+        error: 'Rate limit exceeded',
         message,
-        retryAfter: Math.ceil(windowMs / 1000),
         type: 'rate_limit_exceeded'
       },
       standardHeaders: true,
       legacyHeaders: false,
-      keyGenerator: (req) => {
-        return req.user?.id ? `${req.ip}:${req.user.id}` : req.ip;
+      handler: (req, res) => {
+        console.warn(`🚦 Rate limit exceeded for ${req.ip} on ${req.originalUrl}`);
+        res.status(429).json({
+          error: 'Rate limit exceeded',
+          message,
+          retryAfter: Math.ceil(windowMs / 1000),
+          type: 'rate_limit_exceeded',
+          limit: max,
+          window: `${windowMs / 1000} seconds`
+        });
       },
       skip: (req) => {
-        if (process.env.NODE_ENV === 'development' && 
-            (req.ip === '127.0.0.1' || req.ip === '::1')) {
-          return true;
-        }
-        return options.skip ? options.skip(req) : false;
-      },
-      onLimitReached: (req, res, options) => {
-        console.warn(`🚦 Rate limit exceeded for ${req.ip} on ${req.originalUrl}`);
+        // Skip rate limiting for health checks and metrics
+        return req.path === '/health' || req.path === '/metrics' || req.path === '/status';
       }
     });
   }
@@ -330,61 +546,148 @@ class EnhancedSecurityManager {
     return slowDown({
       windowMs,
       delayAfter,
-      delayMs,
+      delayMs: () => delayMs,
       maxDelayMs: 20000,
-      skipFailedRequests: false,
-      skipSuccessfulRequests: true,
-      onLimitReached: (req, res, options) => {
-        console.log(`🐌 Request slowed down for ${req.ip} on ${req.originalUrl}`);
-      }
+      skipFailedRequests: true,
+      skipSuccessfulRequests: false
     });
+  }
+
+  static createSecurityHeaders() {
+    return (req, res, next) => {
+      // Enhanced security headers
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('X-Frame-Options', 'DENY');
+      res.setHeader('X-XSS-Protection', '1; mode=block');
+      res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+      res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+      
+      // Remove server information
+      res.removeHeader('X-Powered-By');
+      res.setHeader('Server', 'QuickLocal');
+      
+      next();
+    };
+  }
+
+  static validateRequest() {
+    return (req, res, next) => {
+      // Basic request validation
+      const userAgent = req.get('User-Agent');
+      const host = req.get('Host');
+      
+      if (!userAgent || userAgent.length < 5) {
+        return res.status(403).json({ 
+          error: 'Access denied',
+          message: 'Invalid or missing User-Agent header'
+        });
+      }
+      
+      if (!host) {
+        return res.status(400).json({
+          error: 'Bad request',
+          message: 'Missing Host header'
+        });
+      }
+      
+      // Check for suspicious patterns
+      const suspiciousPatterns = [
+        /sqlmap/i,
+        /nmap/i,
+        /nikto/i,
+        /burp/i,
+        /<script/i,
+        /javascript:/i,
+        /vbscript:/i
+      ];
+      
+      const isSuspicious = suspiciousPatterns.some(pattern => {
+        return pattern.test(userAgent) || pattern.test(req.originalUrl);
+      });
+      
+      if (isSuspicious) {
+        console.warn(`🚨 Suspicious request detected from ${req.ip}: ${userAgent}`);
+        return res.status(403).json({
+          error: 'Access denied',
+          message: 'Request flagged as suspicious'
+        });
+      }
+      
+      next();
+    };
   }
 }
 
-// Enhanced Route Manager with Environment Integration
-class QuickLocalRouteManager {
+// Enhanced Route Manager with Better Error Handling
+class RouteManager {
   constructor() {
-    this.routes = [
-      { path: '/api/v1/auth', module: './routes/auth', name: 'Authentication', priority: 1 },
-      { path: '/api/v1/users', module: './routes/users', name: 'User Management', priority: 2 },
-      { path: '/api/v1/products', module: './routes/products', name: 'Product Catalog', priority: 3 },
-      { path: '/api/v1/categories', module: './routes/categories', name: 'Categories', priority: 3 },
-      { path: '/api/v1/orders', module: './routes/orders', name: 'Order Processing', priority: 4 },
-      { path: '/api/v1/cart', module: './routes/cart', name: 'Shopping Cart', priority: 3 },
-      { path: '/api/v1/wishlist', module: './routes/wishlist', name: 'User Wishlist', priority: 3 },
-      { path: '/api/v1/seller', module: './routes/seller', name: 'Seller Dashboard', priority: 4 },
-      { path: '/api/v1/admin', module: './routes/admin', name: 'Admin Panel', priority: 5 },
-      { path: '/api/v1/payment', module: './routes/payment-routes', name: 'Payment Gateway', priority: 4 },
-      { path: '/api/v1/webhooks', module: './routes/webhook-routes', name: 'Webhook Handlers', priority: 1 },
-      { path: '/api/v1/delivery', module: './routes/delivery', name: 'Delivery Service', priority: 4 },
-      { path: '/api/v1/analytics', module: './routes/analytics', name: 'Analytics', priority: 5 },
-      { path: '/api/v1/notifications', module: './routes/notifications', name: 'Notifications', priority: 3 }
-    ];
+    this.routes = this.defineRoutes();
+    this.loadedRoutes = [];
+    this.failedRoutes = [];
+  }
 
-    // Add conditional routes based on features
+  defineRoutes() {
+    return [
+      { path: '/api/v1/auth', module: './routes/auth', name: 'Authentication', priority: 1, critical: true },
+      { path: '/api/v1/users', module: './routes/users', name: 'User Management', priority: 2, critical: true },
+      { path: '/api/v1/products', module: './routes/products', name: 'Product Catalog', priority: 3, critical: true },
+      { path: '/api/v1/categories', module: './routes/categories', name: 'Categories', priority: 3, critical: false },
+      { path: '/api/v1/orders', module: './routes/orders', name: 'Order Processing', priority: 4, critical: true },
+      { path: '/api/v1/cart', module: './routes/cart', name: 'Shopping Cart', priority: 3, critical: true },
+      { path: '/api/v1/wishlist', module: './routes/wishlist', name: 'User Wishlist', priority: 3, critical: false },
+      { path: '/api/v1/seller', module: './routes/seller', name: 'Seller Dashboard', priority: 4, critical: true },
+      { path: '/api/v1/admin', module: './routes/admin', name: 'Admin Panel', priority: 5, critical: false },
+      { path: '/api/v1/payment', module: './routes/payment-routes', name: 'Payment Gateway', priority: 4, critical: true },
+      { path: '/api/v1/webhooks', module: './routes/webhook-routes', name: 'Webhook Handlers', priority: 1, critical: false },
+      { path: '/api/v1/delivery', module: './routes/delivery', name: 'Delivery Service', priority: 4, critical: false },
+      { path: '/api/v1/analytics', module: './routes/analytics', name: 'Analytics', priority: 5, critical: false },
+      { path: '/api/v1/notifications', module: './routes/notifications', name: 'Notifications', priority: 3, critical: false }
+    ].concat(this.getFeatureRoutes());
+  }
+
+  getFeatureRoutes() {
+    const featureRoutes = [];
+    
     if (process.env.FEATURE_REVIEWS === 'true') {
-      this.routes.push({ path: '/api/v1/reviews', module: './routes/reviews', name: 'Reviews & Ratings', priority: 3 });
+      featureRoutes.push({ 
+        path: '/api/v1/reviews', 
+        module: './routes/reviews', 
+        name: 'Reviews & Ratings', 
+        priority: 3, 
+        critical: false 
+      });
     }
     
     if (process.env.FEATURE_CHAT === 'true') {
-      this.routes.push({ path: '/api/v1/chat', module: './routes/chat', name: 'Chat System', priority: 3 });
+      featureRoutes.push({ 
+        path: '/api/v1/chat', 
+        module: './routes/chat', 
+        name: 'Chat System', 
+        priority: 3, 
+        critical: false 
+      });
     }
 
     if (process.env.FEATURE_LOYALTY_PROGRAM === 'true') {
-      this.routes.push({ path: '/api/v1/loyalty', module: './routes/loyalty', name: 'Loyalty Program', priority: 3 });
+      featureRoutes.push({ 
+        path: '/api/v1/loyalty', 
+        module: './routes/loyalty', 
+        name: 'Loyalty Program', 
+        priority: 3, 
+        critical: false 
+      });
     }
-
-    // Sort by priority
-    this.routes.sort((a, b) => a.priority - b.priority);
     
-    this.loadedRoutes = [];
-    this.failedRoutes = [];
+    return featureRoutes.sort((a, b) => a.priority - b.priority);
   }
 
   async loadRoutes(app) {
     console.log('🔄 Loading QuickLocal API routes...');
     
-    for (const route of this.routes) {
+    // Load routes by priority
+    const sortedRoutes = [...this.routes].sort((a, b) => a.priority - b.priority);
+    
+    for (const route of sortedRoutes) {
       try {
         await this.loadSingleRoute(app, route);
       } catch (error) {
@@ -392,7 +695,9 @@ class QuickLocalRouteManager {
       }
     }
 
+    this.validateCriticalRoutes();
     this.logRouteSummary();
+    
     return {
       loaded: this.loadedRoutes.length,
       failed: this.failedRoutes.length,
@@ -400,15 +705,12 @@ class QuickLocalRouteManager {
     };
   }
 
-  async loadSingleRoute(app, { path, module, name, priority }) {
-    // Clear cache in development
+  async loadSingleRoute(app, route) {
+    const { path, module, name, priority, critical } = route;
+    
+    // Clear cache in development for hot reloading
     if (process.env.NODE_ENV === 'development') {
-      try {
-        const resolvedPath = require.resolve(module);
-        delete require.cache[resolvedPath];
-      } catch (e) {
-        // Module doesn't exist yet, which is fine
-      }
+      this.clearModuleCache(module);
     }
 
     // Try to load the module
@@ -416,9 +718,9 @@ class QuickLocalRouteManager {
     try {
       routeModule = require(module);
     } catch (error) {
-      if (error.code === 'MODULE_NOT_FOUND') {
-        console.warn(`⚠️ Route module not found: ${module} - Skipping`);
-        return; // Skip missing modules instead of failing
+      if (error.code === 'MODULE_NOT_FOUND' && !critical) {
+        console.warn(`⚠️ Optional route module not found: ${module} - Skipping`);
+        return;
       }
       throw error;
     }
@@ -427,32 +729,30 @@ class QuickLocalRouteManager {
       throw new Error(`Invalid router export in ${module}`);
     }
 
-    // Add API version middleware
-    app.use(path, this.createAPIVersionMiddleware());
+    // Add route-specific middleware
+    this.addRouteMiddleware(app, path, route);
     
-    // Add route-specific rate limiting
-    if (path.includes('/auth')) {
-      app.use(path, EnhancedSecurityManager.createRateLimit(
-        15 * 60 * 1000, 
-        parseInt(process.env.AUTH_RATE_LIMIT_MAX) || 20, 
-        'Too many authentication attempts'
-      ));
-    } else if (path.includes('/orders')) {
-      app.use(path, EnhancedSecurityManager.createRateLimit(
-        60 * 1000, 
-        parseInt(process.env.ORDER_RATE_LIMIT_MAX) || 10, 
-        'Too many order requests'
-      ));
-    }
-
+    // Mount the route
     app.use(path, routeModule);
     
-    this.loadedRoutes.push({ path, name, priority, status: 'loaded' });
-    console.log(`✅ ${name}: ${path} (Priority: ${priority})`);
+    this.loadedRoutes.push({ 
+      path, 
+      name, 
+      priority, 
+      status: 'loaded',
+      critical,
+      module 
+    });
+    
+    console.log(`✅ ${name}: ${path} (Priority: ${priority}${critical ? ', Critical' : ''})`);
+  }
 
-    // Log endpoints in development
-    if (process.env.DEBUG_MODE === 'true') {
-      this.logRouteEndpoints(routeModule, path, name);
+  clearModuleCache(module) {
+    try {
+      const resolvedPath = require.resolve(module);
+      delete require.cache[resolvedPath];
+    } catch (e) {
+      // Module doesn't exist yet
     }
   }
 
@@ -465,55 +765,179 @@ class QuickLocalRouteManager {
     );
   }
 
-  createAPIVersionMiddleware() {
-    return (req, res, next) => {
+  addRouteMiddleware(app, path, route) {
+    // API version middleware
+    app.use(path, (req, res, next) => {
       req.apiVersion = process.env.API_VERSION || 'v1';
       res.setHeader('API-Version', req.apiVersion);
-      res.setHeader('X-API-Version', req.apiVersion);
       next();
-    };
-  }
+    });
 
-  logRouteEndpoints(routeModule, basePath, name) {
-    if (routeModule.stack) {
-      const endpoints = [];
-      routeModule.stack.forEach((layer) => {
-        if (layer.route) {
-          const methods = Object.keys(layer.route.methods).join(', ').toUpperCase();
-          endpoints.push(`${methods} ${basePath}${layer.route.path}`);
-        }
-      });
-      if (endpoints.length > 0) {
-        console.log(`📍 ${name} endpoints:`, endpoints);
-      }
+    // Route-specific rate limiting
+    if (path.includes('/auth')) {
+      app.use(path, SecurityManager.createRateLimit(
+        15 * 60 * 1000,
+        parseInt(process.env.AUTH_RATE_LIMIT_MAX) || 20,
+        'Too many authentication attempts'
+      ));
+    } else if (path.includes('/orders')) {
+      app.use(path, SecurityManager.createRateLimit(
+        60 * 1000,
+        parseInt(process.env.ORDER_RATE_LIMIT_MAX) || 10,
+        'Too many order requests'
+      ));
+    } else if (path.includes('/payment')) {
+      app.use(path, SecurityManager.createRateLimit(
+        5 * 60 * 1000, // 5 minutes
+        5, // 5 payment attempts per 5 minutes
+        'Too many payment attempts'
+      ));
     }
   }
 
   handleRouteError(route, error) {
-    this.failedRoutes.push({ 
-      path: route.path, 
-      name: route.name, 
-      error: error.message 
+    this.failedRoutes.push({
+      path: route.path,
+      name: route.name,
+      error: error.message,
+      critical: route.critical
     });
-    console.error(`❌ Failed to load ${route.name} (${route.path}): ${error.message}`);
+    
+    const logLevel = route.critical ? 'error' : 'warn';
+    console[logLevel](`${route.critical ? '❌' : '⚠️'} Failed to load ${route.name} (${route.path}): ${error.message}`);
     
     if (process.env.DEBUG_MODE === 'true') {
       console.error(error.stack);
     }
   }
 
+  validateCriticalRoutes() {
+    const failedCriticalRoutes = this.failedRoutes.filter(route => route.critical);
+    if (failedCriticalRoutes.length > 0) {
+      const routeNames = failedCriticalRoutes.map(r => r.name).join(', ');
+      throw new Error(`❌ Critical routes failed to load: ${routeNames}`);
+    }
+  }
+
   logRouteSummary() {
     const { length: loaded } = this.loadedRoutes;
     const { length: failed } = this.failedRoutes;
+    const critical = this.loadedRoutes.filter(r => r.critical).length;
     
-    console.log(`📊 Route loading complete: ${loaded} loaded, ${failed} failed`);
+    console.log(`📊 Route loading complete: ${loaded} loaded (${critical} critical), ${failed} failed`);
     
     if (failed > 0) {
-      console.error(`⚠️ Failed routes:`, this.failedRoutes);
-      if (process.env.NODE_ENV === 'production' && failed > loaded * 0.3) {
-        throw new Error('❌ Critical: More than 30% of routes failed to load in production');
+      console.warn(`⚠️ Failed routes:`, this.failedRoutes.map(r => `${r.name} (${r.critical ? 'Critical' : 'Optional'})`));
+    }
+  }
+}
+
+// Enhanced Database Connection Manager
+class DatabaseManager {
+  static async connect(config) {
+    const maxRetries = parseInt(process.env.DB_MAX_RETRY_ATTEMPTS) || 5;
+    const retryDelay = parseInt(process.env.DB_RETRY_DELAY_MS) || 5000;
+    let retries = 0;
+
+    const mongooseOptions = {
+      maxPoolSize: config.DB_POOL_SIZE,
+      serverSelectionTimeoutMS: config.DB_TIMEOUT,
+      socketTimeoutMS: 45000,
+      family: 4, // Use IPv4, skip trying IPv6
+      bufferCommands: false,
+      maxIdleTimeMS: 30000,
+      connectTimeoutMS: 30000,
+    };
+
+    while (retries < maxRetries) {
+      try {
+        await mongoose.connect(config.MONGODB_URI, mongooseOptions);
+        
+        // Set up connection event handlers
+        this.setupConnectionHandlers();
+        
+        console.log(`✅ Database connected: ${mongoose.connection.db?.databaseName || 'unknown'}`);
+        console.log(`📊 Connection pool: ${config.DB_POOL_SIZE} connections`);
+        return;
+      } catch (error) {
+        retries++;
+        console.warn(`Database connection attempt ${retries}/${maxRetries} failed: ${error.message}`);
+
+        if (retries === maxRetries) {
+          throw new Error(`❌ Failed to connect to database after ${maxRetries} attempts: ${error.message}`);
+        }
+
+        // Exponential backoff
+        const delay = retryDelay * Math.pow(2, retries - 1);
+        console.log(`⏳ Retrying database connection in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
+  }
+
+  static setupConnectionHandlers() {
+    mongoose.connection.on('connected', () => {
+      console.log('🔗 Database connected successfully');
+    });
+
+    mongoose.connection.on('error', (error) => {
+      console.error('❌ Database connection error:', error);
+    });
+
+    mongoose.connection.on('disconnected', () => {
+      console.warn('🔌 Database disconnected');
+    });
+
+    mongoose.connection.on('reconnected', () => {
+      console.log('🔄 Database reconnected');
+    });
+
+    // Handle process termination
+    process.on('SIGINT', async () => {
+      try {
+        await mongoose.connection.close();
+        console.log('🔐 Database connection closed through app termination');
+      } catch (error) {
+        console.error('❌ Error closing database connection:', error);
+      }
+    });
+  }
+
+  static async checkHealth() {
+    try {
+      if (mongoose.connection.readyState !== 1) {
+        return { status: 'critical', message: 'Database disconnected' };
+      }
+
+      const startTime = Date.now();
+      await mongoose.connection.db.admin().ping();
+      const responseTime = Date.now() - startTime;
+
+      return {
+        status: responseTime < 1000 ? 'healthy' : 'degraded',
+        responseTime,
+        connectionState: mongoose.connection.readyState,
+        databaseName: mongoose.connection.db?.databaseName,
+        host: mongoose.connection.host,
+        readyState: this.getReadyStateString(mongoose.connection.readyState)
+      };
+    } catch (error) {
+      return {
+        status: 'critical',
+        message: error.message,
+        error: 'Database health check failed'
+      };
+    }
+  }
+
+  static getReadyStateString(state) {
+    const states = {
+      0: 'disconnected',
+      1: 'connected',
+      2: 'connecting',
+      3: 'disconnecting'
+    };
+    return states[state] || 'unknown';
   }
 }
 
@@ -524,8 +948,10 @@ class QuickLocalServer {
     this.app = null;
     this.server = null;
     this.io = null;
-    this.routeManager = new QuickLocalRouteManager();
+    this.routeManager = new RouteManager();
+    this.memoryMonitor = new MemoryMonitor();
     this.isShuttingDown = false;
+    this.startTime = Date.now();
     
     // Set process title
     if (process.env.PROCESS_TITLE) {
@@ -549,6 +975,7 @@ class QuickLocalServer {
       await this.setupErrorHandling();
       await this.startServer();
       this.setupGracefulShutdown();
+      this.startMonitoring();
       
       return { app: this.app, server: this.server, io: this.io };
     } catch (error) {
@@ -563,15 +990,30 @@ class QuickLocalServer {
       this.config.LOG_DIR,
       './uploads',
       './temp',
-      './backups'
+      './backups',
+      './cache'
     ];
     
-    dirs.forEach(dir => {
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-        console.log(`📁 Created directory: ${dir}`);
+    for (const dir of dirs) {
+      try {
+        await fs.mkdir(dir, { recursive: true });
+        console.log(`📁 Ensured directory exists: ${dir}`);
+      } catch (error) {
+        console.warn(`⚠️ Could not create directory ${dir}:`, error.message);
       }
-    });
+    }
+
+    // Check available memory
+    const freeMem = os.freemem();
+    const totalMem = os.totalmem();
+    const freeMemMB = Math.round(freeMem / 1024 / 1024);
+    const totalMemMB = Math.round(totalMem / 1024 / 1024);
+    
+    console.log(`💾 System Memory: ${freeMemMB}MB free / ${totalMemMB}MB total`);
+    
+    if (freeMem < 500 * 1024 * 1024) { // Less than 500MB free
+      console.warn('⚠️ Low system memory detected. Consider optimizing or scaling.');
+    }
 
     console.log('✅ Preflight checks completed');
   }
@@ -584,22 +1026,21 @@ class QuickLocalServer {
     if (this.config.ENABLE_SOCKET_IO) {
       await this.setupSocketIO();
     }
+
+    console.log('🏗️ Express application created');
   }
 
   async setupSocketIO() {
     try {
       const { Server } = require('socket.io');
       this.io = new Server(this.server, {
-        cors: {
-          origin: CORSManager.getOrigins(),
-          methods: ['GET', 'POST'],
-          credentials: true
-        },
+        cors: CORSManager.createCorsOptions(),
         pingTimeout: 60000,
         pingInterval: 25000,
-        maxHttpBufferSize: parseInt(this.config.MAX_FILE_SIZE) || 1e6,
+        maxHttpBufferSize: this.config.MAX_FILE_SIZE,
         allowEIO3: true,
-        transports: ['websocket', 'polling']
+        transports: ['websocket', 'polling'],
+        serveClient: false // Don't serve socket.io client
       });
       
       this.setupSocketHandlers();
@@ -614,121 +1055,168 @@ class QuickLocalServer {
     if (!this.io) return;
 
     this.io.on('connection', (socket) => {
-      console.log(`🔌 Socket connected: ${socket.id}`);
+      console.log(`🔌 Socket connected: ${socket.id} from ${socket.handshake.address}`);
       
+      // Authentication for socket connections
+      socket.on('authenticate', (token) => {
+        // Add your JWT verification logic here
+        // For now, just acknowledge
+        socket.emit('authenticated', { status: 'success' });
+      });
+
       // Join user-specific room for notifications
       socket.on('join_user_room', (userId) => {
-        if (userId) {
+        if (userId && typeof userId === 'string' && userId.match(/^[0-9a-fA-F]{24}$/)) {
           socket.join(`user_${userId}`);
+          socket.userId = userId;
           console.log(`👤 Socket ${socket.id} joined user room: ${userId}`);
         }
       });
 
       // Join order-specific room for delivery tracking
       socket.on('track_order', (orderId) => {
-        if (orderId) {
+        if (orderId && typeof orderId === 'string' && orderId.match(/^[0-9a-fA-F]{24}$/)) {
           socket.join(`order_${orderId}`);
           console.log(`📦 Socket ${socket.id} tracking order: ${orderId}`);
         }
       });
 
+      // Handle disconnection
       socket.on('disconnect', (reason) => {
         console.log(`🔌 Socket disconnected: ${socket.id}, reason: ${reason}`);
+        if (socket.userId) {
+          socket.leave(`user_${socket.userId}`);
+        }
       });
 
+      // Handle errors
       socket.on('error', (error) => {
         console.error(`🔌 Socket error: ${socket.id}`, error);
       });
+
+      // Rate limiting for socket events
+      const eventRateLimit = new Map();
+      socket.use((packet, next) => {
+        const event = packet[0];
+        const now = Date.now();
+        const limit = eventRateLimit.get(event) || { count: 0, resetTime: now + 60000 };
+        
+        if (now > limit.resetTime) {
+          limit.count = 0;
+          limit.resetTime = now + 60000;
+        }
+        
+        if (limit.count > 50) { // 50 events per minute
+          return next(new Error('Rate limit exceeded'));
+        }
+        
+        limit.count++;
+        eventRateLimit.set(event, limit);
+        next();
+      });
     });
 
-    // Broadcast system events
+    // Connection error handling
     this.io.on('connection_error', (err) => {
       console.error('🔌 Socket.IO connection error:', err);
     });
+
+    // Periodic cleanup of empty rooms
+    setInterval(() => {
+      const rooms = this.io.sockets.adapter.rooms;
+      let emptyRooms = 0;
+      
+      rooms.forEach((room, roomName) => {
+        if (room.size === 0 && roomName.includes('_')) {
+          rooms.delete(roomName);
+          emptyRooms++;
+        }
+      });
+      
+      if (emptyRooms > 0) {
+        console.log(`🧹 Cleaned up ${emptyRooms} empty socket rooms`);
+      }
+    }, 5 * 60 * 1000); // Every 5 minutes
   }
 
   async setupMiddleware() {
-    // Trust proxy
+    // Trust proxy configuration
     this.app.set('trust proxy', parseInt(process.env.TRUST_PROXY) || 1);
-    this.app.set('x-powered-by', false);
+    this.app.disable('x-powered-by');
 
-    // Request timeout
+    // Request timeout with proper cleanup
     this.app.use((req, res, next) => {
-      res.setTimeout(this.config.REQUEST_TIMEOUT, () => {
-        res.status(408).json({
-          error: 'Request timeout',
-          message: `Request exceeded ${this.config.REQUEST_TIMEOUT}ms timeout`,
-          correlation_id: req.correlationId
-        });
-      });
+      const timeout = setTimeout(() => {
+        if (!res.headersSent) {
+          res.status(408).json({
+            error: 'Request timeout',
+            message: `Request exceeded ${this.config.REQUEST_TIMEOUT}ms timeout`,
+            correlationId: req.correlationId
+          });
+        }
+      }, this.config.REQUEST_TIMEOUT);
+
+      res.on('finish', () => clearTimeout(timeout));
+      res.on('close', () => clearTimeout(timeout));
+      
       next();
     });
 
-    // Security headers with Helmet
+    // Enhanced security headers
     if (this.config.HELMET_ENABLED) {
-      try {
-        applySecurity(this.app);
-      } catch (error) {
-        console.warn('⚠️ Security middleware not found, using basic security');
-        this.app.use(helmet());
-      }
+      this.app.use(helmet({
+        contentSecurityPolicy: this.config.CSP_ENABLED ? {
+          directives: {
+            defaultSrc: ["'self'"],
+            styleSrc: ["'self'", "'unsafe-inline'"],
+            scriptSrc: ["'self'"],
+            imgSrc: ["'self'", "data:", "https:"],
+            connectSrc: ["'self'"],
+            fontSrc: ["'self'"],
+            objectSrc: ["'none'"],
+            mediaSrc: ["'self'"],
+            frameSrc: ["'none'"],
+          },
+        } : false,
+        hsts: {
+          maxAge: this.config.HSTS_MAX_AGE,
+          includeSubDomains: this.config.HSTS_INCLUDE_SUBDOMAINS
+        }
+      }));
     }
 
+    // Additional security headers
+    this.app.use(SecurityManager.createSecurityHeaders());
+
+    // Request validation
+    this.app.use(SecurityManager.validateRequest());
+
     // Brute force protection
-    const bruteForce = EnhancedSecurityManager.createBruteForceProtection();
+    const bruteForce = SecurityManager.createBruteForceProtection();
     this.app.use('/api/v1/auth/login', bruteForce.prevent);
     this.app.use('/api/v1/auth/forgot-password', bruteForce.prevent);
 
-    // Rate limiting
-    this.app.use('/api/', EnhancedSecurityManager.createRateLimit(
-      this.config.RATE_LIMIT_WINDOW,
-      this.config.RATE_LIMIT_MAX,
-      'Too many requests from this IP'
-    ));
+    // Rate limiting with different tiers
+    if (this.config.RATE_LIMIT_ENABLED) {
+      // General API rate limiting
+      this.app.use('/api/', SecurityManager.createRateLimit(
+        this.config.RATE_LIMIT_WINDOW,
+        this.config.RATE_LIMIT_MAX,
+        'Too many API requests from this IP'
+      ));
 
-    // Slow down for resource-intensive endpoints
-    this.app.use('/api/v1/search', EnhancedSecurityManager.createSlowDown(
-      15 * 60 * 1000,
-      100,
-      500
-    ));
+      // Slow down for expensive operations
+      this.app.use('/api/v1/search', SecurityManager.createSlowDown(
+        15 * 60 * 1000, // 15 minutes
+        50, // Start slowing after 50 requests
+        1000 // 1 second delay
+      ));
+    }
 
-    // CORS with dynamic origins
-    this.app.use(cors({
-      origin: (origin, callback) => {
-        if (CORSManager.isValidOrigin(origin)) {
-          callback(null, true);
-        } else {
-          console.warn(`🚫 CORS blocked origin: ${origin || 'null'}`);
-          callback(null, false);
-        }
-      },
-      credentials: true,
-      methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-      allowedHeaders: [
-        'Content-Type', 
-        'Authorization', 
-        'x-auth-token', 
-        'X-Requested-With',
-        'Accept',
-        'Origin',
-        'Cache-Control',
-        'Pragma',
-        'X-API-Key'
-      ],
-      exposedHeaders: [
-        'X-Total-Count', 
-        'X-Page-Count', 
-        'X-Correlation-ID', 
-        'API-Version',
-        'X-Rate-Limit-Remaining',
-        'X-Rate-Limit-Reset'
-      ],
-      optionsSuccessStatus: 200,
-      maxAge: 86400
-    }));
+    // CORS with enhanced configuration
+    this.app.use(cors(CORSManager.createCorsOptions()));
 
-    // Body parsing
+    // Body parsing with enhanced security
     this.app.use(express.json({
       limit: this.config.MAX_REQUEST_SIZE,
       verify: (req, res, buf) => {
@@ -743,154 +1231,144 @@ class QuickLocalServer {
       parameterLimit: 1000
     }));
 
+    // Cookie parsing
     this.app.use(cookieParser(this.config.COOKIE_SECRET));
 
-    // Compression
+    // Compression with intelligent filtering
     if (this.config.COMPRESSION_ENABLED) {
       this.app.use(compression({
         filter: (req, res) => {
+          // Don't compress if client specifically asks not to
           if (req.headers['x-no-compression']) return false;
-          if (res.getHeader('Content-Type')?.includes('image/')) return false;
+          
+          // Don't compress images, videos, or already compressed files
+          const contentType = res.getHeader('Content-Type');
+          if (contentType && (
+            contentType.includes('image/') || 
+            contentType.includes('video/') ||
+            contentType.includes('audio/') ||
+            contentType.includes('application/zip') ||
+            contentType.includes('application/gzip')
+          )) {
+            return false;
+          }
+          
           return compression.filter(req, res);
         },
-        threshold: 1024,
+        threshold: 1024, // Only compress if larger than 1KB
         level: this.config.COMPRESSION_LEVEL,
         memLevel: 8
       }));
     }
 
-    // Request logging
+    // Enhanced request logging
     if (this.config.ENABLE_REQUEST_LOGGING) {
-      this.app.use(morgan(
-        this.config.IS_PRODUCTION ? 'combined' : 'dev',
-        {
-          stream: { 
-            write: (message) => {
+      const morganFormat = this.config.IS_PRODUCTION ? 
+        ':remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent" :response-time ms' :
+        ':method :url :status :response-time ms - :res[content-length]';
+
+      this.app.use(morgan(morganFormat, {
+        stream: { 
+          write: (message) => {
+            if (this.config.DEBUG_MODE || !this.config.IS_PRODUCTION) {
               console.log(`[REQUEST] ${message.trim()}`);
             }
-          },
-          skip: (req) => {
-            return process.env.NODE_ENV === 'production' && (
-              req.method === 'OPTIONS' || 
-              req.url === '/health' ||
-              req.url === '/metrics' ||
-              req.url === '/favicon.ico'
-            );
           }
+        },
+        skip: (req) => {
+          // Skip logging for health checks and static assets
+          return req.method === 'OPTIONS' || 
+                 req.url === '/health' ||
+                 req.url === '/metrics' ||
+                 req.url === '/favicon.ico' ||
+                 req.url.startsWith('/static/');
         }
-      ));
+      }));
     }
 
-    // Correlation ID and metrics
+    // Enhanced correlation ID and metrics
     this.app.use((req, res, next) => {
       const startTime = process.hrtime.bigint();
-      req.correlationId = `${this.config.INSTANCE_ID}-${Date.now().toString(36)}-${Math.random().toString(36).substr(2)}`;
+      req.correlationId = `${this.config.INSTANCE_ID}-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 5)}`;
       req.startTime = startTime;
+      req.requestId = req.correlationId;
       
+      // Set response headers
       res.setHeader('X-Correlation-ID', req.correlationId);
       res.setHeader('X-Instance-ID', this.config.INSTANCE_ID);
-      res.setHeader('X-Response-Time', '0ms');
+      res.setHeader('X-API-Version', this.config.API_VERSION);
 
-      // Override res.send to capture response time
+      // Enhanced response time tracking
       const originalSend = res.send;
       res.send = function(data) {
         const endTime = process.hrtime.bigint();
-        const duration = Number(endTime - startTime) / 1000000;
+        const duration = Number(endTime - startTime) / 1000000; // Convert to ms
         
         res.setHeader('X-Response-Time', `${duration.toFixed(2)}ms`);
         
-        // Log slow requests
-        if (duration > 2000) { // 2 seconds
-          console.warn(`🐌 Slow request [${req.correlationId}]: ${req.method} ${req.originalUrl} took ${duration.toFixed(2)}ms`);
+        // Log slow requests with more detail
+        if (duration > 2000) {
+          console.warn(`🐌 Slow request [${req.correlationId}]: ${req.method} ${req.originalUrl} took ${duration.toFixed(2)}ms (User: ${req.user?.id || 'anonymous'})`);
         }
 
-        if (process.env.DEBUG_MODE === 'true' && req.method !== 'OPTIONS') {
-          console.log(`📤 [${req.correlationId}] ${res.statusCode} (${duration.toFixed(2)}ms)`);
-        }
+        // Emit metrics for monitoring
+        process.emit('requestCompleted', {
+          method: req.method,
+          url: req.originalUrl,
+          statusCode: res.statusCode,
+          duration,
+          correlationId: req.correlationId,
+          userAgent: req.get('User-Agent'),
+          ip: req.ip
+        });
 
         return originalSend.call(this, data);
       };
 
-      if (process.env.DEBUG_MODE === 'true' && req.method !== 'OPTIONS') {
-        console.log(`📥 [${req.correlationId}] ${req.method} ${req.originalUrl} from ${req.headers.origin || 'unknown'}`);
-      }
-
       next();
     });
 
-    // Security and validation middleware
-    this.app.use((req, res, next) => {
-      // Security headers
-      res.setHeader('X-Content-Type-Options', 'nosniff');
-      res.setHeader('X-Frame-Options', 'DENY');
-      res.setHeader('X-XSS-Protection', '1; mode=block');
-      
-      // Basic validation
-      const userAgent = req.get('User-Agent');
-      if (!userAgent || userAgent.length < 5) {
-        return res.status(403).json({ success: false, message: 'Access denied' });
-      }
-      
-      next();
-    });
+    // Add Socket.IO instance to requests if available
+    if (this.io) {
+      this.app.use((req, res, next) => {
+        req.io = this.io;
+        next();
+      });
+    }
+
+    console.log('✅ Middleware setup completed');
   }
 
   async connectDatabase() {
-    const maxRetries = parseInt(process.env.DB_MAX_RETRY_ATTEMPTS) || 5;
-    const retryDelay = parseInt(process.env.DB_RETRY_DELAY_MS) || 5000;
-    let retries = 0;
-    
-    while (retries < maxRetries) {
-      try {
-        await connectDB({
-          maxPoolSize: this.config.DB_POOL_SIZE,
-          serverSelectionTimeoutMS: this.config.DB_TIMEOUT,
-          socketTimeoutMS: parseInt(process.env.DB_SOCKET_TIMEOUT_MS) || 45000,
-          maxIdleTimeMS: 30000,
-          retryWrites: true,
-          retryReads: true,
-          autoIndex: this.config.IS_DEVELOPMENT
-        });
-        
-        console.log(`✅ Database connected: ${this.config.DB_NAME}`);
-        return;
-      } catch (error) {
-        retries++;
-        console.warn(`Database connection attempt ${retries}/${maxRetries} failed: ${error.message}`);
-        
-        if (retries === maxRetries) {
-          throw new Error(`❌ Failed to connect to database after ${maxRetries} attempts`);
-        }
-        
-        await new Promise(resolve => setTimeout(resolve, retryDelay * Math.pow(2, retries - 1)));
-      }
-    }
+    await DatabaseManager.connect(this.config);
   }
 
   async setupSession() {
-    if (!this.config.REDIS_ENABLED) {
-      console.log('📝 Using MongoDB session store');
-      
-      this.app.use(session({
-        secret: this.config.SESSION_SECRET,
-        name: process.env.SESSION_COOKIE_NAME || 'ql_session',
-        resave: false,
-        saveUninitialized: false,
-        store: MongoStore.create({
-          mongoUrl: this.config.MONGODB_URI,
-          touchAfter: 24 * 3600, // lazy session update
-          ttl: parseInt(process.env.SESSION_COOKIE_MAX_AGE) || 604800000 // 7 days
-        }),
-        cookie: {
-          secure: process.env.SESSION_COOKIE_SECURE === 'true',
-          httpOnly: process.env.SESSION_COOKIE_HTTP_ONLY !== 'false',
-          maxAge: parseInt(process.env.SESSION_COOKIE_MAX_AGE) || 604800000,
-          sameSite: process.env.SESSION_COOKIE_SAME_SITE || 'strict'
-        }
-      }));
-    } else {
-      console.log('📝 Redis session store disabled - using MongoDB');
-    }
+    const sessionConfig = {
+      secret: this.config.SESSION_SECRET,
+      name: process.env.SESSION_COOKIE_NAME || 'quicklocal_session',
+      resave: false,
+      saveUninitialized: false,
+      store: MongoStore.create({
+        mongoUrl: this.config.MONGODB_URI,
+        touchAfter: 24 * 3600, // Lazy session update
+        ttl: parseInt(process.env.SESSION_COOKIE_MAX_AGE) || 7 * 24 * 60 * 60, // 7 days in seconds
+        collectionName: 'sessions',
+        stringify: false,
+        autoRemove: 'native'
+      }),
+      cookie: {
+        secure: process.env.SESSION_COOKIE_SECURE === 'true',
+        httpOnly: process.env.SESSION_COOKIE_HTTP_ONLY !== 'false',
+        maxAge: parseInt(process.env.SESSION_COOKIE_MAX_AGE) || 7 * 24 * 60 * 60 * 1000, // 7 days in ms
+        sameSite: process.env.SESSION_COOKIE_SAME_SITE || 'strict'
+      },
+      rolling: true, // Reset expiration on activity
+      proxy: true // Trust proxy for secure cookies
+    };
+
+    this.app.use(session(sessionConfig));
+    console.log('📝 Session management configured with MongoDB store');
   }
 
   async loadRoutes() {
@@ -900,104 +1378,86 @@ class QuickLocalServer {
   }
 
   setupEndpoints() {
-    // Enhanced root endpoint with QuickLocal branding
+    // Enhanced root endpoint
     this.app.get('/', (req, res) => {
+      const uptime = Math.floor(process.uptime());
+      const memUsage = process.memoryUsage();
+      
       res.json({
         name: this.config.APP_NAME,
         version: this.config.APP_VERSION,
         status: 'operational',
         timestamp: new Date().toISOString(),
         environment: this.config.NODE_ENV,
-        instance_id: this.config.INSTANCE_ID,
-        api_version: this.config.API_VERSION,
-        timezone: process.env.TIMEZONE || 'UTC',
-        currency: process.env.CURRENCY || 'USD',
+        instanceId: this.config.INSTANCE_ID,
+        apiVersion: this.config.API_VERSION,
+        uptime: {
+          seconds: uptime,
+          human: this.formatUptime(uptime)
+        },
         server: {
-          uptime: Math.floor(process.uptime()),
-          memory: process.memoryUsage(),
-          node_version: process.version,
+          nodeVersion: process.version,
           platform: process.platform,
-          cpu_count: os.cpus().length,
-          load_average: os.loadavg()
+          cpuCount: os.cpus().length,
+          memory: {
+            heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024),
+            heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024),
+            rss: Math.round(memUsage.rss / 1024 / 1024),
+            external: Math.round(memUsage.external / 1024 / 1024)
+          },
+          loadAverage: os.loadavg().map(load => Math.round(load * 100) / 100)
         },
         features: {
           websockets: !!this.io,
           clustering: this.config.CLUSTER_MODE,
-          metrics: this.config.ENABLE_METRICS,
-          caching: this.config.ENABLE_CACHING,
           compression: this.config.COMPRESSION_ENABLED,
-          rate_limiting: this.config.RATE_LIMIT_ENABLED,
-          brute_force_protection: true,
-          reviews: process.env.FEATURE_REVIEWS === 'true',
-          wishlist: process.env.FEATURE_WISHLIST === 'true',
-          live_tracking: process.env.FEATURE_LIVE_TRACKING === 'true',
-          chat: process.env.FEATURE_CHAT === 'true',
-          loyalty_program: process.env.FEATURE_LOYALTY_PROGRAM === 'true',
-          delivery_system: process.env.DELIVERY_ENABLED === 'true'
+          rateLimiting: this.config.RATE_LIMIT_ENABLED,
+          helmet: this.config.HELMET_ENABLED,
+          cors: true,
+          sessions: true,
+          bruteForceProtection: true
         },
-        endpoints: this.loadedRoutes ? this.loadedRoutes.reduce((acc, route) => {
-          acc[route.name.toLowerCase().replace(/\s+/g, '_')] = route.path;
-          return acc;
-        }, {}) : {},
         marketplace: {
-          min_order_amount: process.env.MIN_ORDER_AMOUNT || 50,
-          max_order_amount: process.env.MAX_ORDER_AMOUNT || 50000,
-          delivery_fee: process.env.BASE_DELIVERY_FEE || 25,
-          free_delivery_threshold: process.env.FREE_DELIVERY_THRESHOLD || 500,
-          platform_commission: process.env.PLATFORM_COMMISSION || 0.025
+          currency: process.env.CURRENCY || 'INR',
+          minOrderAmount: process.env.MIN_ORDER_AMOUNT || 50,
+          deliveryFee: process.env.BASE_DELIVERY_FEE || 25,
+          freeDeliveryThreshold: process.env.FREE_DELIVERY_THRESHOLD || 500
         },
-        documentation: {
-          health_check: '/health',
+        endpoints: {
+          health: '/health',
+          status: '/status',
           metrics: '/metrics',
-          api_docs: '/api/v1/docs',
-          rate_limits: {
-            general: `${this.config.RATE_LIMIT_MAX} requests per ${this.config.RATE_LIMIT_WINDOW / 60000} minutes`,
-            auth: `${this.config.AUTH_RATE_LIMIT_MAX} requests per 15 minutes`,
-            orders: `${this.config.ORDER_RATE_LIMIT_MAX} requests per minute`
-          }
-        }
+          docs: '/api/v1/docs'
+        },
+        routes: this.loadedRoutes ? this.loadedRoutes.length : 0
       });
     });
 
-    // Comprehensive health check
+    // Comprehensive health check endpoint
     this.app.get('/health', async (req, res) => {
       const healthData = {
         status: 'healthy',
         timestamp: new Date().toISOString(),
         uptime: Math.floor(process.uptime()),
         environment: this.config.NODE_ENV,
-        instance_id: this.config.INSTANCE_ID,
+        instanceId: this.config.INSTANCE_ID,
         version: this.config.APP_VERSION,
         checks: {
-          database: await this.checkDatabase(),
-          memory: this.checkMemory(),
-          disk: this.checkDisk(),
-          external_services: await this.checkExternalServices(),
-          features: this.checkFeatures()
-        },
-        system: {
-          memory: process.memoryUsage(),
-          cpu: process.cpuUsage(),
-          platform: process.platform,
-          node_version: process.version,
-          load_average: os.loadavg(),
-          free_memory: os.freemem(),
-          total_memory: os.totalmem()
-        },
-        marketplace_config: {
-          payment_gateways: this.getPaymentGatewayStatus(),
-          delivery_enabled: process.env.DELIVERY_ENABLED === 'true',
-          notifications_enabled: process.env.ENABLE_EMAIL_NOTIFICATIONS === 'true'
+          database: await DatabaseManager.checkHealth(),
+          memory: this.checkMemoryHealth(),
+          system: this.checkSystemHealth(),
+          routes: this.checkRoutesHealth(),
+          features: this.checkFeaturesHealth()
         }
       };
 
-      // Determine overall health
-      const failedChecks = Object.values(healthData.checks).filter(check => 
-        check.status && check.status !== 'healthy'
-      );
+      // Determine overall health status
+      const failedChecks = Object.values(healthData.checks)
+        .filter(check => check.status && check.status !== 'healthy');
       
       if (failedChecks.length > 0) {
-        healthData.status = failedChecks.some(check => check.status === 'critical') ? 'unhealthy' : 'degraded';
+        healthData.status = failedChecks.some(check => check.status === 'critical') ? 
+          'unhealthy' : 'degraded';
       }
 
       const statusCode = healthData.status === 'healthy' ? 200 : 
@@ -1006,20 +1466,78 @@ class QuickLocalServer {
       res.status(statusCode).json(healthData);
     });
 
+    // Enhanced status endpoint
+    this.app.get('/status', (req, res) => {
+      const memUsage = process.memoryUsage();
+      
+      res.json({
+        status: 'operational',
+        timestamp: new Date().toISOString(),
+        uptime: {
+          process: Math.floor(process.uptime()),
+          system: Math.floor(os.uptime())
+        },
+        memory: {
+          heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024),
+          heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024),
+          rss: Math.round(memUsage.rss / 1024 / 1024),
+          external: Math.round(memUsage.external / 1024 / 1024),
+          usage: Math.round((memUsage.heapUsed / memUsage.heapTotal) * 100)
+        },
+        system: {
+          platform: process.platform,
+          arch: process.arch,
+          nodeVersion: process.version,
+          cpuCount: os.cpus().length,
+          loadAverage: os.loadavg(),
+          freeMemory: Math.round(os.freemem() / 1024 / 1024),
+          totalMemory: Math.round(os.totalmem() / 1024 / 1024)
+        },
+        server: {
+          listening: this.server.listening,
+          socketConnections: this.io ? this.io.engine.clientsCount : 0,
+          environment: this.config.NODE_ENV,
+          version: this.config.APP_VERSION,
+          instanceId: this.config.INSTANCE_ID
+        }
+      });
+    });
+
     // Metrics endpoint
     if (this.config.ENABLE_METRICS) {
       this.app.get('/metrics', (req, res) => {
-        res.set('Content-Type', 'text/plain');
-        res.send('# Basic metrics placeholder\nserver_uptime ' + Math.floor(process.uptime()));
-      });
+        const memUsage = process.memoryUsage();
+        const uptime = Math.floor(process.uptime());
+        
+        const metrics = [
+          `# HELP process_uptime_seconds Process uptime in seconds`,
+          `# TYPE process_uptime_seconds counter`,
+          `process_uptime_seconds ${uptime}`,
+          ``,
+          `# HELP process_memory_heap_used_bytes Process heap memory used`,
+          `# TYPE process_memory_heap_used_bytes gauge`,
+          `process_memory_heap_used_bytes ${memUsage.heapUsed}`,
+          ``,
+          `# HELP process_memory_heap_total_bytes Process heap memory total`,
+          `# TYPE process_memory_heap_total_bytes gauge`,
+          `process_memory_heap_total_bytes ${memUsage.heapTotal}`,
+          ``,
+          `# HELP nodejs_version_info Node.js version`,
+          `# TYPE nodejs_version_info gauge`,
+          `nodejs_version_info{version="${process.version}"} 1`
+        ];
 
-      this.app.get('/metrics/summary', (req, res) => {
-        res.json({
-          uptime: Math.floor(process.uptime()),
-          memory: process.memoryUsage(),
-          cpu: process.cpuUsage(),
-          platform: process.platform
-        });
+        if (this.io) {
+          metrics.push(
+            ``,
+            `# HELP socket_io_connections Active Socket.IO connections`,
+            `# TYPE socket_io_connections gauge`,
+            `socket_io_connections ${this.io.engine.clientsCount}`
+          );
+        }
+
+        res.set('Content-Type', 'text/plain');
+        res.send(metrics.join('\n'));
       });
     }
 
@@ -1029,906 +1547,651 @@ class QuickLocalServer {
         res.json({
           title: `${this.config.APP_NAME} API Documentation`,
           version: this.config.API_VERSION,
-          description: 'Complete e-commerce marketplace API with real-time features',
-          base_url: `${req.protocol}://${req.get('host')}${this.config.API_BASE_PATH}`,
-          instance_id: this.config.INSTANCE_ID,
+          description: 'Production-ready e-commerce marketplace API with real-time features',
+          baseUrl: `${req.protocol}://${req.get('host')}${this.config.API_BASE_PATH}`,
+          instanceId: this.config.INSTANCE_ID,
+          environment: this.config.NODE_ENV,
+          server: {
+            uptime: Math.floor(process.uptime()),
+            version: this.config.APP_VERSION,
+            nodeVersion: process.version
+          },
           authentication: {
             type: 'Bearer Token',
-            header: 'Authorization',
-            format: 'Bearer <token>',
-            refresh_token: 'Supported',
-            expires_in: process.env.JWT_ACCESS_EXPIRES || '24h'
+            header: 'Authorization: Bearer <token>',
+            refreshEndpoint: '/api/v1/auth/refresh',
+            expiresIn: this.config.JWT_ACCESS_EXPIRES
           },
-          endpoints: this.loadedRoutes ? this.loadedRoutes.map(route => ({
+          rateLimits: {
+            general: `${this.config.RATE_LIMIT_MAX} requests per ${this.config.RATE_LIMIT_WINDOW / 60000} minutes`,
+            authentication: `${this.config.AUTH_RATE_LIMIT_MAX} requests per 15 minutes`,
+            orders: `${this.config.ORDER_RATE_LIMIT_MAX} requests per minute`,
+            payments: '5 requests per 5 minutes'
+          },
+          features: {
+            realTime: this.io ? 'WebSocket support for live updates' : 'Not available',
+            compression: this.config.COMPRESSION_ENABLED,
+            cors: 'Configurable origins',
+            security: 'Helmet, rate limiting, brute force protection',
+            sessions: 'MongoDB-backed sessions'
+          },
+          routes: this.loadedRoutes ? this.loadedRoutes.map(route => ({
             name: route.name,
             path: route.path,
             priority: route.priority,
+            critical: route.critical,
             status: route.status
-          })) : [],
-          features: {
-            pagination: 'Supported with limit/offset and cursor-based',
-            filtering: 'Advanced filtering with query parameters',
-            sorting: 'Multi-field sorting supported',
-            search: 'Full-text search available',
-            real_time: this.io ? 'WebSocket support for live updates' : 'Not available',
-            file_upload: 'Multi-part form data supported',
-            webhooks: 'Event-driven notifications supported'
-          },
-          rate_limits: {
-            general: `${this.config.RATE_LIMIT_MAX} requests per ${this.config.RATE_LIMIT_WINDOW / 60000} minutes`,
-            auth: `${this.config.AUTH_RATE_LIMIT_MAX} requests per 15 minutes`,
-            orders: `${this.config.ORDER_RATE_LIMIT_MAX} requests per minute`
-          },
-          websocket: this.io ? {
-            enabled: true,
-            url: `ws://${req.get('host')}`,
-            events: [
-              'order_status_update',
-              'delivery_location_update', 
-              'new_message',
-              'stock_update',
-              'price_change',
-              'seller_notification'
-            ],
-            rooms: [
-              'user_{user_id}',
-              'order_{order_id}',
-              'seller_{seller_id}',
-              'product_{product_id}'
-            ]
-          } : { enabled: false },
-          marketplace_features: {
-            multi_vendor: true,
-            inventory_management: true,
-            order_tracking: true,
-            review_system: process.env.FEATURE_REVIEWS === 'true',
-            wishlist: process.env.FEATURE_WISHLIST === 'true',
-            loyalty_program: process.env.FEATURE_LOYALTY_PROGRAM === 'true',
-            bulk_orders: process.env.FEATURE_BULK_ORDERS === 'true',
-            scheduled_delivery: process.env.FEATURE_SCHEDULED_DELIVERY === 'true'
-          }
+          })) : []
         });
       });
     }
 
-    // Server status endpoint
-    this.app.get('/status', (req, res) => {
-      res.json({
-        status: 'operational',
-        timestamp: new Date().toISOString(),
-        uptime: process.uptime(),
-        memory: process.memoryUsage(),
-        cpu: process.cpuUsage(),
-        connections: this.server.listening ? 'accepting' : 'not accepting',
-        socket_connections: this.io ? this.io.engine.clientsCount : 0,
-        environment: this.config.NODE_ENV,
-        version: this.config.APP_VERSION
-      });
-    });
-  }
+    console.log('✅ System endpoints configured');
+}
 
-  async checkDatabase() {
-    try {
-      if (mongoose.connection.readyState !== 1) {
-        return { status: 'critical', message: 'Database disconnected' };
-      }
-
-      const startTime = Date.now();
-      await mongoose.connection.db.admin().ping();
-      const responseTime = Date.now() - startTime;
-
-      return {
-        status: responseTime < 1000 ? 'healthy' : 'degraded',
-        response_time: responseTime,
-        connection_state: mongoose.connection.readyState,
-        database_name: mongoose.connection.db?.databaseName,
-        host: mongoose.connection.host
-      };
-    } catch (error) {
-      return {
-        status: 'critical',
-        message: error.message,
-        error: 'Database health check failed'
-      };
-    }
-  }
-
-  checkMemory() {
+  checkMemoryHealth() {
     const memUsage = process.memoryUsage();
-    const totalMem = os.totalmem();
-    const freeMem = os.freemem();
-    const usagePercent = (memUsage.heapUsed / memUsage.heapTotal) * 100;
-    const systemUsagePercent = ((totalMem - freeMem) / totalMem) * 100;
+    const heapUsagePercent = Math.round((memUsage.heapUsed / memUsage.heapTotal) * 100);
     
     return {
-      status: usagePercent > 90 || systemUsagePercent > 95 ? 'critical' : 
-              usagePercent > 75 || systemUsagePercent > 85 ? 'degraded' : 'healthy',
-      heap_used: memUsage.heapUsed,
-      heap_total: memUsage.heapTotal,
-      usage_percent: Math.round(usagePercent),
-      system_usage_percent: Math.round(systemUsagePercent),
-      external: memUsage.external,
-      rss: memUsage.rss,
-      free_memory: freeMem,
-      total_memory: totalMem
+      status: heapUsagePercent > 90 ? 'critical' : 
+              heapUsagePercent > 80 ? 'warning' : 'healthy',
+      heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024),
+      heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024),
+      usage: heapUsagePercent,
+      rss: Math.round(memUsage.rss / 1024 / 1024),
+      external: Math.round(memUsage.external / 1024 / 1024)
     };
   }
 
-  checkDisk() {
-    try {
-      const stats = fs.statSync(__dirname);
-      const logStats = fs.statSync(this.config.LOG_DIR);
-      
-      return {
-        status: 'healthy',
-        accessible: true,
-        log_directory: {
-          accessible: true,
-          path: this.config.LOG_DIR
-        }
-      };
-    } catch (error) {
-      return {
-        status: 'critical',
-        message: 'Disk access failed',
-        error: error.message
-      };
-    }
-  }
-
-  async checkExternalServices() {
-    const services = [];
+  checkSystemHealth() {
+    const loadAvg = os.loadavg();
+    const cpuCount = os.cpus().length;
+    const systemLoad = loadAvg[0] / cpuCount;
+    const freeMemPercent = Math.round((os.freemem() / os.totalmem()) * 100);
     
-    try {
-      // Check payment gateways
-      if (process.env.RAZORPAY_ENABLED === 'true') {
-        services.push({
-          name: 'razorpay',
-          status: 'configured',
-          enabled: true
-        });
-      }
-
-      if (process.env.STRIPE_ENABLED === 'true') {
-        services.push({
-          name: 'stripe',
-          status: 'configured',
-          enabled: true
-        });
-      }
-
-      // Check email service
-      if (process.env.ENABLE_EMAIL_NOTIFICATIONS === 'true') {
-        services.push({
-          name: 'email_service',
-          status: process.env.SMTP_HOST ? 'configured' : 'not_configured',
-          provider: 'smtp'
-        });
-      }
-
-      // Check file storage
-      if (process.env.CLOUDINARY_CLOUD_NAME) {
-        services.push({
-          name: 'cloudinary',
-          status: 'configured',
-          enabled: true
-        });
-      }
-
-    } catch (error) {
-      console.warn('External service health check failed:', error.message);
-    }
-
     return {
-      status: services.length > 0 ? 'healthy' : 'degraded',
-      services,
-      total_services: services.length
+      status: systemLoad > 2 || freeMemPercent < 10 ? 'critical' :
+              systemLoad > 1 || freeMemPercent < 20 ? 'warning' : 'healthy',
+      loadAverage: loadAvg.map(load => Math.round(load * 100) / 100),
+      systemLoad: Math.round(systemLoad * 100) / 100,
+      cpuCount,
+      freeMemory: freeMemPercent,
+      uptime: Math.floor(os.uptime())
     };
   }
 
-  checkFeatures() {
+  checkRoutesHealth() {
+    const totalRoutes = this.loadedRoutes ? this.loadedRoutes.length : 0;
+    const failedRoutes = this.routeManager ? this.routeManager.failedRoutes.length : 0;
+    const criticalFailed = this.routeManager ? 
+      this.routeManager.failedRoutes.filter(r => r.critical).length : 0;
+    
     return {
-      status: 'healthy',
-      enabled_features: {
-        reviews: process.env.FEATURE_REVIEWS === 'true',
-        ratings: process.env.FEATURE_RATINGS === 'true',
-        wishlist: process.env.FEATURE_WISHLIST === 'true',
-        live_tracking: process.env.FEATURE_LIVE_TRACKING === 'true',
-        chat: process.env.FEATURE_CHAT === 'true',
-        multiple_addresses: process.env.FEATURE_MULTIPLE_ADDRESSES === 'true',
-        scheduled_delivery: process.env.FEATURE_SCHEDULED_DELIVERY === 'true',
-        loyalty_program: process.env.FEATURE_LOYALTY_PROGRAM === 'true',
-        referral_program: process.env.FEATURE_REFERRAL_PROGRAM === 'true',
-        bulk_orders: process.env.FEATURE_BULK_ORDERS === 'true'
-      },
-      notifications: {
-        push: process.env.ENABLE_PUSH_NOTIFICATIONS === 'true',
-        sms: process.env.ENABLE_SMS_NOTIFICATIONS === 'true',
-        in_app: process.env.ENABLE_IN_APP_NOTIFICATIONS === 'true',
-        email: process.env.ENABLE_EMAIL_NOTIFICATIONS === 'true'
-      }
+      status: criticalFailed > 0 ? 'critical' : 
+              failedRoutes > 0 ? 'warning' : 'healthy',
+      loaded: totalRoutes,
+      failed: failedRoutes,
+      criticalFailed,
+      healthyPercent: totalRoutes > 0 ? 
+        Math.round(((totalRoutes - failedRoutes) / totalRoutes) * 100) : 100
     };
   }
 
-  getPaymentGatewayStatus() {
-    return {
-      razorpay: {
-        enabled: process.env.RAZORPAY_ENABLED === 'true',
-        configured: !!(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET)
-      },
-      stripe: {
-        enabled: process.env.STRIPE_ENABLED === 'true',
-        configured: !!(process.env.STRIPE_PUBLISHABLE_KEY && process.env.STRIPE_SECRET_KEY)
-      },
-      paypal: {
-        enabled: process.env.PAYPAL_ENABLED === 'true',
-        configured: !!(process.env.PAYPAL_CLIENT_ID && process.env.PAYPAL_CLIENT_SECRET)
-      }
+  checkFeaturesHealth() {
+    const features = {
+      database: mongoose.connection.readyState === 1,
+      websockets: !!this.io,
+      clustering: this.config.CLUSTER_MODE,
+      compression: this.config.COMPRESSION_ENABLED,
+      rateLimiting: this.config.RATE_LIMIT_ENABLED,
+      sessions: true // Always true if we reach this point
     };
+    
+    const healthyFeatures = Object.values(features).filter(Boolean).length;
+    const totalFeatures = Object.keys(features).length;
+    const healthPercent = Math.round((healthyFeatures / totalFeatures) * 100);
+    
+    return {
+      status: healthPercent === 100 ? 'healthy' : 
+              healthPercent >= 80 ? 'warning' : 'critical',
+      features,
+      healthy: healthyFeatures,
+      total: totalFeatures,
+      healthPercent
+    };
+  }
+
+  formatUptime(seconds) {
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const remainingSeconds = seconds % 60;
+    
+    const parts = [];
+    if (days > 0) parts.push(`${days}d`);
+    if (hours > 0) parts.push(`${hours}h`);
+    if (minutes > 0) parts.push(`${minutes}m`);
+    if (remainingSeconds > 0 || parts.length === 0) parts.push(`${remainingSeconds}s`);
+    
+    return parts.join(' ');
   }
 
   setupErrorHandling() {
-    // Shutdown middleware
-    this.app.use((req, res, next) => {
-      if (this.isShuttingDown) {
-        res.status(503).json({
-          error: 'Server shutting down',
-          message: 'Server is currently shutting down. Please try again in a few moments.',
-          correlation_id: req.correlationId
-        });
-        return;
-      }
-      next();
-    });
-
-    // 404 handler with intelligent suggestions
+    // Enhanced 404 handler
     this.app.use('*', (req, res) => {
-      const availableRoutes = this.loadedRoutes ? this.loadedRoutes.map(route => route.path) : [];
-      const method = req.method;
-      const requestedPath = req.originalUrl;
-      
-      // Find similar routes using basic string matching
-      const suggestions = availableRoutes
-        .filter(route => {
-          const similarity = this.calculateSimilarity(requestedPath, route);
-          return similarity > 0.3;
-        })
-        .slice(0, 3);
-
-      console.warn(`404: ${method} ${requestedPath} from ${req.headers.origin || 'unknown'} [${req.correlationId}]`);
+      console.warn(`🔍 404 Not Found: ${req.method} ${req.originalUrl} from ${req.ip}`);
       
       res.status(404).json({
-        error: 'Endpoint not found',
-        message: `${method} ${requestedPath} does not exist on this server`,
-        correlation_id: req.correlationId,
-        instance_id: this.config.INSTANCE_ID,
+        error: 'Not Found',
+        message: `The requested endpoint ${req.method} ${req.originalUrl} was not found`,
         timestamp: new Date().toISOString(),
-        suggestions: {
-          documentation: {
-            api_docs: '/api/v1/docs',
-            health_check: '/health',
-            server_status: '/status'
-          },
-          similar_routes: suggestions,
-          available_methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-          api_version: `Current API version is ${this.config.API_VERSION}`,
-          base_path: this.config.API_BASE_PATH
-        },
-        help: {
-          documentation_url: `${req.protocol}://${req.get('host')}/api/v1/docs`,
-          support_contact: process.env.EMAIL_FROM || 'support@quicklocal.com'
+        correlationId: req.correlationId,
+        availableEndpoints: {
+          api: `${req.protocol}://${req.get('host')}/api/v1`,
+          health: `${req.protocol}://${req.get('host')}/health`,
+          status: `${req.protocol}://${req.get('host')}/status`,
+          docs: `${req.protocol}://${req.get('host')}/api/v1/docs`
         }
       });
     });
 
     // Enhanced global error handler
-    this.app.use((err, req, res, next) => {
-      const errorId = `${this.config.INSTANCE_ID}-${Date.now().toString(36)}-${Math.random().toString(36).substr(2)}`;
+    this.app.use((error, req, res, next) => {
+      const correlationId = req.correlationId || 'unknown';
+      const isProduction = this.config.IS_PRODUCTION;
       
-      // Enhanced error logging
-      const errorLog = {
-        error_id: errorId,
-        error: err.message,
-        name: err.name,
-        stack: this.config.IS_PRODUCTION ? undefined : err.stack,
+      // Log the error with context
+      console.error(`❌ Error [${correlationId}]:`, {
+        message: error.message,
+        stack: !isProduction ? error.stack : undefined,
         url: req.originalUrl,
         method: req.method,
         ip: req.ip,
-        user_agent: req.headers['user-agent'],
-        correlation_id: req.correlationId,
-        user_id: req.user?.id || null,
-        timestamp: new Date().toISOString(),
-        environment: this.config.NODE_ENV,
-        instance_id: this.config.INSTANCE_ID
-      };
+        userAgent: req.get('User-Agent'),
+        userId: req.user?.id || 'anonymous'
+      });
 
-      console.error(`Unhandled error [${errorId}]:`, errorLog);
+      // Handle specific error types
+      let statusCode = 500;
+      let message = 'Internal Server Error';
+      let errorType = 'server_error';
 
-      // Enhanced error type handling
-      let statusCode = err.status || err.statusCode || 500;
-      let message = err.message;
-      let errorType = 'internal_server_error';
-      let helpMessage = null;
-
-      // Mongoose/MongoDB errors
-      if (err.name === 'ValidationError') {
+      if (error.name === 'ValidationError') {
         statusCode = 400;
         message = 'Validation failed';
         errorType = 'validation_error';
-        helpMessage = 'Please check your input data and try again';
-      } else if (err.name === 'CastError') {
+      } else if (error.name === 'CastError') {
         statusCode = 400;
-        message = 'Invalid ID format';
+        message = 'Invalid data format';
         errorType = 'cast_error';
-        helpMessage = 'Please provide a valid MongoDB ObjectId';
-      } else if (err.code === 11000) {
+      } else if (error.code === 11000) {
         statusCode = 409;
         message = 'Duplicate entry';
         errorType = 'duplicate_error';
-        helpMessage = 'This record already exists';
-      } else if (err.name === 'MongooseError' || err.name === 'MongoError') {
-        statusCode = 500;
-        message = 'Database error';
-        errorType = 'database_error';
-        helpMessage = 'Please try again later';
-      }
-
-      // JWT errors
-      else if (err.name === 'JsonWebTokenError') {
+      } else if (error.name === 'JsonWebTokenError') {
         statusCode = 401;
-        message = 'Invalid token';
-        errorType = 'jwt_error';
-        helpMessage = 'Please provide a valid authentication token';
-      } else if (err.name === 'TokenExpiredError') {
+        message = 'Invalid authentication token';
+        errorType = 'auth_error';
+      } else if (error.name === 'TokenExpiredError') {
         statusCode = 401;
-        message = 'Token expired';
-        errorType = 'token_expired';
-        helpMessage = 'Please refresh your authentication token';
-      }
-
-      // Express errors
-      else if (err.type === 'entity.parse.failed') {
-        statusCode = 400;
-        message = 'Invalid JSON';
-        errorType = 'json_parse_error';
-        helpMessage = 'Please check your JSON syntax';
-      } else if (err.type === 'entity.too.large') {
+        message = 'Authentication token expired';
+        errorType = 'auth_expired';
+      } else if (error.type === 'entity.too.large') {
         statusCode = 413;
-        message = 'Request too large';
+        message = 'Request payload too large';
         errorType = 'payload_too_large';
-        helpMessage = `Maximum request size is ${this.config.MAX_REQUEST_SIZE}`;
+      } else if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+        statusCode = 503;
+        message = 'Service unavailable';
+        errorType = 'service_unavailable';
+      } else if (error.status) {
+        statusCode = error.status;
+        message = error.message || 'Request failed';
+        errorType = 'client_error';
       }
 
-      // Multer errors (file upload)
-      else if (err.code === 'LIMIT_FILE_SIZE') {
-        statusCode = 413;
-        message = 'File too large';
-        errorType = 'file_too_large';
-        helpMessage = `Maximum file size is ${Math.round(this.config.MAX_FILE_SIZE / 1024 / 1024)}MB`;
-      }
+      // Emit error event for monitoring
+      process.emit('applicationError', {
+        error: error.message,
+        stack: error.stack,
+        correlationId,
+        statusCode,
+        url: req.originalUrl,
+        method: req.method,
+        ip: req.ip,
+        timestamp: new Date().toISOString()
+      });
 
       const errorResponse = {
-        error: this.config.IS_PRODUCTION && statusCode === 500 ? 'Internal Server Error' : message,
-        error_id: errorId,
-        error_type: errorType,
-        correlation_id: req.correlationId,
-        instance_id: this.config.INSTANCE_ID,
+        error: message,
+        type: errorType,
         timestamp: new Date().toISOString(),
+        correlationId,
         path: req.originalUrl,
-        method: req.method,
-        ...(helpMessage && { help: helpMessage }),
-        ...(this.config.IS_PRODUCTION ? {} : { 
-          stack: err.stack,
-          details: err.details || null,
-          validation_errors: err.errors || null
-        })
+        method: req.method
       };
 
-      // Add specific help for common errors
-      if (statusCode === 401) {
-        errorResponse.authentication = {
-          required: true,
-          header: 'Authorization: Bearer <token>',
-          refresh_endpoint: '/api/v1/auth/refresh'
+      // Include additional details in development
+      if (!isProduction && this.config.DEBUG_MODE) {
+        errorResponse.details = {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
         };
-      } else if (statusCode === 403) {
-        errorResponse.authorization = {
-          message: 'Insufficient permissions for this resource',
-          required_role: err.requiredRole || 'unknown'
-        };
-      } else if (statusCode === 429) {
-        errorResponse.rate_limit = {
-          retry_after: err.retryAfter || Math.ceil(this.config.RATE_LIMIT_WINDOW / 1000),
-          limit: this.config.RATE_LIMIT_MAX,
-          window: this.config.RATE_LIMIT_WINDOW
-        };
+      }
+
+      // Include validation details if available
+      if (error.errors && typeof error.errors === 'object') {
+        errorResponse.validationErrors = Object.keys(error.errors).map(key => ({
+          field: key,
+          message: error.errors[key].message || error.errors[key]
+        }));
       }
 
       res.status(statusCode).json(errorResponse);
     });
 
-    // Global process error handlers
-    process.on('uncaughtException', (err) => {
-      console.error('💥 Uncaught Exception:', err);
-      
-      // Give some time for logs to be written, then exit
+    // Handle uncaught exceptions
+    process.on('uncaughtException', (error) => {
+      console.error('🚨 UNCAUGHT EXCEPTION - Server will restart:', {
+        message: error.message,
+        stack: error.stack,
+        timestamp: new Date().toISOString(),
+        instanceId: this.config.INSTANCE_ID
+      });
+
+      // Give the server time to finish ongoing requests
       setTimeout(() => {
         process.exit(1);
       }, 1000);
     });
 
+    // Handle unhandled promise rejections
     process.on('unhandledRejection', (reason, promise) => {
-      console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
-    });
-  }
+      console.error('🚨 UNHANDLED REJECTION:', {
+        reason: reason.message || reason,
+        stack: reason.stack,
+        promise: promise.toString().slice(0, 200),
+        timestamp: new Date().toISOString(),
+        instanceId: this.config.INSTANCE_ID
+      });
 
-  calculateSimilarity(str1, str2) {
-    const longer = str1.length > str2.length ? str1 : str2;
-    const shorter = str1.length > str2.length ? str2 : str1;
-    
-    if (longer.length === 0) return 1.0;
-    
-    const editDistance = this.levenshteinDistance(longer, shorter);
-    return (longer.length - editDistance) / longer.length;
-  }
-
-  levenshteinDistance(str1, str2) {
-    const matrix = [];
-    
-    for (let i = 0; i <= str2.length; i++) {
-      matrix[i] = [i];
-    }
-    
-    for (let j = 0; j <= str1.length; j++) {
-      matrix[0][j] = j;
-    }
-    
-    for (let i = 1; i <= str2.length; i++) {
-      for (let j = 1; j <= str1.length; j++) {
-        if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
-          matrix[i][j] = matrix[i - 1][j - 1];
-        } else {
-          matrix[i][j] = Math.min(
-            matrix[i - 1][j - 1] + 1,
-            matrix[i][j - 1] + 1,
-            matrix[i - 1][j] + 1
-          );
-        }
+      // For production, we might want to restart the process
+      if (this.config.IS_PRODUCTION) {
+        setTimeout(() => {
+          process.exit(1);
+        }, 5000);
       }
-    }
-    
-    return matrix[str2.length][str1.length];
+    });
+
+    // Handle warnings
+    process.on('warning', (warning) => {
+      if (warning.name !== 'DeprecationWarning' || this.config.DEBUG_MODE) {
+        console.warn('⚠️ Node.js Warning:', {
+          name: warning.name,
+          message: warning.message,
+          stack: !this.config.IS_PRODUCTION ? warning.stack : undefined
+        });
+      }
+    });
+
+    console.log('✅ Error handling configured');
   }
 
   async startServer() {
     return new Promise((resolve, reject) => {
-      this.server.listen(this.config.PORT, this.config.HOST, (err) => {
-        if (err) {
-          reject(err);
-          return;
+      this.server.listen(this.config.PORT, this.config.HOST, (error) => {
+        if (error) {
+          console.error('❌ Failed to start server:', error);
+          return reject(error);
         }
 
-        const serverInfo = `
-🌟 ${this.config.APP_NAME} E-commerce API Server v${this.config.APP_VERSION}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-📋 Server Configuration:
-   🌍 URL: http://${this.config.HOST}:${this.config.PORT}
-   🆔 Instance: ${this.config.INSTANCE_ID}
-   🏗️  Environment: ${this.config.NODE_ENV}
-   🔧 Node.js: ${process.version}
-   🖥️  Platform: ${process.platform}
-   💾 Memory: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB used
-   🔄 Process ID: ${process.pid}
-   🌐 Domain: ${this.config.DOMAIN}
-
-🗄️  Database:
-   📊 Metrics: /metrics
-   🔍 API Version: ${this.config.API_VERSION}
-   📍 Routes: ${this.loadedRoutes ? this.loadedRoutes.length : 0} loaded
-   💰 Min Order: ₹${process.env.MIN_ORDER_AMOUNT || 50}
-   🚚 Delivery Fee: ₹${process.env.BASE_DELIVERY_FEE || 25}
-   🆓 Free Delivery: ₹${process.env.FREE_DELIVERY_THRESHOLD || 500}+
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-✨ ${this.config.APP_NAME} Server is ready to serve customers!
-🌐 Visit http://${this.config.HOST}:${this.config.PORT} for API documentation
-🏪 Marketplace ready for ${process.env.CURRENCY || 'INR'} transactions
-        `;
-
-        console.log(serverInfo);
-        console.log('🚀 QuickLocal API Server started successfully');
+        const { address, port } = this.server.address();
+        const host = address === '::' ? 'localhost' : address;
         
-        resolve();
-      });
-
-      // Enhanced server error handling
-      this.server.on('error', (err) => {
-        if (err.code === 'EADDRINUSE') {
-          console.error(`❌ Port ${this.config.PORT} is already in use.`);
-          console.log(`💡 Kill existing process: lsof -ti:${this.config.PORT} | xargs kill -9`);
-          console.log(`💡 Or try a different port: PORT=10001 npm start`);
-        } else if (err.code === 'EACCES') {
-          console.error(`❌ Permission denied for port ${this.config.PORT}.`);
-          console.log(`💡 Try a port > 1024 or run with appropriate permissions.`);
-        } else if (err.code === 'ENOTFOUND') {
-          console.error(`❌ Host ${this.config.HOST} not found.`);
-          console.log(`💡 Check your HOST environment variable.`);
-        } else {
-          console.error('❌ Server error:', err);
+        console.log(`\n🚀 ${this.config.APP_NAME} v${this.config.APP_VERSION} is running!`);
+        console.log(`🌍 Server: http://${host}:${port}`);
+        console.log(`🏥 Health: http://${host}:${port}/health`);
+        console.log(`📊 Status: http://${host}:${port}/status`);
+        console.log(`📚 API Docs: http://${host}:${port}/api/v1/docs`);
+        
+        if (this.io) {
+          console.log(`⚡ WebSocket: ws://${host}:${port} (Socket.IO)`);
         }
         
-        reject(err);
-      });
-
-      // Handle server warnings and client errors
-      this.server.on('clientError', (err, socket) => {
-        console.warn(`Client error from ${socket.remoteAddress}: ${err.message}`);
+        console.log(`🔧 Environment: ${this.config.NODE_ENV}`);
+        console.log(`🆔 Instance: ${this.config.INSTANCE_ID}`);
+        console.log(`⏱️ Started: ${new Date().toISOString()}`);
+        console.log(`\n✨ QuickLocal marketplace is ready for business!\n`);
         
-        if (socket.writable) {
-          socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
-        }
-      });
-
-      this.server.on('connection', (socket) => {
-        socket.on('error', (err) => {
-          console.warn(`Socket error: ${err.message}`);
-        });
+        resolve({ app: this.app, server: this.server, io: this.io });
       });
     });
   }
 
   setupGracefulShutdown() {
-    const shutdown = async (signal) => {
+    const gracefulShutdown = async (signal) => {
       if (this.isShuttingDown) {
-        console.warn('⚠️ Shutdown already in progress...');
+        console.log('⏳ Shutdown already in progress...');
         return;
       }
 
       this.isShuttingDown = true;
-      console.log(`🛑 ${signal} received. Starting graceful shutdown...`);
-
+      console.log(`\n🛑 Received ${signal}. Starting graceful shutdown...`);
+      
       const shutdownTimeout = setTimeout(() => {
-        console.error('❌ Graceful shutdown timeout exceeded. Forcing exit...');
+        console.error('❌ Graceful shutdown timed out, forcing exit');
         process.exit(1);
-      }, 30000); // 30 second timeout
+      }, 30000); // 30 seconds timeout
 
       try {
         // Stop accepting new connections
-        console.log('🔄 Stopping HTTP server...');
-        await new Promise((resolve, reject) => {
-          this.server.close((err) => {
-            if (err) reject(err);
-            else resolve();
-          });
+        console.log('🔐 Closing server...');
+        await new Promise((resolve) => {
+          this.server.close(resolve);
         });
 
-        // Close Socket.IO connections gracefully
+        // Close Socket.IO connections
         if (this.io) {
-          console.log('🔄 Closing Socket.IO connections...');
-          
-          // Notify all connected clients about shutdown
-          this.io.emit('server_shutdown', {
-            message: 'Server is shutting down for maintenance',
-            timestamp: new Date().toISOString(),
-            reconnect_delay: 5000
-          });
-          
-          // Give clients time to handle the notification
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          
+          console.log('⚡ Closing WebSocket connections...');
           this.io.close();
         }
 
-        // Close database connections
-        console.log('🔄 Closing database connections...');
+        // Stop memory monitoring
+        if (this.memoryMonitor) {
+          console.log('🧠 Stopping memory monitor...');
+          this.memoryMonitor.stop();
+        }
+
+        // Close database connection
+        console.log('🗄️ Closing database connection...');
         await mongoose.connection.close();
 
-        // Final cleanup
-        console.log('🔄 Performing final cleanup...');
-        
+        // Clear any remaining timers/intervals
+        console.log('⏰ Clearing timers...');
         clearTimeout(shutdownTimeout);
-        
-        console.log('✅ Graceful shutdown completed successfully');
-        console.log(`👋 ${this.config.APP_NAME} server stopped cleanly`);
-        
+
+        console.log(`✅ Graceful shutdown completed in ${((Date.now() - this.startTime) / 1000).toFixed(2)}s`);
         process.exit(0);
+
       } catch (error) {
         console.error('❌ Error during graceful shutdown:', error);
+        clearTimeout(shutdownTimeout);
         process.exit(1);
       }
     };
 
-    // Handle different shutdown signals
-    process.on('SIGTERM', () => shutdown('SIGTERM')); // Docker/PM2 shutdown
-    process.on('SIGINT', () => shutdown('SIGINT'));   // Ctrl+C
-    process.on('SIGUSR2', () => shutdown('SIGUSR2')); // Nodemon restart
-    process.on('SIGHUP', () => shutdown('SIGHUP'));   // Terminal closed
+    // Listen for termination signals
+    process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+    process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+    process.on('SIGQUIT', () => gracefulShutdown('SIGQUIT'));
 
-    // Handle PM2 graceful shutdown
+    // Handle PM2 graceful reload
     process.on('message', (msg) => {
       if (msg === 'shutdown') {
-        shutdown('PM2_SHUTDOWN');
+        gracefulShutdown('PM2_SHUTDOWN');
       }
     });
+
+    console.log('✅ Graceful shutdown handlers configured');
+  }
+
+  startMonitoring() {
+    // Start memory monitoring
+    this.memoryMonitor.start();
+
+    // Performance monitoring
+    let requestCount = 0;
+    let errorCount = 0;
+    let totalResponseTime = 0;
+
+    process.on('requestCompleted', (data) => {
+      requestCount++;
+      totalResponseTime += data.duration;
+      
+      if (data.statusCode >= 400) {
+        errorCount++;
+      }
+    });
+
+    // Periodic performance reporting
+    setInterval(() => {
+      if (requestCount > 0) {
+        const avgResponseTime = totalResponseTime / requestCount;
+        const errorRate = (errorCount / requestCount) * 100;
+        
+        console.log(`📊 Performance [Last 5min]: ${requestCount} requests, ${avgResponseTime.toFixed(2)}ms avg, ${errorRate.toFixed(2)}% errors`);
+        
+        // Reset counters
+        requestCount = 0;
+        errorCount = 0;
+        totalResponseTime = 0;
+      }
+    }, 5 * 60 * 1000); // Every 5 minutes
+
+    // System resource monitoring
+    setInterval(() => {
+      const memUsage = process.memoryUsage();
+      const cpuUsage = process.cpuUsage();
+      const loadAvg = os.loadavg();
+      
+      console.log(`🖥️ Resources: Load=${loadAvg[0].toFixed(2)}, Heap=${Math.round(memUsage.heapUsed/1024/1024)}MB, CPU=${(cpuUsage.user/1000000).toFixed(2)}s`);
+      
+      // Alert on high resource usage
+      if (memUsage.heapUsed > memUsage.heapTotal * 0.9) {
+        console.warn('⚠️ High memory usage detected!');
+      }
+      
+      if (loadAvg[0] > os.cpus().length * 2) {
+        console.warn('⚠️ High system load detected!');
+      }
+    }, 2 * 60 * 1000); // Every 2 minutes
+
+    // Database connection monitoring
+    setInterval(async () => {
+      const dbHealth = await DatabaseManager.checkHealth();
+      if (dbHealth.status !== 'healthy') {
+        console.warn(`⚠️ Database health: ${dbHealth.status} - ${dbHealth.message || 'Connection issues'}`);
+      }
+    }, 60 * 1000); // Every minute
+
+    console.log('📊 System monitoring started');
   }
 }
 
-// Enhanced Cluster Manager for Production Scaling
-class QuickLocalClusterManager {
-  static start() {
+// Cluster Manager for Production Scaling
+class ClusterManager {
+  static init() {
     const config = new QuickLocalConfig().config;
     
-    if (config.CLUSTER_MODE && cluster.isPrimary) {
-      console.log(`🔄 Starting QuickLocal in cluster mode with ${config.MAX_WORKERS} workers...`);
-      
-      // Fork workers
-      for (let i = 0; i < config.MAX_WORKERS; i++) {
-        const worker = cluster.fork({
-          WORKER_ID: i + 1,
-          INSTANCE_ID: `${config.INSTANCE_ID}-worker-${i + 1}`
-        });
-        
-        worker.on('message', (message) => {
-          if (message.type === 'metrics') {
-            // Handle worker metrics in master process
-            console.log(`📊 Metrics from worker ${worker.id}:`, message.data);
-          }
-        });
-      }
+    if (!config.CLUSTER_MODE) {
+      console.log('🔧 Cluster mode disabled, starting single process...');
+      return ClusterManager.startWorker();
+    }
 
-      // Handle worker events
-      cluster.on('exit', (worker, code, signal) => {
-        const exitCode = worker.process.exitCode;
-        console.warn(`❌ Worker ${worker.process.pid} died with code ${code} and signal ${signal}`);
-        
-        // Don't restart if it was an intentional shutdown
-        if (exitCode !== 0 && signal !== 'SIGTERM' && signal !== 'SIGINT') {
-          console.log('🔄 Starting a new worker to replace the failed one...');
-          const newWorker = cluster.fork({
-            WORKER_ID: worker.id,
-            INSTANCE_ID: `${config.INSTANCE_ID}-worker-${worker.id}`
-          });
-          
-          newWorker.on('message', (message) => {
-            if (message.type === 'metrics') {
-              console.log(`📊 Metrics from replacement worker ${newWorker.id}:`, message.data);
-            }
-          });
-        }
-      });
-
-      cluster.on('online', (worker) => {
-        console.log(`✅ Worker ${worker.process.pid} is online (ID: ${worker.id})`);
-      });
-
-      cluster.on('listening', (worker, address) => {
-        console.log(`🎧 Worker ${worker.process.pid} is listening on ${address.address}:${address.port}`);
-      });
-
-      // Master process graceful shutdown
-      const masterShutdown = () => {
-        console.log('🛑 Master process shutting down workers...');
-        
-        const workers = Object.values(cluster.workers);
-        let workersShutdown = 0;
-        
-        // Send shutdown signal to all workers
-        workers.forEach(worker => {
-          if (worker) {
-            worker.send('shutdown');
-            
-            // Force kill worker after timeout
-            setTimeout(() => {
-              if (!worker.isDead()) {
-                console.warn(`⚠️ Force killing worker ${worker.process.pid}`);
-                worker.kill('SIGKILL');
-              }
-            }, 10000);
-            
-            worker.on('disconnect', () => {
-              workersShutdown++;
-              if (workersShutdown === workers.length) {
-                console.log('✅ All workers shut down successfully');
-                process.exit(0);
-              }
-            });
-          }
-        });
-        
-        // Force exit if workers don't shutdown in time
-        setTimeout(() => {
-          console.error('❌ Workers shutdown timeout. Force exiting...');
-          process.exit(1);
-        }, 15000);
-      };
-
-      process.on('SIGTERM', masterShutdown);
-      process.on('SIGINT', masterShutdown);
-
-      // Log cluster status every 5 minutes
-      setInterval(() => {
-        const workers = Object.values(cluster.workers);
-        const aliveWorkers = workers.filter(worker => worker && !worker.isDead()).length;
-        console.log(`📊 Cluster status: ${aliveWorkers}/${config.MAX_WORKERS} workers alive`);
-      }, 5 * 60 * 1000);
-
+    if (cluster.isMaster || cluster.isPrimary) {
+      console.log(`🏭 Starting ${config.APP_NAME} cluster with ${config.MAX_WORKERS} workers`);
+      return ClusterManager.startMaster(config);
     } else {
-      // Worker process or single process mode
-      const server = new QuickLocalServer();
+      return ClusterManager.startWorker();
+    }
+  }
+
+  static startMaster(config) {
+    console.log(`👑 Master process ${process.pid} starting...`);
+    
+    const workers = new Map();
+    let restartCount = 0;
+    const maxRestarts = parseInt(process.env.CLUSTER_MAX_RESTARTS) || 5;
+    const restartWindow = parseInt(process.env.CLUSTER_RESTART_WINDOW) || 60000; // 1 minute
+    
+    // Track restart times for rate limiting
+    const restartTimes = [];
+
+    // Start workers
+    for (let i = 0; i < config.MAX_WORKERS; i++) {
+      ClusterManager.createWorker(workers, i);
+    }
+
+    // Handle worker exit
+    cluster.on('exit', (worker, code, signal) => {
+      const now = Date.now();
+      const workerInfo = workers.get(worker.id);
       
-      // Handle shutdown message from master
-      process.on('message', (msg) => {
-        if (msg === 'shutdown') {
-          console.log(`🛑 Worker ${process.pid} received shutdown signal from master`);
-          server.isShuttingDown = true;
-          
-          // Close server gracefully
-          if (server.server) {
-            server.server.close(() => {
-              process.exit(0);
-            });
-          } else {
-            process.exit(0);
-          }
-        }
-      });
+      console.warn(`⚰️ Worker ${worker.id} (PID: ${worker.process.pid}) died (${signal || code})`);
       
-      server.initialize().catch((error) => {
-        console.error('❌ Worker startup failed:', error);
+      workers.delete(worker.id);
+      restartTimes.push(now);
+      
+      // Remove old restart times outside the window
+      const windowStart = now - restartWindow;
+      const recentRestarts = restartTimes.filter(time => time > windowStart);
+      
+      if (recentRestarts.length > maxRestarts) {
+        console.error(`🚨 Too many worker restarts (${recentRestarts.length}/${maxRestarts} in ${restartWindow/1000}s). Shutting down cluster.`);
         process.exit(1);
-      });
-    }
-  }
-
-  static getClusterInfo() {
-    if (cluster.isPrimary) {
-      const workers = Object.values(cluster.workers);
-      return {
-        isPrimary: true,
-        totalWorkers: workers.length,
-        aliveWorkers: workers.filter(worker => worker && !worker.isDead()).length,
-        workers: workers.map(worker => ({
-          id: worker.id,
-          pid: worker.process.pid,
-          state: worker.state,
-          isDead: worker.isDead()
-        }))
-      };
-    } else {
-      return {
-        isPrimary: false,
-        workerId: cluster.worker.id,
-        pid: process.pid,
-        state: cluster.worker.state
-      };
-    }
-  }
-}
-
-// Development utilities
-class QuickLocalDevUtils {
-  static setupDevelopmentTools(app) {
-    if (process.env.NODE_ENV !== 'development') return;
-
-    // Development route for testing
-    app.get('/dev/test', (req, res) => {
-      res.json({
-        message: 'Development test endpoint',
-        timestamp: new Date().toISOString(),
-        environment: process.env.NODE_ENV,
-        features: {
-          mock_payment: process.env.MOCK_PAYMENT === 'true',
-          mock_sms: process.env.MOCK_SMS === 'true',
-          mock_email: process.env.MOCK_EMAIL === 'true',
-          debug_mode: process.env.DEBUG_MODE === 'true'
-        }
-      });
-    });
-
-    // Route to trigger test events (development only)
-    app.post('/dev/trigger/:event', (req, res) => {
-      const { event } = req.params;
-      const { data } = req.body;
-
-      console.log(`🧪 Development: Triggering ${event} event`, data);
-
-      // Simulate different events for testing
-      switch (event) {
-        case 'order_update':
-          if (app.io) {
-            app.io.to(`order_${data.orderId}`).emit('order_status_update', {
-              orderId: data.orderId,
-              status: data.status,
-              timestamp: new Date().toISOString()
-            });
-          }
-          break;
-        case 'delivery_update':
-          if (app.io) {
-            app.io.to(`order_${data.orderId}`).emit('delivery_location_update', {
-              orderId: data.orderId,
-              location: data.location,
-              timestamp: new Date().toISOString()
-            });
-          }
-          break;
-        default:
-          return res.status(400).json({ error: 'Unknown event type' });
       }
 
-      res.json({ 
-        success: true, 
-        message: `${event} event triggered`,
-        data 
-      });
+      // Create new worker
+      console.log('🔄 Restarting worker...');
+      ClusterManager.createWorker(workers, worker.id);
     });
 
-    console.log('🧪 Development utilities enabled');
+    // Handle worker disconnect
+    cluster.on('disconnect', (worker) => {
+      console.warn(`🔌 Worker ${worker.id} disconnected`);
+    });
+
+    // Handle worker online
+    cluster.on('online', (worker) => {
+      console.log(`✅ Worker ${worker.id} (PID: ${worker.process.pid}) is online`);
+    });
+
+    // Graceful shutdown
+    const shutdown = () => {
+      console.log('🛑 Master process shutting down...');
+      
+      const shutdownTimeout = setTimeout(() => {
+        console.error('❌ Workers failed to exit gracefully, forcing shutdown');
+        process.exit(1);
+      }, 30000);
+
+      workers.forEach((info, workerId) => {
+        cluster.workers[workerId]?.kill('SIGTERM');
+      });
+
+      cluster.on('exit', () => {
+        if (Object.keys(cluster.workers).length === 0) {
+          clearTimeout(shutdownTimeout);
+          console.log('✅ All workers exited. Master shutting down.');
+          process.exit(0);
+        }
+      });
+    };
+
+    process.on('SIGTERM', shutdown);
+    process.on('SIGINT', shutdown);
+    process.on('SIGQUIT', shutdown);
+
+    // Master process health monitoring
+    setInterval(() => {
+      const activeWorkers = Object.keys(cluster.workers).length;
+      const memUsage = process.memoryUsage();
+      
+      console.log(`👑 Master Status: ${activeWorkers}/${config.MAX_WORKERS} workers, Heap: ${Math.round(memUsage.heapUsed/1024/1024)}MB`);
+      
+      // Restart dead workers
+      for (let i = 1; i <= config.MAX_WORKERS; i++) {
+        if (!cluster.workers[i]) {
+          console.log(`🔄 Restarting missing worker ${i}`);
+          ClusterManager.createWorker(workers, i);
+        }
+      }
+    }, 30000); // Every 30 seconds
+
+    return Promise.resolve();
   }
 
-  static logEnvironmentInfo() {
-    if (process.env.NODE_ENV !== 'development') return;
+  static createWorker(workers, id) {
+    const worker = cluster.fork({
+      WORKER_ID: id,
+      WORKER_START_TIME: Date.now()
+    });
+    
+    workers.set(worker.id, {
+      id: worker.id,
+      startTime: Date.now(),
+      restarts: 0
+    });
+    
+    return worker;
+  }
 
-    console.log('🧪 Development Environment Info:');
-    console.log(`   Debug Mode: ${process.env.DEBUG_MODE}`);
-    console.log(`   Mock Payment: ${process.env.MOCK_PAYMENT}`);
-    console.log(`   Mock SMS: ${process.env.MOCK_SMS}`);
-    console.log(`   Mock Email: ${process.env.MOCK_EMAIL}`);
-    console.log(`   API Docs: ${process.env.ENABLE_API_DOCS}`);
-    console.log(`   Seed Data: ${process.env.ENABLE_SEED_DATA}`);
+  static async startWorker() {
+    try {
+      const workerId = process.env.WORKER_ID || 'single';
+      console.log(`👷 Worker ${workerId} (PID: ${process.pid}) starting...`);
+      
+      const server = new QuickLocalServer();
+      await server.initialize();
+      
+      console.log(`✅ Worker ${workerId} ready`);
+      return server;
+    } catch (error) {
+      console.error(`❌ Worker failed to start:`, error);
+      process.exit(1);
+    }
   }
 }
 
-// Export everything for use
-module.exports = { 
-  QuickLocalServer, 
-  QuickLocalClusterManager, 
-  QuickLocalConfig,
+// Application Entry Point
+async function main() {
+  try {
+    console.log(`🌟 QuickLocal E-commerce Platform - Starting...`);
+    console.log(`📅 ${new Date().toISOString()}`);
+    console.log(`🏗️ Node.js ${process.version} on ${process.platform} ${process.arch}`);
+    console.log(`💾 Memory: ${Math.round(os.totalmem() / 1024 / 1024)}MB total, ${Math.round(os.freemem() / 1024 / 1024)}MB free`);
+    console.log(`🧮 CPUs: ${os.cpus().length} cores, Load: ${os.loadavg().map(l => l.toFixed(2)).join(', ')}`);
+    console.log('─'.repeat(80));
+
+    await ClusterManager.init();
+    
+  } catch (error) {
+    console.error('💥 Failed to start QuickLocal server:', error);
+    
+    // Enhanced error reporting
+    if (error.code === 'EADDRINUSE') {
+      console.error(`❌ Port ${process.env.PORT || 10000} is already in use`);
+      console.error('💡 Try setting a different PORT environment variable');
+    } else if (error.code === 'EACCES') {
+      console.error(`❌ Permission denied on port ${process.env.PORT || 10000}`);
+      console.error('💡 Try using a port number above 1024 or run with sudo');
+    } else if (error.message.includes('MONGODB_URI')) {
+      console.error('❌ Database connection failed');
+      console.error('💡 Check your MONGODB_URI environment variable');
+    }
+    
+    process.exit(1);
+  }
+}
+
+// Export for testing and external use
+module.exports = {
+  QuickLocalServer,
+  ClusterManager,
+  DatabaseManager,
+  SecurityManager,
   CORSManager,
-  EnhancedSecurityManager,
-  QuickLocalRouteManager,
-  QuickLocalDevUtils
+  MemoryMonitor,
+  RouteManager,
+  QuickLocalConfig
 };
 
-// Start the server if this file is run directly
+// Start the application if this file is run directly
 if (require.main === module) {
-  // Log environment info in development
-  QuickLocalDevUtils.logEnvironmentInfo();
-  
-  // Start server (with or without clustering)
-  QuickLocalClusterManager.start();
-  
-  console.log('Status: Connected');
-  console.log('✅ Server is connected and running');
-  console.log(`🏪 Database: ${mongoose.connection.db?.databaseName || 'Not connected yet'}`);
-  console.log(`🖥️  Host: ${mongoose.connection.host || 'Not connected yet'}`);
-  console.log(`
-⚡ Pool Size: ${process.env.DB_POOL_SIZE || 10}
-🛡️  Security Features:
-🔒 Helmet Security: ${process.env.HELMET_ENABLED === 'true' ? '✅' : '❌'}
-🚦 Rate Limiting: ${process.env.RATE_LIMIT_ENABLED === 'true' ? '✅' : '❌'} (${process.env.RATE_LIMIT_MAX || 100}/${(process.env.RATE_LIMIT_WINDOW || 900000) / 60000}min)
-🛑 Brute Force Protection: ✅
-🌐 CORS Origins: ${CORSManager.getOrigins().length} configured
-🔐 Session Management: ✅
-💪 Password Hashing: ${process.env.BCRYPT_SALT_ROUNDS || 12} rounds
-🚀 Performance Features:
-📦 Compression: ${process.env.COMPRESSION_ENABLED === 'true' ? '✅' : '❌'} (Level: ${process.env.COMPRESSION_LEVEL || 6})
-📊 Metrics: ${process.env.ENABLE_METRICS === 'true' ? '✅' : '❌'}
-🔌 Socket.IO: ✅
-⚡ Circuit Breaker: ✅
-🕐 Request Timeout: ${(process.env.REQUEST_TIMEOUT || 30000) / 1000}s
-🎯 Clustering: ${process.env.CLUSTER_MODE === 'true' ? '✅' : '❌'}
-🏪 Marketplace Features:
-💳 Payment Gateways: Multiple enabled
-🚚 Delivery System: ${process.env.DELIVERY_ENABLED === 'true' ? '✅' : '❌'}
-⭐ Reviews & Ratings: ${process.env.FEATURE_REVIEWS === 'true' ? '✅' : '❌'}
-💝 Wishlist: ${process.env.FEATURE_WISHLIST === 'true' ? '✅' : '❌'}
-📍 Live Tracking: ${process.env.FEATURE_LIVE_TRACKING === 'true' ? '✅' : '❌'}
-💬 Chat System: ${process.env.FEATURE_CHAT === 'true' ? '✅' : '❌'}
-🎁 Loyalty Program: ${process.env.FEATURE_LOYALTY_PROGRAM === 'true' ? '✅' : '❌'}
-📚 API Information:
-📖 Documentation: /api/v1/docs
-❤️  Health Check: /health
-`);
+  main().catch((error) => {
+    console.error('💥 Unhandled startup error:', error);
+    process.exit(1);
+  });
 }
