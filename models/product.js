@@ -8,8 +8,7 @@ const productSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Product name is required'],
     trim: true,
-    maxlength: [100, 'Product name cannot exceed 100 characters'],
-    index: true // For search optimization
+    maxlength: [100, 'Product name cannot exceed 100 characters']
   },
   description: {
     type: String,
@@ -26,8 +25,7 @@ const productSchema = new mongoose.Schema({
     type: Number,
     required: [true, 'Product price is required'],
     min: [0, 'Price cannot be negative'],
-    set: val => Math.round(val * 100) / 100,
-    index: true
+    set: val => Math.round(val * 100) / 100
   },
   originalPrice: {
     type: Number,
@@ -50,8 +48,7 @@ const productSchema = new mongoose.Schema({
   category: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Category',
-    required: true,
-    index: true
+    required: true
   },
   subCategory: {
     type: mongoose.Schema.Types.ObjectId,
@@ -60,14 +57,12 @@ const productSchema = new mongoose.Schema({
   seller: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true,
-    index: true
+    required: true
   },
   stock: { 
     type: Number, 
     default: 0, 
-    min: 0,
-    index: true
+    min: 0
   },
   lowStockThreshold: { type: Number, default: 10, min: 0 },
   unit: {
@@ -89,8 +84,7 @@ const productSchema = new mongoose.Schema({
     default: 0,
     min: 0,
     max: 5,
-    set: val => Math.round(val * 10) / 10,
-    index: true
+    set: val => Math.round(val * 10) / 10
   },
   totalReviews: { type: Number, default: 0, min: 0 },
   ratingDistribution: {
@@ -219,7 +213,7 @@ const productSchema = new mongoose.Schema({
   },
   
   deliveryConfig: {
-    isLocalDeliveryEnabled: { type: Boolean, default: false, index: true },
+    isLocalDeliveryEnabled: { type: Boolean, default: false },
     maxDeliveryRadius: { type: Number, default: 5000, min: 500, max: 20000 },
     preparationTime: { type: Number, default: 10, min: 5, max: 60 },
     deliveryFee: { type: Number, default: 0, min: 0 },

@@ -70,7 +70,7 @@ const wishlistSchema = new mongoose.Schema({
   }],
   privacy: {
     isPublic: { type: Boolean, default: false },
-    shareToken: { type: String, unique: true, sparse: true },
+    shareToken: { type: String }
     allowSharing: { type: Boolean, default: true }
   },
   preferences: {

@@ -47,7 +47,9 @@ const memoryMonitor = {
 process.on('warning', (warning) => {
   console.warn('⚠️ Node.js warning:', {
     name: warning.name,
-    message: warning.message,
+    message: warning.message
+  });
+});
 
 // server.js - QuickLocal Production-Ready Server v2.1.0
 // Enhanced and Optimized E-commerce Platform Server

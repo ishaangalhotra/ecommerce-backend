@@ -7,8 +7,7 @@ const orderItemSchema = new mongoose.Schema({
   product: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Product',
-    required: [true, 'Product reference is required'],
-    index: true
+    required: [true, 'Product reference is required']
   },
   name: { 
     type: String, 
@@ -44,8 +43,7 @@ const orderItemSchema = new mongoose.Schema({
   seller: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true,
-    index: true
+    required: true
   },
   category: {
     type: mongoose.Schema.Types.ObjectId,
@@ -72,8 +70,7 @@ const orderItemSchema = new mongoose.Schema({
   status: {
     type: String,
     enum: ['pending', 'confirmed', 'preparing', 'ready', 'dispatched', 'delivered', 'cancelled', 'returned'],
-    default: 'pending',
-    index: true
+    default: 'pending'
   },
   
   // Return/Refund information
@@ -94,8 +91,7 @@ const orderSchema = new mongoose.Schema({
   orderNumber: {
     type: String,
     unique: true,
-    uppercase: true,
-    index: true
+    uppercase: true
   },
   
   // Customer information

@@ -23,7 +23,7 @@
     "npm": ">=10.0.0"
   },
   "scripts": {
-    "start": "node -r ./disable-redis.js --enable-source-maps server.js",
+    "start": "node --max-old-space-size=1024 -r ./disable-redis.js --enable-source-maps server.js",
     "dev": "cross-env NODE_ENV=development nodemon --inspect server.js",
     "debug": "cross-env NODE_ENV=development node --inspect-brk server.js",
     "prod": "NODE_ENV=production PM2_HOME=.pm2 pm2-runtime start ecosystem.config.js",
@@ -40,7 +40,7 @@
     "logs": "tail -f logs/combined.log",
     "logs:error": "tail -f logs/error.log",
     "logs:access": "tail -f logs/access.log",
-    "db:migrate": "node --enable-source-maps migrations/index.js",
+    "db:migrate": "node --enable-source-maps scripts/run-migrations.js",
     "db:rollback": "node --enable-source-maps migrations/rollback.js",
     "db:seed": "NODE_ENV=development node --enable-source-maps scripts/seed.js",
     "db:reset": "npm run db:rollback && npm run db:migrate && npm run db:seed",
