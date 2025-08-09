@@ -1,0 +1,32 @@
+# CORRECTED Environment Variables for Render Dashboard
+# Copy these EXACTLY to your Render environment variables section
+
+NODE_ENV=production
+CLUSTER_MODE=false
+MAX_WORKERS=1
+
+# CORRECTED: Valid Node.js options only (removed invalid --optimize-for-size)
+NODE_OPTIONS=--max-old-space-size=256 --expose-gc
+
+# Database optimization (CRITICAL for memory)
+DB_POOL_SIZE=1
+DB_CONNECT_TIMEOUT_MS=5000
+DB_SOCKET_TIMEOUT_MS=20000
+
+# Memory monitoring thresholds  
+MEMORY_WARNING_THRESHOLD=70
+MEMORY_CRITICAL_THRESHOLD=85
+
+# Request size limits
+MAX_REQUEST_SIZE=1mb
+MAX_FILE_SIZE=2097152
+
+# Disable memory-heavy features
+WEBSOCKETS_ENABLED=false
+METRICS_ENABLED=false
+DETAILED_LOGGING=false
+CACHE_ENABLED=false
+
+# Session optimization
+SESSION_MAX_AGE=1800000
+SESSION_CHECK_PERIOD=600000

@@ -74,11 +74,7 @@
     "clean:logs": "rm -rf logs/*.log",
     "clean:cache": "npm cache clean --force",
     "precommit": "lint-staged",
-    "prepush": "npm run validate",
-    "start:render": "NODE_ENV=production CLUSTER_MODE=false node --max-old-space-size=256 --expose-gc server.js",
-    "start:memory-optimized": "NODE_ENV=production node --max-old-space-size=256 --expose-gc start-render.js",
-    "memory:check": "node -e \"const m=process.memoryUsage();console.log(\\`Memory: \\${Math.round(m.heapUsed/1024/1024)}MB/\\${Math.round(m.heapTotal/1024/1024)}MB (\\${Math.round(m.heapUsed/m.heapTotal*100)}%)\\`)\"",
-    "memory:monitor": "while true; do npm run memory:check; sleep 10; done"
+    "prepush": "npm run validate"
   },
   "dependencies": {
     "@sentry/node": "^7.77.0",

@@ -1,151 +1,25 @@
+# Render.com Configuration - Memory Optimized (CORRECTED)
 services:
   - type: web
-    name: ecommerce-backend
+    name: quicklocal-backend
     env: node
-    region: oregon # Choose closest region
-    plan: standard # ✅ Good - this gives you 2GB RAM instead of 512MB
-    buildCommand: |
-      npm install
-      npm run build
-    startCommand: node server.js
+    buildCommand: npm install
+    startCommand: npm run start:render
     envVars:
-      # ✅ CRITICAL: Add this for memory allocation
-      - key: NODE_OPTIONS
-        value: --max-old-space-size=1536
-      
-      # Core environment
       - key: NODE_ENV
         value: production
-      
-      # Database
-      - key: MONGODB_URI
-        sync: false
-      
-      # Authentication
-      - key: JWT_SECRET
-        sync: false
-      - key: JWT_REFRESH_SECRET
-        sync: false
-      - key: COOKIE_SECRET
-        generateValue: true
-      - key: SESSION_SECRET
-        generateValue: true
-      
-      # URLs
-      - key: FRONTEND_URL
-        value: https://your-frontend.com
-      - key: CLIENT_URL
-        value: https://your-frontend.com
-      - key: API_URL
-        value: https://ecommerce-backend.onrender.com
-      
-      # Server Configuration
-      - key: PORT
-        value: 10000
-      - key: HOST
-        value: 0.0.0.0
-      - key: INSTANCE_ID
-        value: ql-prod-render-001
-      - key: PROCESS_TITLE
-        value: QuickLocal-API-Server
-      
-      # Performance & Memory
+      - key: CLUSTER_MODE
+        value: false
+      - key: MAX_WORKERS
+        value: 1
+      - key: NODE_OPTIONS
+        value: "--max-old-space-size=256 --expose-gc"
       - key: DB_POOL_SIZE
-        value: 15
-      - key: REQUEST_TIMEOUT
-        value: 30000
-      - key: MAX_REQUEST_SIZE
-        value: 10mb
-      - key: COMPRESSION_ENABLED
-        value: true
-      - key: COMPRESSION_LEVEL
-        value: 6
-      
-      # Security
-      - key: HELMET_ENABLED
-        value: true
-      - key: RATE_LIMIT_ENABLED
-        value: true
-      - key: RATE_LIMIT_MAX
-        value: 1000
-      - key: RATE_LIMIT_WINDOW_MS
-        value: 900000
-      - key: AUTH_RATE_LIMIT_MAX
-        value: 20
-      - key: BCRYPT_SALT_ROUNDS
-        value: 12
-      
-      # Features - Enable core marketplace features
-      - key: FEATURE_REVIEWS
-        value: true
-      - key: FEATURE_WISHLIST
-        value: true
-      - key: FEATURE_LIVE_TRACKING
-        value: true
-      - key: FEATURE_MULTIPLE_ADDRESSES
-        value: true
-      - key: DELIVERY_ENABLED
-        value: true
-      
-      # Logging
-      - key: LOG_LEVEL
-        value: info
-      - key: ENABLE_REQUEST_LOGGING
-        value: true
-      - key: ENABLE_ERROR_TRACKING
-        value: true
-      - key: DEBUG_MODE
-        value: false
-      
-      # Email (if you're using SMTP)
-      - key: SMTP_HOST
-        sync: false
-      - key: SMTP_PORT
-        value: 587
-      - key: SMTP_SECURE
-        value: false
-      - key: EMAIL_FROM
-        value: noreply@quicklocal.com
-      - key: ENABLE_EMAIL_NOTIFICATIONS
-        value: true
-      
-      # Marketplace Settings
-      - key: CURRENCY
-        value: INR
-      - key: MIN_ORDER_AMOUNT
-        value: 50
-      - key: MAX_ORDER_AMOUNT
-        value: 50000
-      - key: BASE_DELIVERY_FEE
-        value: 25
-      - key: FREE_DELIVERY_THRESHOLD
-        value: 500
-      - key: PLATFORM_COMMISSION
-        value: 0.025
-      
-      # File Upload
-      - key: MAX_FILE_SIZE
-        value: 10485760
-      - key: ALLOWED_FILE_TYPES
-        value: image/jpeg,image/png,image/webp,image/jpg
-      
-      # API Configuration
-      - key: API_VERSION
-        value: v1
-      - key: ENABLE_API_DOCS
-        value: true
-      - key: ENABLE_METRICS
-        value: true
-      
-    # ✅ Fixed health check path to match your server
-    healthCheckPath: /health
-    
-    # Auto deployment
-    autoDeploy: true
-    
-    # ✅ Improved scaling for better performance
+        value: 1
+      - key: MEMORY_WARNING_THRESHOLD
+        value: 70
+      - key: MEMORY_CRITICAL_THRESHOLD
+        value: 85
     scaling:
       minInstances: 1
-      maxInstances: 3
-      cpuThreshold: 70    # Lower threshold for better responsiveness
-      memoryThreshold: 75 # Lower threshold to prevent memory issues
+      maxInstances: 1
