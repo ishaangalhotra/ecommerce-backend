@@ -1045,8 +1045,26 @@ class QuickLocalServer {
         serveClient: false // Don't serve socket.io client
       });
       
-      this.setupSocketHandlers();
-      console.log('✅ Socket.IO initialized for real-time features');
+      // Initialize SocketService
+      const SocketService = require('./services/socketService');
+      this.socketService = new SocketService(this.io);
+      
+      // Initialize real-time services
+      const RealtimeNotificationService = require('./services/realtimeNotificationService');
+      const RealtimeOrderTrackingService = require('./services/realtimeOrderTrackingService');
+      const RealtimeChatService = require('./services/realtimeChatService');
+      
+      this.notificationService = new RealtimeNotificationService(this.socketService);
+      this.orderTrackingService = new RealtimeOrderTrackingService(this.socketService, this.notificationService);
+      this.chatService = new RealtimeChatService(this.socketService);
+      
+      // Make services available globally
+      global.socketService = this.socketService;
+      global.notificationService = this.notificationService;
+      global.orderTrackingService = this.orderTrackingService;
+      global.chatService = this.chatService;
+      
+      console.log('✅ Socket.IO initialized with enhanced real-time features');
     } catch (error) {
       console.warn('⚠️ Socket.IO initialization failed:', error.message);
       this.config.ENABLE_SOCKET_IO = false;
@@ -1054,91 +1072,10 @@ class QuickLocalServer {
   }
 
   setupSocketHandlers() {
+    // This method is now handled by SocketService
+    // Keeping for backward compatibility
     if (!this.io) return;
-
-    this.io.on('connection', (socket) => {
-      console.log(`🔌 Socket connected: ${socket.id} from ${socket.handshake.address}`);
-      
-      // Authentication for socket connections
-      socket.on('authenticate', (token) => {
-        // Add your JWT verification logic here
-        // For now, just acknowledge
-        socket.emit('authenticated', { status: 'success' });
-      });
-
-      // Join user-specific room for notifications
-      socket.on('join_user_room', (userId) => {
-        if (userId && typeof userId === 'string' && userId.match(/^[0-9a-fA-F]{24}$/)) {
-          socket.join(`user_${userId}`);
-          socket.userId = userId;
-          console.log(`👤 Socket ${socket.id} joined user room: ${userId}`);
-        }
-      });
-
-      // Join order-specific room for delivery tracking
-      socket.on('track_order', (orderId) => {
-        if (orderId && typeof orderId === 'string' && orderId.match(/^[0-9a-fA-F]{24}$/)) {
-          socket.join(`order_${orderId}`);
-          console.log(`📦 Socket ${socket.id} tracking order: ${orderId}`);
-        }
-      });
-
-      // Handle disconnection
-      socket.on('disconnect', (reason) => {
-        console.log(`🔌 Socket disconnected: ${socket.id}, reason: ${reason}`);
-        if (socket.userId) {
-          socket.leave(`user_${socket.userId}`);
-        }
-      });
-
-      // Handle errors
-      socket.on('error', (error) => {
-        console.error(`🔌 Socket error: ${socket.id}`, error);
-      });
-
-      // Rate limiting for socket events
-      const eventRateLimit = new Map();
-      socket.use((packet, next) => {
-        const event = packet[0];
-        const now = Date.now();
-        const limit = eventRateLimit.get(event) || { count: 0, resetTime: now + 60000 };
-        
-        if (now > limit.resetTime) {
-          limit.count = 0;
-          limit.resetTime = now + 60000;
-        }
-        
-        if (limit.count > 50) { // 50 events per minute
-          return next(new Error('Rate limit exceeded'));
-        }
-        
-        limit.count++;
-        eventRateLimit.set(event, limit);
-        next();
-      });
-    });
-
-    // Connection error handling
-    this.io.on('connection_error', (err) => {
-      console.error('🔌 Socket.IO connection error:', err);
-    });
-
-    // Periodic cleanup of empty rooms
-    setInterval(() => {
-      const rooms = this.io.sockets.adapter.rooms;
-      let emptyRooms = 0;
-      
-      rooms.forEach((room, roomName) => {
-        if (room.size === 0 && roomName.includes('_')) {
-          rooms.delete(roomName);
-          emptyRooms++;
-        }
-      });
-      
-      if (emptyRooms > 0) {
-        console.log(`🧹 Cleaned up ${emptyRooms} empty socket rooms`);
-      }
-    }, 5 * 60 * 1000); // Every 5 minutes
+    console.log('🔌 Socket handlers initialized via SocketService');
   }
 
   async setupMiddleware() {
