@@ -1,56 +1,3 @@
-// Memory monitoring and optimization
-const memoryMonitor = {
-  checkInterval: null,
-  
-  start() {
-    console.log('🧠 Starting memory monitoring...');
-    
-    // Check memory every 2 minutes instead of 5
-    this.checkInterval = setInterval(() => {
-      const memUsage = process.memoryUsage();
-      const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
-      const heapTotalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
-      const usage = Math.round((memUsage.heapUsed / memUsage.heapTotal) * 100);
-      
-      console.log(`💾 Memory: ${heapUsedMB}MB/${heapTotalMB}MB (${usage}%)`);
-      
-      // Alert at 80% instead of trying to force GC
-      if (usage > 80) {
-        console.warn(`⚠️ HIGH MEMORY USAGE: ${usage}% (${heapUsedMB}MB/${heapTotalMB}MB)`);
-        
-        // Log memory breakdown for debugging
-        console.log('Memory breakdown:', {
-          rss: Math.round(memUsage.rss / 1024 / 1024) + 'MB',
-          heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024) + 'MB',
-          heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024) + 'MB',
-          external: Math.round(memUsage.external / 1024 / 1024) + 'MB'
-        });
-      }
-      
-      // Critical memory warning at 95%
-      if (usage > 95) {
-        console.error(`🚨 CRITICAL MEMORY USAGE: ${usage}% - Server may crash soon!`);
-      }
-    }, 2 * 60 * 1000); // Every 2 minutes
-  },
-  
-  stop() {
-    if (this.checkInterval) {
-      clearInterval(this.checkInterval);
-      this.checkInterval = null;
-      console.log('🧠 Memory monitoring stopped');
-    }
-  }
-};
-
-// Handle memory warnings
-process.on('warning', (warning) => {
-  console.warn('⚠️ Node.js warning:', {
-    name: warning.name,
-    message: warning.message
-  });
-});
-
 // server.js - QuickLocal Production-Ready Server v2.1.0
 // Enhanced and Optimized E-commerce Platform Server
 require('dotenv').config();
@@ -74,6 +21,8 @@ const rateLimit = require('express-rate-limit');
 const slowDown = require('express-slow-down');
 const session = require('express-session');
 const MongoStore = require('connect-mongo');
+const { createClient } = require('redis');
+const { RateLimiterRedis } = require('rate-limit-redis');
 
 // Enhanced Memory Monitor with Better Performance
 class MemoryMonitor {
@@ -469,50 +418,37 @@ class CORSManager {
 
 // Enhanced Security Manager with Better Protection
 class SecurityManager {
-  static createBruteForceProtection() {
-    // Simple in-memory store for basic brute force protection
-    const attempts = new Map();
-    
-    return {
-      prevent: (req, res, next) => {
-        const key = req.ip + req.originalUrl;
-        const now = Date.now();
-        const windowMs = 15 * 60 * 1000; // 15 minutes
-        const maxAttempts = parseInt(process.env.MAX_LOGIN_ATTEMPTS) || 5;
-        
-        if (!attempts.has(key)) {
-          attempts.set(key, { count: 0, resetTime: now + windowMs });
-        }
-        
-        const attempt = attempts.get(key);
-        
-        if (now > attempt.resetTime) {
-          attempt.count = 0;
-          attempt.resetTime = now + windowMs;
-        }
-        
-        if (attempt.count >= maxAttempts) {
-          const remainingTime = Math.ceil((attempt.resetTime - now) / 1000);
-          console.warn(`🛑 Brute force protection triggered for ${req.ip}`);
-          
-          return res.status(429).json({
-            error: 'Too many failed attempts',
-            message: 'Account temporarily locked due to multiple failed login attempts',
-            retryAfter: remainingTime,
-            lockoutTime: Math.ceil(remainingTime / 60) + ' minutes'
-          });
-        }
-        
-        // Increment attempt count on login failure
-        res.on('finish', () => {
-          if (res.statusCode === 401 || res.statusCode === 403) {
-            attempt.count++;
-          }
+  static async createBruteForceProtection(config) {
+    // Only enable if Redis is configured
+    if (!config.REDIS_ENABLED || !config.REDIS_URL) {
+      console.warn('⚠️ Brute force protection is disabled. Please configure Redis for optimal security.');
+      // Return a no-op middleware that does nothing
+      return (req, res, next) => next();
+    }
+
+    try {
+        const redisClient = createClient({ url: config.REDIS_URL });
+        await redisClient.connect();
+        console.log('✅ Connected to Redis for brute force protection');
+
+        // Use a Redis-backed rate limiter for brute force
+        return rateLimit({
+            store: new RateLimiterRedis({
+                sendCommand: (...args) => redisClient.sendCommand(args),
+            }),
+            windowMs: 15 * 60 * 1000, // 15 minutes
+            max: config.MAX_LOGIN_ATTEMPTS || 5, // Max attempts from config
+            message: {
+                error: 'Too many failed attempts',
+                message: 'Account temporarily locked due to multiple failed login attempts. Please try again later.',
+            },
+            standardHeaders: true,
+            legacyHeaders: false,
         });
-        
-        next();
-      }
-    };
+    } catch (err) {
+        console.error('❌ Failed to connect to Redis for rate limiting. Brute force protection disabled.', err);
+        return (req, res, next) => next();
+    }
   }
 
   static createRateLimit(windowMs, max, message = 'Too many requests') {
@@ -1130,10 +1066,10 @@ class QuickLocalServer {
     // Request validation
     this.app.use(SecurityManager.validateRequest());
 
-    // Brute force protection
-    const bruteForce = SecurityManager.createBruteForceProtection();
-    this.app.use('/api/v1/auth/login', bruteForce.prevent);
-    this.app.use('/api/v1/auth/forgot-password', bruteForce.prevent);
+    // Brute force protection (now async)
+    const bruteForceLimiter = await SecurityManager.createBruteForceProtection(this.config);
+    this.app.use('/api/v1/auth/login', bruteForceLimiter);
+    this.app.use('/api/v1/auth/forgot-password', bruteForceLimiter);
 
     // Rate limiting with different tiers
     if (this.config.RATE_LIMIT_ENABLED) {
