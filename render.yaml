@@ -4,9 +4,8 @@ services:
     env: node
     region: oregon # Choose closest region
     plan: standard # ✅ Good - this gives you 2GB RAM instead of 512MB
-    buildCommand: |
-      npm install
-      npm run build
+      buildCommand: |
+    npm install
     startCommand: node server.js
     envVars:
       # ✅ CRITICAL: Add this for memory allocation
@@ -33,11 +32,11 @@ services:
       
       # URLs
       - key: FRONTEND_URL
-        value: https://your-frontend.com
+        value: https://quicklocal.shop
       - key: CLIENT_URL
-        value: https://your-frontend.com
+        value: https://quicklocal.shop
       - key: API_URL
-        value: https://ecommerce-backend.onrender.com
+        value: https://quicklocal.shop
       
       # Server Configuration
       - key: PORT
