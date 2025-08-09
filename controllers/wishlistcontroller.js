@@ -1,119 +1,449 @@
-// wishlistController.js
-const Wishlist = require('../models/wishlist');
-const Product = require('../models/product');
-const ErrorResponse = require('../utils/errorResponse');
-const asyncHandler = require('../middleware/asyncHandler');
-const mongoose = require('mongoose'); // Needed for isValidObjectId
+// controllers/wishlistController.js
+const asyncHandler = require('express-async-handler');
+const Wishlist = require('../models/Wishlist');
+const Product = require('../models/Product');
+const { validationResult } = require('express-validator');
+const crypto = require('crypto');
 
-// @desc    Toggle product in wishlist (add if not present, remove if present)
-// @route   PUT /api/v1/wishlist/:productId
-// @access  Private
-exports.toggleWishlistItem = asyncHandler(async (req, res, next) => {
-  const { productId } = req.params;
+/**
+ * @desc    Get user's wishlist
+ * @route   GET /api/v1/wishlist
+ * @access  Private
+ */
+const getWishlist = asyncHandler(async (req, res) => {
+  try {
+    const wishlist = await Wishlist.findOne({ userId: req.user.id })
+      .populate({
+        path: 'items.productId',
+        select: 'name price images category seller stock isActive',
+        populate: {
+          path: 'seller',
+          select: 'storeName rating'
+        }
+      })
+      .lean();
 
-  if (!mongoose.Types.ObjectId.isValid(productId)) {
-    return next(new ErrorResponse('Invalid product ID', 400));
-  }
+    if (!wishlist) {
+      return res.status(200).json({
+        success: true,
+        message: 'Wishlist is empty',
+        data: {
+          items: [],
+          totalItems: 0,
+          allowSharing: false
+        }
+      });
+    }
 
-  const product = await Product.findById(productId);
-  if (!product) {
-    return next(new ErrorResponse('Product not found', 404));
-  }
+    // Filter out inactive products
+    const activeItems = wishlist.items.filter(item => 
+      item.productId && item.productId.isActive
+    );
 
-  let wishlist = await Wishlist.findOne({ user: req.user.id });
-
-  if (!wishlist) {
-    // If no wishlist exists for the user, create one and add the product
-    wishlist = await Wishlist.create({ user: req.user.id, products: [productId] });
-    return res.status(201).json({
+    res.status(200).json({
       success: true,
-      message: 'Product added to wishlist',
-      data: wishlist.populate('products') // Populate to return full product details
+      message: 'Wishlist retrieved successfully',
+      data: {
+        items: activeItems,
+        totalItems: activeItems.length,
+        allowSharing: wishlist.allowSharing || false,
+        shareId: wishlist.shareId,
+        createdAt: wishlist.createdAt,
+        updatedAt: wishlist.updatedAt
+      }
+    });
+
+  } catch (error) {
+    console.error('Get wishlist error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve wishlist',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
     });
   }
+});
 
-  // Check if the product is already in the wishlist
-  const productIndex = wishlist.products.findIndex(
-    (p) => p.toString() === productId
-  );
+/**
+ * @desc    Toggle product in wishlist (add/remove)
+ * @route   PUT /api/v1/wishlist/:productId
+ * @access  Private
+ */
+const toggleWishlistItem = asyncHandler(async (req, res) => {
+  try {
+    const { productId } = req.params;
+    const { allowSharing } = req.body;
 
-  if (productIndex > -1) {
-    // Product found, remove it
-    wishlist.products.splice(productIndex, 1);
+    // Check if product exists
+    const product = await Product.findById(productId);
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found'
+      });
+    }
+
+    if (!product.isActive) {
+      return res.status(400).json({
+        success: false,
+        message: 'Product is not available'
+      });
+    }
+
+    // Find or create wishlist
+    let wishlist = await Wishlist.findOne({ userId: req.user.id });
+    
+    if (!wishlist) {
+      wishlist = new Wishlist({
+        userId: req.user.id,
+        items: [],
+        allowSharing: allowSharing || false
+      });
+    }
+
+    // Check if product already in wishlist
+    const existingItemIndex = wishlist.items.findIndex(
+      item => item.productId.toString() === productId
+    );
+
+    let message;
+    let action;
+
+    if (existingItemIndex > -1) {
+      // Remove from wishlist
+      wishlist.items.splice(existingItemIndex, 1);
+      message = 'Product removed from wishlist';
+      action = 'removed';
+    } else {
+      // Add to wishlist
+      const newItem = {
+        productId: productId,
+        addedAt: new Date()
+      };
+      
+      wishlist.items.push(newItem);
+      message = 'Product added to wishlist';
+      action = 'added';
+    }
+
+    // Update sharing preference if provided
+    if (typeof allowSharing === 'boolean') {
+      wishlist.allowSharing = allowSharing;
+    }
+
     await wishlist.save();
+
+    // Populate the updated wishlist for response
+    await wishlist.populate({
+      path: 'items.productId',
+      select: 'name price images category seller',
+      populate: {
+        path: 'seller',
+        select: 'storeName'
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: message,
+      data: {
+        action: action,
+        totalItems: wishlist.items.length,
+        product: {
+          _id: product._id,
+          name: product.name,
+          price: product.price,
+          images: product.images
+        },
+        wishlist: {
+          items: wishlist.items,
+          allowSharing: wishlist.allowSharing
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Toggle wishlist error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update wishlist',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+});
+
+/**
+ * @desc    Remove specific product from wishlist
+ * @route   DELETE /api/v1/wishlist/:productId
+ * @access  Private
+ */
+const removeFromWishlist = asyncHandler(async (req, res) => {
+  try {
+    const { productId } = req.params;
+
+    const wishlist = await Wishlist.findOne({ userId: req.user.id });
+    
+    if (!wishlist) {
+      return res.status(404).json({
+        success: false,
+        message: 'Wishlist not found'
+      });
+    }
+
+    const itemIndex = wishlist.items.findIndex(
+      item => item.productId.toString() === productId
+    );
+
+    if (itemIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found in wishlist'
+      });
+    }
+
+    wishlist.items.splice(itemIndex, 1);
+    await wishlist.save();
+
     res.status(200).json({
       success: true,
       message: 'Product removed from wishlist',
-      data: await wishlist.populate('products')
+      data: {
+        totalItems: wishlist.items.length
+      }
     });
-  } else {
-    // Product not found, add it
-    wishlist.products.push(productId);
-    await wishlist.save();
+
+  } catch (error) {
+    console.error('Remove from wishlist error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to remove from wishlist',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+});
+
+/**
+ * @desc    Clear entire wishlist
+ * @route   DELETE /api/v1/wishlist
+ * @access  Private
+ */
+const clearWishlist = asyncHandler(async (req, res) => {
+  try {
+    const result = await Wishlist.findOneAndUpdate(
+      { userId: req.user.id },
+      { 
+        items: [],
+        shareId: null,
+        allowSharing: false
+      },
+      { new: true }
+    );
+
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        message: 'Wishlist not found'
+      });
+    }
+
     res.status(200).json({
       success: true,
-      message: 'Product added to wishlist',
-      data: await wishlist.populate('products')
+      message: 'Wishlist cleared successfully',
+      data: {
+        totalItems: 0
+      }
+    });
+
+  } catch (error) {
+    console.error('Clear wishlist error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to clear wishlist',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
     });
   }
 });
 
+/**
+ * @desc    Check if product is in wishlist
+ * @route   GET /api/v1/wishlist/check/:productId
+ * @access  Private
+ */
+const checkWishlistStatus = asyncHandler(async (req, res) => {
+  try {
+    const { productId } = req.params;
 
-// @desc    Get user wishlist
-// @route   GET /api/v1/wishlist
-// @access  Private
-exports.getWishlist = asyncHandler(async (req, res, next) => {
-  const wishlist = await Wishlist.findOne({ user: req.user.id })
+    const wishlist = await Wishlist.findOne({ userId: req.user.id });
+    
+    let isInWishlist = false;
+    if (wishlist) {
+      isInWishlist = wishlist.items.some(
+        item => item.productId.toString() === productId
+      );
+    }
+
+    res.status(200).json({
+      success: true,
+      data: {
+        productId: productId,
+        isInWishlist: isInWishlist,
+        totalItems: wishlist ? wishlist.items.length : 0
+      }
+    });
+
+  } catch (error) {
+    console.error('Check wishlist status error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check wishlist status',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+});
+
+/**
+ * @desc    Get wishlist items count
+ * @route   GET /api/v1/wishlist/count
+ * @access  Private
+ */
+const getWishlistCount = asyncHandler(async (req, res) => {
+  try {
+    const wishlist = await Wishlist.findOne({ userId: req.user.id });
+    
+    const count = wishlist ? wishlist.items.length : 0;
+
+    res.status(200).json({
+      success: true,
+      data: {
+        count: count
+      }
+    });
+
+  } catch (error) {
+    console.error('Get wishlist count error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to get wishlist count',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+});
+
+/**
+ * @desc    Generate shareable wishlist link
+ * @route   POST /api/v1/wishlist/share
+ * @access  Private
+ */
+const shareWishlist = asyncHandler(async (req, res) => {
+  try {
+    let wishlist = await Wishlist.findOne({ userId: req.user.id });
+    
+    if (!wishlist || wishlist.items.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot share empty wishlist'
+      });
+    }
+
+    // Generate share ID if not exists
+    if (!wishlist.shareId) {
+      wishlist.shareId = crypto.randomBytes(16).toString('hex');
+    }
+
+    wishlist.allowSharing = true;
+    await wishlist.save();
+
+    const shareUrl = `${process.env.FRONTEND_URL || 'https://quicklocal.com'}/wishlist/shared/${wishlist.shareId}`;
+
+    res.status(200).json({
+      success: true,
+      message: 'Wishlist sharing enabled',
+      data: {
+        shareId: wishlist.shareId,
+        shareUrl: shareUrl,
+        allowSharing: true
+      }
+    });
+
+  } catch (error) {
+    console.error('Share wishlist error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to share wishlist',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+});
+
+/**
+ * @desc    Get shared wishlist by share ID
+ * @route   GET /api/v1/wishlist/shared/:shareId
+ * @access  Public
+ */
+const getSharedWishlist = asyncHandler(async (req, res) => {
+  try {
+    const { shareId } = req.params;
+
+    const wishlist = await Wishlist.findOne({ 
+      shareId: shareId,
+      allowSharing: true 
+    })
     .populate({
-      path: 'products',
-      select: 'name price image ratings averageRating' // Added averageRating as it's common
+      path: 'items.productId',
+      select: 'name price images category seller stock isActive',
+      populate: {
+        path: 'seller',
+        select: 'storeName rating'
+      }
+    })
+    .populate({
+      path: 'userId',
+      select: 'firstName lastName'
     });
 
-  if (!wishlist) {
-    // Return empty wishlist if none exists
-    return res.status(200).json({ success: true, count: 0, data: { products: [] } });
-  }
+    if (!wishlist) {
+      return res.status(404).json({
+        success: false,
+        message: 'Shared wishlist not found or sharing is disabled'
+      });
+    }
 
-  res.status(200).json({
-    success: true,
-    count: wishlist.products.length,
-    data: wishlist
-  });
+    // Filter active products
+    const activeItems = wishlist.items.filter(item => 
+      item.productId && item.productId.isActive
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Shared wishlist retrieved successfully',
+      data: {
+        shareId: wishlist.shareId,
+        owner: wishlist.userId ? {
+          firstName: wishlist.userId.firstName,
+          lastName: wishlist.userId.lastName
+        } : null,
+        items: activeItems,
+        totalItems: activeItems.length,
+        createdAt: wishlist.createdAt
+      }
+    });
+
+  } catch (error) {
+    console.error('Get shared wishlist error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve shared wishlist',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
 });
 
-// @desc    Clear user wishlist
-// @route   DELETE /api/v1/wishlist
-// @access  Private
-exports.clearWishlist = asyncHandler(async (req, res, next) => {
-  const wishlist = await Wishlist.findOneAndDelete({ user: req.user.id });
-
-  if (!wishlist) {
-    return next(new ErrorResponse('Wishlist not found for this user', 404));
-  }
-
-  res.status(200).json({
-    success: true,
-    message: 'Wishlist cleared',
-    data: {}
-  });
-});
-
-// @desc    Check if a product is in the user's wishlist
-// @route   GET /api/v1/wishlist/check/:productId
-// @access  Private
-exports.checkWishlistStatus = asyncHandler(async (req, res, next) => {
-  const { productId } = req.params;
-
-  if (!mongoose.Types.ObjectId.isValid(productId)) {
-    return next(new ErrorResponse('Invalid product ID', 400));
-  }
-
-  const wishlist = await Wishlist.findOne({ user: req.user.id, products: productId });
-
-  const isInWishlist = !!wishlist; // True if wishlist exists and contains product, false otherwise
-
-  res.status(200).json({
-    success: true,
-    data: { productId, isInWishlist }
-  });
-});
+module.exports = {
+  getWishlist,
+  toggleWishlistItem,
+  removeFromWishlist,
+  clearWishlist,
+  checkWishlistStatus,
+  getWishlistCount,
+  shareWishlist,
+  getSharedWishlist
+};
