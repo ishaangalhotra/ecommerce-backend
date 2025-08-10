@@ -25,7 +25,6 @@ const wishlistSchema = new mongoose.Schema({
   },
   shareId: {
     type: String,
-    unique: true,
     sparse: true // Only enforce uniqueness for non-null values
   }
 }, {
@@ -34,8 +33,8 @@ const wishlistSchema = new mongoose.Schema({
 });
 
 // Indexes for better performance
-wishlistSchema.index({ userId: 1 });
-wishlistSchema.index({ shareId: 1 });
+wishlistSchema.index({ userId: 1 }, { unique: true });
+wishlistSchema.index({ shareId: 1 }, { sparse: true });
 wishlistSchema.index({ 'items.productId': 1 });
 
 // Virtual for item count
