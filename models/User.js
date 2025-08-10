@@ -27,19 +27,18 @@ const UserSchema = new mongoose.Schema({
       message: 'Please provide a valid email'
     }
   },
-  // FIXED: Removed index: true to prevent duplicate index warning
   phone: {
     type: String,
     sparse: true,
     validate: {
-      validator: function(v) {
+      validator: function (v) {
         return !v || validator.isMobilePhone(v, 'en-IN');
       },
       message: 'Please provide a valid Indian phone number'
     }
   },
 
-  // Authentication & Security (ENHANCED)
+  // Authentication & Security
   password: {
     type: String,
     required: [true, 'Password is required'],
@@ -49,8 +48,7 @@ const UserSchema = new mongoose.Schema({
   passwordChangedAt: Date,
   passwordResetToken: String,
   passwordResetExpires: Date,
-  
-  // NEW: Enhanced token management
+
   refreshToken: {
     type: String,
     select: false
@@ -59,20 +57,19 @@ const UserSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
-  
+
   // Email Verification
   emailVerificationToken: String,
   emailVerificationExpires: Date,
   verifiedAt: Date,
-  
+
   // Security tracking
   loginAttempts: {
     type: Number,
     default: 0
   },
   lockUntil: Date,
-  
-  // ENHANCED: Login history with remember me tracking
+
   loginHistory: [{
     ip: String,
     userAgent: String,
@@ -98,7 +95,7 @@ const UserSchema = new mongoose.Schema({
   dateOfBirth: {
     type: Date,
     validate: {
-      validator: function(dob) {
+      validator: function (dob) {
         if (!dob) return true;
         const age = (new Date() - dob) / (365.25 * 24 * 60 * 60 * 1000);
         return age >= 13 && age <= 120;
@@ -114,52 +111,28 @@ const UserSchema = new mongoose.Schema({
     }
   },
 
-  // FIXED: Privacy settings (removed index from shareToken field definition)
   privacy: {
-    shareToken: {
-      type: String,
-      // Removed index: true - will be defined in schema.index() instead
-    },
-    isProfilePublic: {
-      type: Boolean,
-      default: false
-    },
-    allowLocationSharing: {
-      type: Boolean,
-      default: true
-    }
+    shareToken: { type: String },
+    isProfilePublic: { type: Boolean, default: false },
+    allowLocationSharing: { type: Boolean, default: true }
   },
 
-  // Wallet & Finance
   walletBalance: {
     type: Number,
     default: 0,
     min: 0
   },
 
-  // Addresses
   addresses: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Address'
   }],
 
-  // Account Status
-  isActive: {
-    type: Boolean,
-    default: true
-  },
-  isVerified: {
-    type: Boolean,
-    default: false
-  },
-  isDeleted: {
-    type: Boolean,
-    default: false,
-    select: false
-  },
+  isActive: { type: Boolean, default: true },
+  isVerified: { type: Boolean, default: false },
+  isDeleted: { type: Boolean, default: false, select: false },
   deletedAt: Date,
 
-  // Roles and Permissions
   role: {
     type: String,
     enum: ['customer', 'seller', 'admin', 'super_admin', 'delivery_agent'],
@@ -170,7 +143,6 @@ const UserSchema = new mongoose.Schema({
     enum: ['read', 'write', 'delete', 'manage_users']
   }],
 
-  // Timestamps (ENHANCED)
   lastLoginAt: Date,
   lastActiveAt: Date
 }, {
@@ -180,271 +152,188 @@ const UserSchema = new mongoose.Schema({
   versionKey: '__v'
 });
 
-// ==================== CONSOLIDATED INDEXES (FIXED DUPLICATES) ====================
-
-// Core unique indexes - only define here, not in field definitions
+// Indexes
 UserSchema.index({ uuid: 1 }, { unique: true });
 UserSchema.index({ email: 1 }, { unique: true });
-UserSchema.index({ phone: 1 }, { unique: true, sparse: true }); // Only here
-
-// Security-related indexes
+UserSchema.index({ phone: 1 }, { unique: true, sparse: true });
 UserSchema.index({ emailVerificationToken: 1 }, { sparse: true });
 UserSchema.index({ passwordResetToken: 1 }, { sparse: true });
-UserSchema.index({ 'privacy.shareToken': 1 }, { unique: true, sparse: true }); // Only here
-
-// Enhanced authentication indexes
+UserSchema.index({ 'privacy.shareToken': 1 }, { unique: true, sparse: true });
 UserSchema.index({ refreshToken: 1 }, { sparse: true });
 UserSchema.index({ tokenVersion: 1 });
 UserSchema.index({ lastActiveAt: -1 });
-
-// Query optimization indexes
 UserSchema.index({ role: 1, isActive: 1, createdAt: -1 });
 UserSchema.index({ isActive: 1, isVerified: 1 });
 UserSchema.index({ isDeleted: 1 });
-
-// Compound indexes for common queries
 UserSchema.index({ role: 1, isVerified: 1, isActive: 1 });
 UserSchema.index({ loginAttempts: 1, lockUntil: 1 });
+UserSchema.index(
+  { name: 'text', email: 'text' },
+  { weights: { name: 5, email: 3 }, name: 'user_search_index' }
+);
 
-// Text search index
-UserSchema.index({
-  name: 'text',
-  email: 'text'
-}, {
-  weights: {
-    name: 5,
-    email: 3
-  },
-  name: 'user_search_index'
-});
-
-// ==================== ENHANCED MIDDLEWARE ====================
-
-UserSchema.pre('save', async function(next) {
+// Middleware
+UserSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();
-
-  try {
-    this.password = await bcrypt.hash(this.password, 12);
-    if (!this.isNew) this.passwordChangedAt = Date.now() - 1000;
-    next();
-  } catch (err) {
-    next(err);
-  }
+  this.password = await bcrypt.hash(this.password, 12);
+  if (!this.isNew) this.passwordChangedAt = Date.now() - 1000;
+  next();
 });
 
-// Auto-update lastActiveAt when lastLoginAt changes
-UserSchema.pre('save', function(next) {
+UserSchema.pre('save', function (next) {
   if (this.isModified('lastLoginAt')) {
     this.lastActiveAt = new Date();
   }
   next();
 });
 
-// Generate privacy.shareToken if not exists
-UserSchema.pre('save', function(next) {
+UserSchema.pre('save', function (next) {
   if (!this.privacy.shareToken && this.privacy.isProfilePublic) {
     this.privacy.shareToken = crypto.randomBytes(16).toString('hex');
   }
   next();
 });
 
-// Exclude deleted users by default
-UserSchema.pre(/^find/, function(next) {
+UserSchema.pre(/^find/, function (next) {
   if (this.getFilter().isDeleted === undefined) {
     this.where({ isDeleted: false });
   }
   next();
 });
 
-// ==================== VIRTUAL PROPERTIES ====================
-
-UserSchema.virtual('age').get(function() {
+// Virtuals
+UserSchema.virtual('age').get(function () {
   if (!this.dateOfBirth) return null;
   return Math.floor((new Date() - this.dateOfBirth) / (3.15576e+10));
 });
 
-UserSchema.virtual('profileCompletion').get(function() {
+UserSchema.virtual('profileCompletion').get(function () {
   const requiredFields = ['name', 'email', 'phone', 'dateOfBirth'];
   const completedFields = requiredFields.filter(field => this[field]);
   return Math.round((completedFields.length / requiredFields.length) * 100);
 });
 
-UserSchema.virtual('isLocked').get(function() {
+UserSchema.virtual('isLocked').get(function () {
   return !!(this.lockUntil && this.lockUntil > Date.now());
 });
 
-UserSchema.virtual('hasActiveSessions').get(function() {
+UserSchema.virtual('hasActiveSessions').get(function () {
   return !!(this.refreshToken);
 });
 
-// ==================== ENHANCED INSTANCE METHODS ====================
-
-UserSchema.methods.getSignedJwtToken = function() {
+// Methods
+UserSchema.methods.getSignedJwtToken = function () {
   return jwt.sign(
-    { 
-      id: this._id,
-      tokenVersion: this.tokenVersion || 0
-    }, 
-    process.env.JWT_SECRET, 
-    {
-      expiresIn: process.env.JWT_EXPIRE || '15m'
-    }
+    { id: this._id, tokenVersion: this.tokenVersion || 0 },
+    process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_EXPIRE || '15m' }
   );
 };
 
-UserSchema.methods.generateRefreshToken = function() {
+UserSchema.methods.generateRefreshToken = function () {
   return jwt.sign(
-    { 
-      id: this._id, 
-      type: 'refresh',
-      version: this.tokenVersion || 0
-    },
+    { id: this._id, type: 'refresh', version: this.tokenVersion || 0 },
     process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET,
     { expiresIn: process.env.JWT_REFRESH_EXPIRES || '7d' }
   );
 };
 
-UserSchema.methods.isRefreshTokenValid = function(token) {
+UserSchema.methods.isRefreshTokenValid = function (token) {
   return this.refreshToken === token;
 };
 
-UserSchema.methods.invalidateAllTokens = async function() {
+UserSchema.methods.invalidateAllTokens = async function () {
   this.tokenVersion = (this.tokenVersion || 0) + 1;
   this.refreshToken = undefined;
   return this.save({ validateBeforeSave: false });
 };
 
-UserSchema.methods.correctPassword = async function(candidatePassword, userPassword) {
+UserSchema.methods.correctPassword = async function (candidatePassword, userPassword) {
   return await bcrypt.compare(candidatePassword, userPassword || this.password);
 };
 
-UserSchema.methods.changedPasswordAfter = function(JWTTimestamp) {
+UserSchema.methods.changedPasswordAfter = function (JWTTimestamp) {
   if (this.passwordChangedAt) {
-    const changedTimestamp = parseInt(
-      this.passwordChangedAt.getTime() / 1000,
-      10
-    );
+    const changedTimestamp = parseInt(this.passwordChangedAt.getTime() / 1000, 10);
     return JWTTimestamp < changedTimestamp;
   }
   return false;
 };
 
-UserSchema.methods.createPasswordResetToken = function() {
+UserSchema.methods.createPasswordResetToken = function () {
   const resetToken = crypto.randomBytes(32).toString('hex');
-  this.passwordResetToken = crypto
-    .createHash('sha256')
-    .update(resetToken)
-    .digest('hex');
+  this.passwordResetToken = crypto.createHash('sha256').update(resetToken).digest('hex');
   this.passwordResetExpires = Date.now() + 10 * 60 * 1000;
   return resetToken;
 };
 
-UserSchema.methods.createEmailVerificationToken = function() {
+UserSchema.methods.createEmailVerificationToken = function () {
   const verificationToken = crypto.randomBytes(32).toString('hex');
-  this.emailVerificationToken = crypto
-    .createHash('sha256')
-    .update(verificationToken)
-    .digest('hex');
+  this.emailVerificationToken = crypto.createHash('sha256').update(verificationToken).digest('hex');
   this.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000;
   return verificationToken;
 };
 
-UserSchema.methods.incLoginAttempts = function() {
+UserSchema.methods.incLoginAttempts = function () {
   if (this.lockUntil && this.lockUntil < Date.now()) {
-    return this.updateOne({
-      $unset: { lockUntil: 1 },
-      $set: { loginAttempts: 1 }
-    });
+    return this.updateOne({ $unset: { lockUntil: 1 }, $set: { loginAttempts: 1 } });
   }
-  
   const updates = { $inc: { loginAttempts: 1 } };
-  
   if (this.loginAttempts + 1 >= 5 && !this.isLocked) {
     updates.$set = { lockUntil: Date.now() + 2 * 60 * 60 * 1000 };
   }
-  
   return this.updateOne(updates);
 };
 
-UserSchema.methods.addLoginHistory = function(ip, userAgent, location, rememberMe = false) {
-  this.loginHistory.unshift({
-    ip,
-    userAgent,
-    location,
-    rememberMe,
-    timestamp: new Date()
-  });
-  
+UserSchema.methods.addLoginHistory = function (ip, userAgent, location, rememberMe = false) {
+  this.loginHistory.unshift({ ip, userAgent, location, rememberMe, timestamp: new Date() });
   if (this.loginHistory.length > 10) {
     this.loginHistory = this.loginHistory.slice(0, 10);
   }
-  
   return this.save();
 };
 
-UserSchema.methods.cleanupExpiredTokens = async function() {
+UserSchema.methods.cleanupExpiredTokens = async function () {
   if (this.passwordResetExpires && this.passwordResetExpires < Date.now()) {
     this.passwordResetToken = undefined;
     this.passwordResetExpires = undefined;
   }
-  
   if (this.emailVerificationExpires && this.emailVerificationExpires < Date.now()) {
     this.emailVerificationToken = undefined;
     this.emailVerificationExpires = undefined;
   }
-  
   return this.save({ validateBeforeSave: false });
 };
 
-// ==================== STATIC METHODS ====================
-
-UserSchema.statics.findByEmailOrPhone = async function(identifier) {
-  return this.findOne({
-    $or: [
-      { email: identifier },
-      { phone: identifier }
-    ]
-  });
+// Statics
+UserSchema.statics.findByEmailOrPhone = async function (identifier) {
+  return this.findOne({ $or: [{ email: identifier }, { phone: identifier }] });
 };
 
-UserSchema.statics.getUserStats = async function() {
+UserSchema.statics.getUserStats = async function () {
   return this.aggregate([
     {
       $group: {
         _id: '$role',
         count: { $sum: 1 },
-        activeUsers: {
-          $sum: { $cond: [{ $eq: ['$isActive', true] }, 1, 0] }
-        },
-        verifiedUsers: {
-          $sum: { $cond: [{ $eq: ['$isVerified', true] }, 1, 0] }
-        }
+        activeUsers: { $sum: { $cond: [{ $eq: ['$isActive', true] }, 1, 0] } },
+        verifiedUsers: { $sum: { $cond: [{ $eq: ['$isVerified', true] }, 1, 0] } }
       }
     },
     { $sort: { count: -1 } }
   ]);
 };
 
-UserSchema.statics.getActiveSessionStats = async function() {
+UserSchema.statics.getActiveSessionStats = async function () {
   return this.aggregate([
-    {
-      $match: {
-        refreshToken: { $exists: true, $ne: null }
-      }
-    },
-    {
-      $group: {
-        _id: '$role',
-        activeSessions: { $sum: 1 }
-      }
-    }
+    { $match: { refreshToken: { $exists: true, $ne: null } } },
+    { $group: { _id: '$role', activeSessions: { $sum: 1 } } }
   ]);
 };
 
-UserSchema.statics.cleanupExpiredTokens = async function() {
+UserSchema.statics.cleanupExpiredTokens = async function () {
   const now = Date.now();
-  
-  const result = await this.updateMany(
+  return this.updateMany(
     {
       $or: [
         { passwordResetExpires: { $lt: now } },
@@ -460,44 +349,27 @@ UserSchema.statics.cleanupExpiredTokens = async function() {
       }
     }
   );
-  
-  return result;
 };
 
-// ==================== QUERY HELPERS ====================
-
-UserSchema.query.active = function() {
+// Query Helpers
+UserSchema.query.active = function () {
   return this.where({ isActive: true });
 };
-
-UserSchema.query.verified = function() {
+UserSchema.query.verified = function () {
   return this.where({ isVerified: true });
 };
-
-UserSchema.query.byRole = function(role) {
+UserSchema.query.byRole = function (role) {
   return this.where({ role });
 };
-
-UserSchema.query.notLocked = function() {
-  return this.where({
-    $or: [
-      { lockUntil: { $exists: false } },
-      { lockUntil: { $lt: Date.now() } }
-    ]
-  });
+UserSchema.query.notLocked = function () {
+  return this.where({ $or: [{ lockUntil: { $exists: false } }, { lockUntil: { $lt: Date.now() } }] });
 };
-
-UserSchema.query.withActiveSessions = function() {
-  return this.where({
-    refreshToken: { $exists: true, $ne: null }
-  });
+UserSchema.query.withActiveSessions = function () {
+  return this.where({ refreshToken: { $exists: true, $ne: null } });
 };
-
-UserSchema.query.recentlyActive = function(hours = 24) {
+UserSchema.query.recentlyActive = function (hours = 24) {
   const cutoff = new Date(Date.now() - hours * 60 * 60 * 1000);
-  return this.where({
-    lastActiveAt: { $gte: cutoff }
-  });
+  return this.where({ lastActiveAt: { $gte: cutoff } });
 };
 
 module.exports = mongoose.models.User || mongoose.model('User', UserSchema);
