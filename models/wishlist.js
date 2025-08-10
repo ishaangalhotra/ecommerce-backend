@@ -5,8 +5,8 @@ const wishlistSchema = new mongoose.Schema({
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true,
-    unique: true // Each user can only have one wishlist
+    required: true
+    // Removed unique: true here — uniqueness now handled by .index() below
   },
   items: [{
     productId: {
@@ -24,15 +24,15 @@ const wishlistSchema = new mongoose.Schema({
     default: false
   },
   shareId: {
-    type: String,
-    sparse: true // Only enforce uniqueness for non-null values
+    type: String
+    // Removed sparse: true here — sparsity now handled by .index() below
   }
 }, {
   timestamps: true,
   versionKey: false
 });
 
-// Indexes for better performance
+// Indexes for performance and constraints
 wishlistSchema.index({ userId: 1 }, { unique: true });
 wishlistSchema.index({ shareId: 1 }, { sparse: true });
 wishlistSchema.index({ 'items.productId': 1 });
@@ -42,14 +42,14 @@ wishlistSchema.virtual('itemCount').get(function() {
   return this.items.length;
 });
 
-// Method to check if product exists in wishlist
+// Check if product exists in wishlist
 wishlistSchema.methods.hasProduct = function(productId) {
   return this.items.some(item => 
     item.productId.toString() === productId.toString()
   );
 };
 
-// Method to add product to wishlist
+// Add product to wishlist
 wishlistSchema.methods.addProduct = function(productId) {
   if (!this.hasProduct(productId)) {
     this.items.push({
@@ -60,7 +60,7 @@ wishlistSchema.methods.addProduct = function(productId) {
   return this;
 };
 
-// Method to remove product from wishlist
+// Remove product from wishlist
 wishlistSchema.methods.removeProduct = function(productId) {
   this.items = this.items.filter(item => 
     item.productId.toString() !== productId.toString()
@@ -68,7 +68,7 @@ wishlistSchema.methods.removeProduct = function(productId) {
   return this;
 };
 
-// Pre-save middleware to generate shareId if sharing is enabled
+// Pre-save: generate shareId if sharing enabled
 wishlistSchema.pre('save', function(next) {
   if (this.allowSharing && !this.shareId) {
     const crypto = require('crypto');
@@ -77,7 +77,7 @@ wishlistSchema.pre('save', function(next) {
   next();
 });
 
-// Static method to find user's wishlist with populated products
+// Find user's wishlist with populated products
 wishlistSchema.statics.findUserWishlist = function(userId, populateProducts = true) {
   const query = this.findOne({ userId });
   
@@ -95,7 +95,7 @@ wishlistSchema.statics.findUserWishlist = function(userId, populateProducts = tr
   return query;
 };
 
-// Remove wishlist if it becomes empty (optional cleanup)
+// Post-save cleanup (optional)
 wishlistSchema.post('save', async function(doc) {
   if (doc.items.length === 0 && !doc.allowSharing) {
     // Optionally remove empty wishlists

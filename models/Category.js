@@ -5,58 +5,38 @@ const categorySchema = new mongoose.Schema({
     type: String,
     required: [true, 'Category name is required'],
     trim: true,
-    unique: true
+    minlength: [2, 'Category name must be at least 2 characters long'],
+    maxlength: [100, 'Category name must be less than 100 characters'],
   },
-  
   slug: {
     type: String,
-    unique: true,
-    lowercase: true
+    required: true,
+    lowercase: true,
+    trim: true
+    // removed unique: true to prevent duplicate index warning
   },
-  
   description: {
     type: String,
-    trim: true
+    maxlength: [500, 'Description must be less than 500 characters'],
   },
-  
   image: {
-    url: String,
-    publicId: String
+    type: String,
+    default: null,
   },
-  
-  isActive: {
-    type: Boolean,
-    default: true
+  parentCategory: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Category',
+    default: null,
   },
-  
-  sortOrder: {
-    type: Number,
-    default: 0
-  },
-  
-  productCount: {
-    type: Number,
-    default: 0
+  createdAt: {
+    type: Date,
+    default: Date.now,
   }
 }, {
-  timestamps: true,
-  toJSON: { virtuals: true },
-  toObject: { virtuals: true }
+  timestamps: true
 });
 
-// Generate slug from name
-categorySchema.pre('save', function(next) {
-  if (this.isModified('name')) {
-    this.slug = this.name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)+/g, '');
-  }
-  next();
-});
+// Keep only the explicit index definition
+categorySchema.index({ slug: 1 }, { unique: true });
 
-// Index for better performance
-categorySchema.index({ slug: 1 });
-categorySchema.index({ isActive: 1, sortOrder: 1 });
-
-module.exports = mongoose.models.Category || mongoose.model('Category', categorySchema);
+module.exports = mongoose.model('Category', categorySchema);
