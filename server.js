@@ -392,7 +392,9 @@ class CORSManager {
       'http://127.0.0.1:3000',
       'http://127.0.0.1:3001',
       'http://127.0.0.1:5173',
-      'http://127.0.0.1:8080'
+      'http://127.0.0.1:8080',
+      'file://',  // For local HTML files
+      'null'      // For some browsers
     ];
     
     devOrigins.forEach(origin => origins.add(origin));
@@ -402,7 +404,7 @@ class CORSManager {
     try {
       new URL(url);
       return url.startsWith('http://') || url.startsWith('https://');
-    } catch {
+    } catch (error) {
       return false;
     }
   }

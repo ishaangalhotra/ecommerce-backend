@@ -55,7 +55,7 @@ class SocketService {
     
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      packet[1] = { ...data, user: decoded };
+      packet[1] = Object.assign({}, data, { user: decoded });
       next();
     } catch (error) {
       next(new Error('Invalid token'));

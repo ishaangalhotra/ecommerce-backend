@@ -108,7 +108,11 @@ const generateInvoiceData = (order, customer) => {
     },
     
     // Order items and totals
-    ...totals,
+    subtotal: totals.subtotal,
+    totalTax: totals.totalTax,
+    shippingCost: totals.shippingCost,
+    discountAmount: totals.discountAmount,
+    total: totals.total,
     
     // Payment details
     paymentMethod: order.payment?.method || 'Not specified',

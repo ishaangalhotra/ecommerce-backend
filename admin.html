@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QuickLocal Admin Panel</title>
+    
+    <!-- QuickLocal Frontend Configuration -->
+    <script src="/config.js"></script>
+    
     <style>
         * {
             margin: 0;
@@ -452,7 +456,16 @@
     </div>
 
     <script>
-        const API_URL = 'https://quicklocal-backend.onrender.com/api/products';
+        // API URL will be set by QuickLocalConfig
+        let API_URL = '';
+        
+        // Initialize API URL from config
+        if (window.QuickLocalConfig) {
+            API_URL = window.QuickLocalConfig.api.baseUrl + '/products';
+        } else {
+            // Fallback for when config is not loaded
+            API_URL = 'http://localhost:10000/api/v1/products';
+        }
         let products = [];
 
         // Sample product templates

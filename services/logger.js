@@ -112,7 +112,7 @@ const logger = winston.createLogger({
 
 // Add rotation for production
 if (config.env === 'production') {
-  require('winston-daily-rotate-file');
+  const DailyRotateFile = require('winston-daily-rotate-file');
   
   logger.add(new winston.transports.DailyRotateFile({
     filename: `${config.logs.directory}/application-%DATE%.log`,

@@ -11,7 +11,7 @@ const path = require('path');
 
 class ProductSetup {
   constructor() {
-    this.baseURL = 'https://quicklocal-backend.onrender.com/api/v1';
+    this.baseURL = 'https://quicklocal.shop/api';
     this.token = process.env.ADMIN_TOKEN || '';
     this.products = [];
   }

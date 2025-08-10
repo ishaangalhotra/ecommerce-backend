@@ -47,7 +47,7 @@ class EmailService {
       // Create templates directory if it doesn't exist
       try {
         await fs.access(templatesDir);
-      } catch {
+      } catch (error) {
         await fs.mkdir(templatesDir, { recursive: true });
       }
 

@@ -28,7 +28,7 @@ class FileUploadService {
       // Create upload directory if it doesn't exist
       try {
         await fs.access(this.uploadPath);
-      } catch {
+      } catch (error) {
         await fs.mkdir(this.uploadPath, { recursive: true });
       }
 
