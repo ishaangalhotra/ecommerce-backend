@@ -59,6 +59,8 @@ class Config {
       ENABLE_CLUSTER: (this.env.ENABLE_CLUSTER_MODE === 'true') || false,
       MAX_WORKERS: Math.max(1, Math.min(os.cpus().length, parseInt(this.env.CLUSTER_WORKERS || '0', 10) || os.cpus().length)),
       MONGODB_URI: this.env.MONGODB_URI || this.env.MONGO_URI,
+      JWT_SECRET: this.env.JWT_SECRET,
+      SESSION_SECRET: this.env.SESSION_SECRET,
       REDIS_ENABLED: this.env.REDIS_ENABLED === 'true' && !this.env.DISABLE_REDIS,
       ENABLE_HELMET: this.env.ENABLE_HELMET === 'true' || this.env.HELMET_ENABLED === 'true',
       ENABLE_COMPRESSION: this.env.ENABLE_COMPRESSION === 'true',
