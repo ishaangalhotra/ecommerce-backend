@@ -14,8 +14,9 @@
   - Keep NODE_OPTIONS and runtime flags (e.g. --expose-gc) as needed.
   - The code aims to be clear and easily extensible.
 */
-
+if (process.env.NODE_ENV !== 'production') {
 require('dotenv').config();
+}
 
 const os = require('os');
 const fs = require('fs').promises;
