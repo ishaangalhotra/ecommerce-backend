@@ -1,7 +1,7 @@
 const Order = require('../models/Order');
 const User = require('../models/User');
 const Product = require('../models/Product');
-const asyncHandler = require('../middleware/asyncHandlerHandler');
+const asyncHandler = require('../middleware/asyncHandlerHandlerHandler');
 const ErrorResponse = require('../utils/errorResponse');
 const logger = require('../utils/logger');
 const { createAuditLog } = require('../services/auditService');

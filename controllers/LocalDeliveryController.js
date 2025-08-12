@@ -1,7 +1,7 @@
 const LocalDeliveryService = require('../services/LocalDeliveryService');
 const { validationResult } = require('express-validator');
 const logger = require('../utils/logger');
-const asyncHandler = require('../middleware/asyncHandlerHandler');
+const asyncHandler = require('../middleware/asyncHandlerHandlerHandler');
 const ErrorResponse = require('../utils/errorResponse');
 
 // Constants for better maintainability
