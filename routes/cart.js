@@ -1,3 +1,4 @@
+const { couponLimiter } = require('../middleware/rateLimiters');
 const express = require('express');
 const mongoose = require('mongoose');
 const { body, query, validationResult } = require('express-validator');
