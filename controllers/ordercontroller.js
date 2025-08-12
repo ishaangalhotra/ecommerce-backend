@@ -1,7 +1,7 @@
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const ErrorResponse = require('../utils/errorResponse');
-const asyncHandler = require('../middleware/async');
+const asyncHandler = require('../middleware/asyncHandler');
 
 // @desc    Create order
 // @route   POST /api/orders

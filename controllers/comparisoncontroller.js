@@ -1,7 +1,7 @@
 const Product = require('../models/Product');
 const User = require('../models/User');
 const ErrorResponse = require('../utils/errorResponse');
-const asyncHandler = require('../middleware/asyncHandler');
+const asyncHandler = require('../middleware/asyncHandlerHandler');
 const { validationResult } = require('express-validator');
 const logger = require('../utils/logger');
 const redis = require('../utils/redis');

@@ -1,6 +1,6 @@
 const Product = require('../models/Product');
 const ErrorResponse = require('../utils/errorResponse');
-const asyncHandler = require('../middleware/async');
+const asyncHandler = require('../middleware/asyncHandler');
 
 // Helper for pagination, filtering, sorting
 const advancedResults = (model, populate) => asyncHandler(async (req, res, next) => {
