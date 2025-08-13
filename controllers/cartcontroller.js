@@ -1,6 +1,6 @@
 const Cart = require('../models/Cart');
 const Product = require('../models/Product');
-const asyncHandler = require('../middleware/asyncHandlerHandlerHandler');
+const asyncHandler = require('../middleware/asyncHandler');
 const ErrorResponse = require('../utils/errorResponse');
 const { validationResult } = require('express-validator');
 const logger = require('../utils/logger');
