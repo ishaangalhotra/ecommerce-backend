@@ -71,7 +71,7 @@ class RedisManager {
         this.client = this.mockClient;
       });
       await this.client.connect();
-      logger.info('Redis client connected');
+      logger.info('✅ Redis connected successfully');
     } catch (err) {
       logger.warn('Redis init failed, using mock client', { error: err.message });
       this.client = this.mockClient;
@@ -107,8 +107,8 @@ class Database {
       serverSelectionTimeoutMS: 30000,
       socketTimeoutMS: 45000,
       maxIdleTimeMS: 30000,
-      bufferCommands: false,
-      bufferMaxEntries: 0
+      bufferCommands: false
+      // Removed bufferMaxEntries - it's deprecated in newer Mongoose versions
     };
     let attempts = 0;
     const maxRetries = 5;
@@ -116,7 +116,7 @@ class Database {
     while (attempts < maxRetries) {
       try {
         await mongoose.connect(uri, opts);
-        logger.info('Database connected', { 
+        logger.info('✅ Database connected successfully', { 
           host: mongoose.connection.host, 
           name: mongoose.connection.name 
         });
@@ -194,7 +194,7 @@ function initializeSocket(server) {
       });
     });
     
-    logger.info('Socket.IO initialized');
+    logger.info('✅ Socket.IO initialized');
     return io;
   } catch (error) {
     logger.warn('Socket.IO not available, real-time features disabled');
@@ -290,6 +290,15 @@ async function createApp() {
     });
   });
 
+  // Configuration summary log
+  logger.info('📋 Configuration Summary:', {
+    environment: config.NODE_ENV,
+    port: config.PORT,
+    database: config.MONGODB_URI ? 'quicklocal-dev' : 'not configured',
+    redis: config.REDIS_URL ? 'enabled' : 'disabled',
+    features: 'healthChecks'
+  });
+
   // Load core routes with error handling
   const coreRoutes = [
     { path: '/api/v1/auth', file: './routes/auth' },
@@ -301,7 +310,7 @@ async function createApp() {
     try {
       const router = require(route.file);
       app.use(route.path, router);
-      logger.info('Route loaded', { path: route.path, file: route.file });
+      logger.info('✅ Route loaded', { path: route.path, file: route.file });
     } catch (err) {
       logger.warn('Core route load failed', { 
         path: route.path, 
@@ -326,7 +335,7 @@ async function createApp() {
             const route = require(routePath);
             const routeName = file.replace('.js', '');
             app.use(`/api/v1/${routeName}`, route);
-            logger.info('Dynamic route loaded', { route: routeName, file });
+            logger.info('✅ Dynamic route loaded', { route: routeName, file });
           }
         } catch (err) {
           logger.error('route load failed', { 
@@ -430,7 +439,7 @@ async function start() {
 
     // Start server
     server.listen(config.PORT, config.HOST, () => {
-      logger.info('server-started', { 
+      logger.info('🚀 server-started', { 
         port: config.PORT, 
         host: config.HOST,
         env: config.NODE_ENV,

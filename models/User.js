@@ -29,7 +29,7 @@ const UserSchema = new mongoose.Schema({
   },
   phone: {
     type: String,
-    sparse: true,
+    // Removed 'sparse: true' since we define the index explicitly below
     validate: {
       validator: function (v) {
         return !v || validator.isMobilePhone(v, 'en-IN');
@@ -152,10 +152,10 @@ const UserSchema = new mongoose.Schema({
   versionKey: '__v'
 });
 
-// Indexes
+// Indexes - Fixed duplicate index issue
 UserSchema.index({ uuid: 1 }, { unique: true });
 UserSchema.index({ email: 1 }, { unique: true });
-UserSchema.index({ phone: 1 }, { unique: true, sparse: true });
+UserSchema.index({ phone: 1 }, { unique: true, sparse: true }); // Keep sparse here in index definition
 UserSchema.index({ emailVerificationToken: 1 }, { sparse: true });
 UserSchema.index({ passwordResetToken: 1 }, { sparse: true });
 UserSchema.index({ 'privacy.shareToken': 1 }, { unique: true, sparse: true });
