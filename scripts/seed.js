@@ -5,7 +5,7 @@ const bcrypt = require('bcryptjs');
 // Import models
 const User = require('../models/User');
 const Category = require('../models/Category');
-const Product = require('../models/product');
+const Product = require('../models/Product');
 
 async function seedDatabase() {
   try {

@@ -1,7 +1,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const Category = require('../models/Category');
-const Product = require('../models/product');
+const Product = require('../models/Product');
 const { protect, authorize } = require('../middleware/authMiddleware');
 const { body, validationResult } = require('express-validator');
 const router = express.Router();

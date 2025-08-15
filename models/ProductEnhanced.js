@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 // Import your existing Product model to extend it
-const Product = require('./product');
+const Product = require('./Product');
 
 // Clone the existing schema to preserve all current functionality
 const enhancedProductSchema = Product.schema.clone();
