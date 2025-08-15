@@ -842,13 +842,6 @@ const rateLimiters = {
         max: 100,
         message: 'Admin operation rate limit exceeded.',
         keyGenerator: (req) => `admin:${req.user?.id || anonymizeIP(req.ip)}`,
-        skip: (req) => req.user?.role
-// Strict rate limit for admin operations
-    admin: createLimiter({
-        windowMs: 5 * 60 * 1000,
-        max: 100,
-        message: 'Admin operation rate limit exceeded.',
-        keyGenerator: (req) => `admin:${req.user?.id || anonymizeIP(req.ip)}`,
         skip: (req) => req.user?.role !== 'admin',
         onLimitReached: async (req) => {
             logger.security('Admin rate limit exceeded', {
