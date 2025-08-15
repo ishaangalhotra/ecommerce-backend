@@ -1,9 +1,14 @@
+const express = require('express');
+const router = express.Router();
+const Product = require('../models/Product'); // fixed case-sensitive path
+const Coupon = require('../models/Coupon');
+const crypto = require('crypto');
 
 // CSRF token issuance (Redis-backed)
 // Returns a token and sets a XSRF-TOKEN cookie. Token is stored in Redis with a short TTL.
 router.get('/csrf-token', async (req, res) => {
   try {
-    const token = require('crypto').randomBytes(24).toString('hex');
+    const token = crypto.randomBytes(24).toString('hex');
     // store in Redis with TTL (e.g., 15 minutes)
     const { client, useRedis } = require('../config/redisClient');
     if (useRedis) {
@@ -20,13 +25,6 @@ router.get('/csrf-token', async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
-
-
-const express = require('express');
-const router = express.Router();
-const Product = require('../models/product');
-const Coupon = require('../models/coupon');
-const crypto = require('crypto');
 
 // Simple product suggestions (server-side fallback)
 router.get('/products/suggest', async (req, res) => {
@@ -83,16 +81,6 @@ router.post('/coupons/verify', async (req, res) => {
   } catch (err) {
     console.error('Coupon verify error', err);
     res.status(500).json({ valid: false, message: 'Server error' });
-  }
-});
-
-// CSRF token issuance (double-submit token pattern)
-// This endpoint returns a short-lived random token for the client to send with mutating requests.
-// For robust protection use server-side sessions & csurf.
-res.json({ csrfToken: token });
-  } catch (err) {
-    console.error('CSRF token error', err);
-    res.status(500).json({ error: 'Server error' });
   }
 });
 
