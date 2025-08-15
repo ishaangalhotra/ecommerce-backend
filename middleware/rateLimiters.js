@@ -820,6 +820,18 @@ const rateLimiters = {
         message: 'API rate limit exceeded, please try again later.',
         keyGenerator: (req) => {
             const authHeader = req.get('Authorization');
+            return authHeader && authHeader.startsWith('Bearer ')
+                ? `token:${hashToken(authHeader.split(' ')[1])}`
+                : `ip:${anonymizeIP(req.ip)}`;
+        },
+        tokenBucket: true,
+        dynamicLimiting: false,
+        requestWeighting: false
+        windowMs: 60 * 60 * 1000,
+        max: 500,
+        message: 'API rate limit exceeded, please try again later.',
+        keyGenerator: (req) => {
+            const authHeader = req.get('Authorization');
             return authHeader && authHeader.startsWith('Bearer ') ? 
                 `token:${hashToken(authHeader.split(' ')[1])}` : 
                 `ip:${anonymizeIP(req.ip)}`;
