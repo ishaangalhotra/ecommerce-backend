@@ -110,15 +110,15 @@ const sendEnhancedTokenResponse = async (user, statusCode, res, remember = false
    ========================================================= */
 router.post(
   '/register',
-  authLimiter,
+  //authLimiter,
   [
     body('name').trim().isLength({ min: 2, max: 50 }).withMessage('Name must be 2-50 characters'),
     body('email').isEmail().normalizeEmail().withMessage('Valid email required'),
     body('password')
-      .isLength({ min: 12, max: 128 })
-      .withMessage('Password must be 12-128 characters')
+      .isLength({ min: 6, max: 128 })
+      .withMessage('Password must be 6-128 characters')
       .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/)
-      .withMessage('Password must contain uppercase, lowercase, number & special character'),
+      .withMessage('Password must be at least 6 characters'),
     body('role').isIn(['customer', 'seller']).withMessage('Role must be customer or vendor'),
     body('phone').optional().isMobilePhone('en-IN').withMessage('Enter a valid phone number')
   ],
