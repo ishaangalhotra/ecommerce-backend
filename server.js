@@ -218,6 +218,9 @@ async function createApp() {
   const app = express();
   await RedisManager.initialize();
 
+  // Trust first proxy (needed for rate-limit & secure cookies on Render/Vercel)
+  app.set('trust proxy', 1);
+
   // Request ID middleware
   app.use((req, res, next) => {
     req.id = req.get('X-Request-Id') || uuidv4();
