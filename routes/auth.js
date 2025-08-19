@@ -119,7 +119,7 @@ router.post(
       .withMessage('Password must be 12-128 characters')
       .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/)
       .withMessage('Password must contain uppercase, lowercase, number & special character'),
-    body('role').isIn(['customer', 'vendor']).withMessage('Role must be customer or vendor'),
+    body('role').isIn(['customer', 'seller']).withMessage('Role must be customer or vendor'),
     body('phone').optional().isMobilePhone('en-IN').withMessage('Enter a valid phone number')
   ],
   async (req, res) => {
