@@ -110,16 +110,16 @@ const sendEnhancedTokenResponse = async (user, statusCode, res, remember = false
    ========================================================= */
 router.post(
   '/register',
-  //authLimiter,
+  //authLimiter, // Kept commented out for development testing
   [
     body('name').trim().isLength({ min: 2, max: 50 }).withMessage('Name must be 2-50 characters'),
     body('email').isEmail().normalizeEmail().withMessage('Valid email required'),
+    // UPDATED: Simplified password validation
     body('password')
       .isLength({ min: 6, max: 128 })
-      .withMessage('Password must be 6-128 characters')
-      .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/)
       .withMessage('Password must be at least 6 characters'),
-    body('role').isIn(['customer', 'seller']).withMessage('Role must be customer or vendor'),
+    // UPDATED: Allow 'vendor' from frontend
+    body('role').isIn(['customer', 'seller', 'vendor']).withMessage('Role must be customer, seller, or vendor'),
     body('phone').optional().isMobilePhone('en-IN').withMessage('Enter a valid phone number')
   ],
   async (req, res) => {
@@ -129,7 +129,10 @@ router.post(
         return res.status(400).json({ success: false, errors: errors.array() });
       }
 
-      const { name, email, password, role, phone } = req.body;
+      const { name, email, password, phone } = req.body;
+
+      // UPDATED: Map 'vendor' to 'seller' for database consistency
+      const userRole = req.body.role === 'vendor' ? 'seller' : req.body.role;
 
       // Check if user already exists
       const existingUser = await User.findOne({ email: email.toLowerCase() });
@@ -140,14 +143,14 @@ router.post(
         });
       }
 
-      // Create new user
+      // Create new user with the corrected role
       const user = new User({
         name: name.trim(),
         email: email.toLowerCase(),
         password,
-        role,
+        role: userRole,
         phone: phone || undefined,
-        walletBalance: role === 'customer' ? 0 : undefined
+        walletBalance: userRole === 'customer' ? 0 : undefined
       });
 
       // Generate email verification token
