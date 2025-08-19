@@ -54,7 +54,8 @@ class RedisManager {
     exists: async () => 0,
     expire: async () => 1,
     keys: async () => [],
-    quit: async () => 'OK'
+    quit: async () => 'OK',
+    ping: async () => 'PONG'
   };
 
   static async initialize() {
@@ -108,7 +109,6 @@ class Database {
       socketTimeoutMS: 45000,
       maxIdleTimeMS: 30000,
       bufferCommands: false
-      // Removed bufferMaxEntries - it's deprecated in newer Mongoose versions
     };
     let attempts = 0;
     const maxRetries = 5;
@@ -183,7 +183,18 @@ function initializeSocket(server) {
   try {
     const socketIo = require('socket.io');
     io = socketIo(server, {
-      cors: { origin: "*", methods: ["GET", "POST"] }
+      cors: { 
+        origin: [
+          "http://localhost:3000",
+          "http://localhost:5500", 
+          "http://127.0.0.1:5500",
+          "https://localhost:3000",
+          "https://my-frontend-ifyr-l0ubyao0q-ishans-projects-67ccbc5a.vercel.app",
+          "https://www.quicklocal.shop",
+          "https://my-frontend-ifyr.vercel.app"
+        ], 
+        methods: ["GET", "POST"] 
+      }
     });
     
     io.on('connection', (socket) => {
@@ -217,13 +228,25 @@ async function createApp() {
   // Security and performance middleware
   if (config.ENABLE_HELMET) {
     app.use(helmet({
-      contentSecurityPolicy: false // Disable CSP for development
+      contentSecurityPolicy: config.NODE_ENV === 'production' ? true : false,
+      crossOriginEmbedderPolicy: false
     }));
   }
   
-  app.use(cors({ 
-    origin: process.env.ALLOWED_ORIGINS?.split(',') || '*', 
-    credentials: true 
+  // CORS Configuration - Clean and flexible
+  const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(",")
+    : ["*"];
+
+  app.use(cors({
+    origin: function (origin, callback) {
+      if (!origin || allowedOrigins.includes(origin) || allowedOrigins.includes("*")) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS: " + origin));
+      }
+    },
+    credentials: true
   }));
   
   app.use(express.json({ limit: '10mb' }));
@@ -246,7 +269,7 @@ async function createApp() {
     }));
   }
 
-  // Rate limiting with fixed delayMs configuration
+  // Rate limiting - Fixed configuration
   if (config.RATE_LIMIT_ENABLED) {
     const limiter = rateLimit({
       windowMs: config.RATE_LIMIT_WINDOW_MS,
@@ -254,30 +277,52 @@ async function createApp() {
       message: { error: 'Too many requests, please try again later.' },
       standardHeaders: true,
       legacyHeaders: false,
+      skip: (req) => {
+        // Skip rate limiting for health checks
+        return req.path === '/health';
+      }
     });
     
     const speedLimiter = slowDown({
       windowMs: config.RATE_LIMIT_WINDOW_MS,
-      delayAfter: 100,
-      delayMs: () => 50, // Fixed function format
-      validate: { delayMs: false } // Disable the warning
+      delayAfter: Math.floor(config.RATE_LIMIT_MAX * 0.1), // 10% of max requests
+      delayMs: (hits) => hits * 100, // Increase delay by 100ms for each request
+      maxDelayMs: 5000, // Maximum delay of 5 seconds
+      skip: (req) => {
+        // Skip speed limiting for health checks
+        return req.path === '/health';
+      }
     });
     
-    app.use(limiter);
-    app.use(speedLimiter);
+    app.use('/api', limiter);
+    app.use('/api', speedLimiter);
   }
 
   // Health check endpoint
   app.get('/health', async (req, res) => {
-    const health = {
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
-      memory: process.memoryUsage(),
-      database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
-      redis: await checkRedisHealth()
-    };
-    res.json(health);
+    try {
+      const health = {
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        uptime: Math.floor(process.uptime()),
+        memory: {
+          used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+          total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024)
+        },
+        database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+        redis: await checkRedisHealth(),
+        version: '2.0.0',
+        environment: config.NODE_ENV
+      };
+      res.json(health);
+    } catch (error) {
+      logger.error('Health check error', { error: error.message });
+      res.status(503).json({
+        status: 'error',
+        timestamp: new Date().toISOString(),
+        error: 'Health check failed'
+      });
+    }
   });
 
   // Root endpoint
@@ -286,7 +331,8 @@ async function createApp() {
       message: 'QuickLocal Backend API', 
       version: '2.0.0',
       status: 'running',
-      docs: '/api/v1/docs' 
+      docs: '/api/v1/docs',
+      health: '/health'
     });
   });
 
@@ -294,23 +340,32 @@ async function createApp() {
   logger.info('📋 Configuration Summary:', {
     environment: config.NODE_ENV,
     port: config.PORT,
-    database: config.MONGODB_URI ? 'quicklocal-dev' : 'not configured',
+    database: config.MONGODB_URI ? 'configured' : 'not configured',
     redis: config.REDIS_URL ? 'enabled' : 'disabled',
-    features: 'healthChecks'
+    features: {
+      helmet: config.ENABLE_HELMET,
+      compression: config.ENABLE_COMPRESSION,
+      rateLimiting: config.RATE_LIMIT_ENABLED,
+      cluster: config.ENABLE_CLUSTER
+    }
   });
 
   // Load core routes with error handling
   const coreRoutes = [
     { path: '/api/v1/auth', file: './routes/auth' },
-    { path: '/api/v1/imagekit', file: './routes/imagekit' },
-    { path: '/api/v1', file: './routes/imagekit' }
+    { path: '/api/v1/imagekit', file: './routes/imagekit' }
   ];
 
   for (const route of coreRoutes) {
     try {
-      const router = require(route.file);
-      app.use(route.path, router);
-      logger.info('✅ Route loaded', { path: route.path, file: route.file });
+      const routeFilePath = path.resolve(__dirname, route.file);
+      if (fs.existsSync(routeFilePath + '.js')) {
+        const router = require(route.file);
+        app.use(route.path, router);
+        logger.info('✅ Core route loaded', { path: route.path, file: route.file });
+      } else {
+        logger.warn('Core route file not found', { path: route.path, file: route.file });
+      }
     } catch (err) {
       logger.warn('Core route load failed', { 
         path: route.path, 
@@ -325,48 +380,74 @@ async function createApp() {
   const skipFiles = ['auth.js', 'imagekit.js', 'index.js'];
   
   if (fs.existsSync(routesPath)) {
-    fs.readdirSync(routesPath).forEach(file => {
-      if (file.endsWith('.js') && !skipFiles.includes(file)) {
-        try {
-          const routePath = path.join(routesPath, file);
-          
-          // Check if file exists and is readable
-          if (fs.existsSync(routePath)) {
-            const route = require(routePath);
-            const routeName = file.replace('.js', '');
-            app.use(`/api/v1/${routeName}`, route);
-            logger.info('✅ Dynamic route loaded', { route: routeName, file });
+    try {
+      const files = fs.readdirSync(routesPath);
+      
+      files.forEach(file => {
+        if (file.endsWith('.js') && !skipFiles.includes(file)) {
+          try {
+            const routePath = path.join(routesPath, file);
+            
+            // Check if file exists and is readable
+            if (fs.existsSync(routePath)) {
+              const route = require(routePath);
+              const routeName = file.replace('.js', '');
+              
+              // Validate that the required export is a valid Express router/middleware
+              if (typeof route === 'function' || (route && typeof route.use === 'function')) {
+                app.use(`/api/v1/${routeName}`, route);
+                logger.info('✅ Dynamic route loaded', { route: routeName, file });
+              } else {
+                logger.warn('Invalid route export', { file, type: typeof route });
+              }
+            }
+          } catch (err) {
+            logger.error('Route load failed', { 
+              file, 
+              error: err.message,
+              stack: config.NODE_ENV === 'development' ? err.stack : undefined
+            });
+            // Continue loading other routes instead of crashing
           }
-        } catch (err) {
-          logger.error('route load failed', { 
-            file, 
-            error: err.message,
-            stack: err.stack 
-          });
-          // Continue loading other routes instead of crashing
         }
-      }
-    });
+      });
+    } catch (err) {
+      logger.error('Error reading routes directory', { error: err.message });
+    }
+  } else {
+    logger.warn('Routes directory not found', { path: routesPath });
   }
 
   // 404 handler
   app.use('*', (req, res) => {
+    logger.warn('Route not found', { 
+      path: req.originalUrl, 
+      method: req.method,
+      userAgent: req.get('User-Agent')
+    });
+    
     res.status(404).json({ 
       error: 'Route not found',
       path: req.originalUrl,
       method: req.method,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      suggestion: 'Check the API documentation for available endpoints'
     });
   });
 
   // Global error handler
   app.use((err, req, res, next) => {
-    logger.error('unhandled-error', { 
+    // Log error with context
+    logger.error('Unhandled error', { 
       message: err.message, 
-      stack: err.stack,
+      stack: config.NODE_ENV === 'development' ? err.stack : undefined,
       path: req.path,
       method: req.method,
-      body: req.body
+      body: config.NODE_ENV === 'development' ? req.body : undefined,
+      query: req.query,
+      params: req.params,
+      userAgent: req.get('User-Agent'),
+      ip: req.ip
     });
     
     const status = err.status || err.statusCode || 500;
@@ -376,7 +457,12 @@ async function createApp() {
     
     res.status(status).json({ 
       error: message,
-      ...(config.NODE_ENV !== 'production' && { stack: err.stack })
+      timestamp: new Date().toISOString(),
+      requestId: req.id,
+      ...(config.NODE_ENV === 'development' && { 
+        stack: err.stack,
+        details: err.details || undefined
+      })
     });
   });
 
@@ -393,6 +479,7 @@ async function checkRedisHealth() {
     await client.ping();
     return 'connected';
   } catch (err) {
+    logger.warn('Redis health check failed', { error: err.message });
     return 'disconnected';
   }
 }
@@ -409,12 +496,16 @@ async function start() {
       }
       
       cluster.on('exit', (worker, code, signal) => {
-        logger.warn('Worker died', { 
+        logger.warn('Worker died, restarting...', { 
           worker: worker.process.pid, 
           code, 
           signal 
         });
         cluster.fork();
+      });
+      
+      cluster.on('online', (worker) => {
+        logger.info('Worker started', { worker: worker.process.pid });
       });
       
       return;
@@ -430,51 +521,93 @@ async function start() {
     global._io = socketIo;
 
     // Connect to database
-    await Database.connect(config.MONGODB_URI);
+    if (config.MONGODB_URI) {
+      await Database.connect(config.MONGODB_URI);
+    }
 
     // Start resource monitoring
     const monitor = new ResourceMonitor();
     monitor.start();
     global._monitor = monitor;
 
-    // Start server
+    // Start server with proper error handling
     server.listen(config.PORT, config.HOST, () => {
-      logger.info('🚀 server-started', { 
+      logger.info('🚀 Server started successfully', { 
         port: config.PORT, 
         host: config.HOST,
         env: config.NODE_ENV,
         pid: process.pid,
-        node: process.version
+        node: process.version,
+        memory: `${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`
       });
     });
 
+    // Handle server errors
+    server.on('error', (error) => {
+      if (error.code === 'EADDRINUSE') {
+        logger.error(`Port ${config.PORT} is already in use`);
+      } else {
+        logger.error('Server error', { error: error.message, code: error.code });
+      }
+      process.exit(1);
+    });
+
     // Graceful shutdown handlers
-    process.on('SIGINT', shutdown);
-    process.on('SIGTERM', shutdown);
+    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    
     process.on('uncaughtException', (err) => {
-      logger.error('Uncaught exception', { error: err.message, stack: err.stack });
-      shutdown();
+      logger.error('Uncaught exception - shutting down', { 
+        error: err.message, 
+        stack: err.stack 
+      });
+      shutdown('UNCAUGHT_EXCEPTION');
     });
     
     process.on('unhandledRejection', (reason, promise) => {
-      logger.error('Unhandled rejection', { reason, promise });
-      shutdown();
+      logger.error('Unhandled promise rejection - shutting down', { 
+        reason: reason?.toString(), 
+        promise: promise?.toString()
+      });
+      shutdown('UNHANDLED_REJECTION');
     });
 
   } catch (error) {
-    logger.error('Server startup failed', { error: error.message, stack: error.stack });
+    logger.error('Server startup failed', { 
+      error: error.message, 
+      stack: error.stack 
+    });
     process.exit(1);
   }
 }
 
 // ================== SHUTDOWN ==================
 async function shutdown(signal = 'SIGTERM') {
-  logger.info('Shutting down server', { signal });
+  logger.info('Initiating graceful shutdown', { signal });
+  
+  const shutdownTimeout = setTimeout(() => {
+    logger.error('Shutdown timeout reached, forcing exit');
+    process.exit(1);
+  }, 30000); // 30 second timeout
   
   try {
+    // Stop accepting new connections
+    if (global._server) {
+      global._server.close(() => {
+        logger.info('HTTP server stopped accepting new connections');
+      });
+    }
+    
     // Stop resource monitoring
     if (global._monitor) {
       global._monitor.stop();
+      logger.info('Resource monitoring stopped');
+    }
+    
+    // Close Socket.IO
+    if (global._io) {
+      global._io.close();
+      logger.info('Socket.IO closed');
     }
     
     // Close Redis connection
@@ -486,31 +619,21 @@ async function shutdown(signal = 'SIGTERM') {
       logger.info('Database connection closed');
     }
     
-    // Close HTTP server
-    if (global._server) {
-      await new Promise((resolve) => {
-        global._server.close(resolve);
-      });
-      logger.info('HTTP server closed');
-    }
+    // Clear shutdown timeout
+    clearTimeout(shutdownTimeout);
     
-    // Close Socket.IO
-    if (global._io) {
-      global._io.close();
-      logger.info('Socket.IO closed');
-    }
-    
-    logger.info('Graceful shutdown completed');
+    logger.info('✅ Graceful shutdown completed');
     process.exit(0);
     
   } catch (error) {
     logger.error('Error during shutdown', { error: error.message });
+    clearTimeout(shutdownTimeout);
     process.exit(1);
   }
 }
 
 // Export for testing
-module.exports = { createApp, start, shutdown };
+module.exports = { createApp, start, shutdown, config };
 
 // Start server if this is the main module
 if (require.main === module) {
