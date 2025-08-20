@@ -535,8 +535,8 @@ router.post(
   '/reset-password/:token',
   [
     body('password')
-      .isLength({ min: 12, max: 128 })
-      .withMessage('Password must be 12-128 characters')
+      .isLength({ min: 6, max: 128 })
+      .withMessage('Password must be 6-128 characters')
       .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/)
       .withMessage('Password must contain upper, lower, number & special char'),
     body('confirmPassword').custom((val, { req }) => {
@@ -794,8 +794,8 @@ router.patch(
   [
     body('currentPassword').notEmpty().withMessage('Current password required'),
     body('newPassword')
-      .isLength({ min: 12, max: 128 })
-      .withMessage('Password must be 12-128 characters')
+      .isLength({ min: 6, max: 128 })
+      .withMessage('Password must be 6-128 characters')
       .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/)
       .withMessage('Password must contain upper, lower, number & special char'),
     body('confirmPassword').custom((val, { req }) => {
