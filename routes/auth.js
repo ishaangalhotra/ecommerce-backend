@@ -567,11 +567,10 @@ router.post(
 router.post(
   '/reset-password/:token',
   [
+    // Simplified password validation for better UX
     body('password')
       .isLength({ min: 6, max: 128 })
-      .withMessage('Password must be 6-128 characters')
-      .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/)
-      .withMessage('Password must contain upper, lower, number & special char'),
+      .withMessage('Password must be at least 6 characters long'),
     body('confirmPassword').custom((val, { req }) => {
       if (val !== req.body.password) throw new Error('Passwords do not match');
       return true;
@@ -629,7 +628,7 @@ router.post(
 
       // Use enhanced token response for immediate login
       await sendEnhancedTokenResponse(user, 200, res, false, { 
-        message: 'Password reset successful' 
+        message: 'Password reset successful. You are now logged in.' 
       });
       
     } catch (err) {
