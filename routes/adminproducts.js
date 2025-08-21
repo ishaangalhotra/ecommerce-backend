@@ -30,8 +30,8 @@ const adminProductLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => `admin:${req.user.id}:products`,
   // store: new rateLimit.RedisStore({
-    // client: redis,
-    // prefix: 'ratelimit:adminProducts'
+  //   client: redis,
+  //   prefix: 'ratelimit:adminProducts'
   // }),
   handler: (req, res) => {
     logger.warn('Admin product rate limit exceeded', {
@@ -74,6 +74,94 @@ const validate = (rules) => [
     next();
   }
 ];
+
+/**
+ * @route   POST /api/admin/products
+ * @desc    Create a new product (admin override)
+ * @access  Admin
+ */
+router.post(
+  '/',
+  validate([
+    body('seller').isMongoId().withMessage('Valid sellerId required'),
+    body('name').isString().trim().isLength({ min: 3, max: 100 }),
+    body('description').optional().isString().trim().isLength({ max: 5000 }),
+    body('price').isFloat({ min: 0 }).toFloat(),
+    body('stock').isInt({ min: 0 }).toInt(),
+    body('category').isMongoId().withMessage('Valid category required'),
+    body('tags').optional().isArray(),
+    body('status').optional().isIn(PRODUCT_STATUSES),
+    body('images').optional().isArray(),
+    body('images.*').optional().isObject()
+  ]),
+  clearCache,
+  asyncHandler(async (req, res) => {
+    const {
+      seller,
+      name,
+      description = '',
+      price,
+      stock,
+      category,
+      tags = [],
+      status = 'active',
+      images = [],
+      variants,
+      specifications,
+      isFeatured
+    } = req.body;
+
+    const { id: adminId } = req.user;
+
+    // (Optional) Validate category exists
+    const catExists = await Category.findById(category).select('_id').lean();
+    if (!catExists) {
+      return res.status(404).json({ success: false, message: 'Category not found' });
+    }
+
+    const product = await Product.create({
+      seller,
+      name,
+      description,
+      price,
+      stock,
+      category,
+      tags,
+      status,
+      images,          // [{ url, ... }]
+      variants,        // pass-through if your schema supports
+      specifications,  // pass-through if your schema supports
+      isFeatured,      // pass-through if your schema supports
+      auditLog: [{
+        action: 'created_by_admin',
+        user: adminId,
+        changedAt: new Date()
+      }]
+    });
+
+    // Notify seller that a product was created on their behalf (best-effort)
+    try {
+      await sendNotification({
+        userId: seller,
+        title: 'New Product Created',
+        message: `An admin created a new product "${name}" for your store`,
+        type: 'product_create',
+        metadata: { productId: product._id }
+      });
+    } catch (notifyErr) {
+      logger.warn('Failed to send product create notification', {
+        productId: product._id,
+        error: notifyErr.message
+      });
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Product created successfully by admin',
+      data: product
+    });
+  })
+);
 
 /**
  * @route   GET /api/admin/products
@@ -175,7 +263,7 @@ router.get(
       Product.countDocuments(query)
     ]);
 
-    // Add category tree for each product
+    // Add category tree for each product (if you use Category.getAncestors)
     if (category) {
       const categoryTree = await Category.getAncestors(category);
       products.forEach(product => {
@@ -321,11 +409,12 @@ router.put(
     body('stock').optional().isInt({ min: 0 }).toInt(),
     body('category').optional().isMongoId().withMessage('Invalid category ID'),
     body('images').optional().isArray(),
-    body('images.*').optional().isURL(),
+    body('images.*').optional().isURL().withMessage('images[*] must be URLs when provided as strings'),
     body('tags').optional().isArray(),
     body('tags.*').optional().isString().trim().escape(),
     body('specifications').optional().isArray(),
-    body('isFeatured').optional().isBoolean()
+    body('isFeatured').optional().isBoolean(),
+    body('status').optional().isIn(PRODUCT_STATUSES)
   ]),
   clearCache,
   asyncHandler(async (req, res) => {
@@ -342,7 +431,6 @@ router.put(
       });
     }
 
-    // Prepare update with audit log
     const updatedProduct = await Product.findByIdAndUpdate(
       id,
       {
