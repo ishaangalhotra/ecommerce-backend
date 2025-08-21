@@ -153,14 +153,14 @@ router.post(
         walletBalance: userRole === 'customer' ? 0 : undefined
       });
 
-      // Generate email verification token
+      // Generate email verification token (still generated but not required for sellers)
       const rawToken = crypto.randomBytes(32).toString('hex');
       user.emailVerificationToken = crypto.createHash('sha256').update(rawToken).digest('hex');
       user.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
 
       await user.save();
 
-      // Send verification email
+      // Send verification email (optional for sellers, they can login without it)
       try {
         await sendEmail({
           email: user.email,
@@ -178,20 +178,36 @@ router.post(
           ip: req.ip 
         });
 
+        // Different message for sellers vs customers
+        const message = userRole === 'seller' 
+          ? 'Registration successful! You can login immediately and start adding products.' 
+          : 'Registration successful! Please check your email to verify your account.';
+
         res.status(201).json({
           success: true,
-          message: 'Registration successful! Please check your email to verify your account.',
+          message,
           userId: user._id
         });
 
       } catch (emailError) {
         logger.error('Registration email failed', emailError);
-        await User.findByIdAndDelete(user._id); // Cleanup on email failure
         
-        return res.status(500).json({
-          success: false,
-          message: 'Registration failed - could not send verification email'
-        });
+        // For sellers, don't fail registration if email fails
+        if (userRole === 'seller') {
+          res.status(201).json({
+            success: true,
+            message: 'Registration successful! You can login and start adding products.',
+            userId: user._id
+          });
+        } else {
+          // For customers, still require email functionality
+          await User.findByIdAndDelete(user._id); // Cleanup on email failure
+          
+          return res.status(500).json({
+            success: false,
+            message: 'Registration failed - could not send verification email'
+          });
+        }
       }
 
     } catch (err) {
@@ -213,7 +229,7 @@ router.post(
 );
 
 /* =========================================================
-   2. LOGIN
+   2. LOGIN - MODIFIED TO SKIP EMAIL VERIFICATION FOR SELLERS
    ========================================================= */
 router.post(
   '/login',
@@ -244,7 +260,7 @@ router.post(
           user.loginAttempts = (user.loginAttempts || 0) + 1;
           
           if (user.loginAttempts >= 5) {
-            user.lockUntil = Date.now() + 15 * 60 * 1000; // 15 minutes
+            user.lockUntil = Date.now() + 15 * 60 * 60 * 1000; // 15 minutes
             await user.save();
             
             logger.warn(`Account locked due to failed attempts: ${user.email}`, {
@@ -272,12 +288,26 @@ router.post(
         });
       }
 
-      // Check if email is verified
-      if (!user.isVerified) {
+      // MODIFIED: Skip email verification for sellers/vendors
+      // Only require verification for customers
+      if (!user.isVerified && user.role === 'customer') {
         return res.status(403).json({
           success: false,
           message: 'Please verify your email before logging in',
           needsVerification: true
+        });
+      }
+
+      // For sellers/vendors, auto-verify if not already verified
+      if (!user.isVerified && (user.role === 'seller' || user.role === 'vendor')) {
+        user.isVerified = true;
+        user.verifiedAt = new Date();
+        user.emailVerificationToken = undefined;
+        user.emailVerificationExpires = undefined;
+        
+        logger.info(`Auto-verified seller account: ${user.email}`, { 
+          userId: user._id, 
+          ip: req.ip 
         });
       }
 
@@ -286,6 +316,9 @@ router.post(
         user.loginAttempts = 0;
         user.lockUntil = undefined;
       }
+
+      // Save any changes made above
+      await user.save();
 
       logger.info(`User logged in: ${user.email}`, { 
         userId: user._id, 
