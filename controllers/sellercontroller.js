@@ -3,6 +3,8 @@ const Category = require('../models/Category');
 const User = require('../models/User');
 const mongoose = require('mongoose');
 const logger = require('../utils/logger');
+const imagekit = require('../utils/imagekit');
+
 
 // Upload Product
 const uploadProduct = async (req, res) => {
@@ -31,11 +33,32 @@ const uploadProduct = async (req, res) => {
       });
     }
 
-    // Process uploaded images
-    const images = req.files ? req.files.map(file => ({
-      url: file.path || file.location,
-      alt: file.originalname
-    })) : [];
+    // Process uploaded images (ImageKit)
+    let images = [];
+    const allFiles = [
+      ...(req.files?.images || []),
+      ...(req.files?.image || []),
+    ];
+    if (allFiles.length) {
+      const folder = `products/${sellerId}`;
+      const uploads = allFiles.map((f, idx) =>
+        imagekit.upload({
+          file: f.buffer, // multer.memoryStorage()
+          fileName: `${Date.now()}_${idx}_${f.originalname}`.replace(/\s+/g, '_'),
+          folder,
+          useUniqueFileName: true
+        })
+      );
+      const results = await Promise.all(uploads);
+      images = results.map((r, idx) => ({
+        url: r.url,
+        publicId: r.fileId,        // from ImageKit, for delete later
+        alt: r.name || '',         // or leave blank
+        isPrimary: idx === 0,      // first image = primary
+        order: idx
+      }));
+    }
+
 
     // Create product slug
     const slug = name.toLowerCase()
@@ -48,7 +71,7 @@ const uploadProduct = async (req, res) => {
       description,
       price: parseFloat(price),
       originalPrice: comparePrice ? parseFloat(comparePrice) : null,
-      discountPercentage: comparePrice ? 
+      discountPercentage: comparePrice ?
         Math.round(((comparePrice - price) / comparePrice) * 100) : 0,
       images,
       category: categoryDoc._id,
@@ -223,11 +246,28 @@ const updateProduct = async (req, res) => {
     const sellerId = req.user.id;
     const updateData = req.body;
 
-    // Process uploaded images if any
-    if (req.files && req.files.length > 0) {
-      updateData.images = req.files.map(file => ({
-        url: file.path || file.location,
-        alt: file.originalname
+    // Process uploaded images if any (ImageKit + upload.fields)
+    if (req.files && (req.files.images?.length || req.files.image?.length)) {
+      const allFiles = [
+        ...(req.files.images || []),
+        ...(req.files.image || []),
+      ];
+      const folder = `products/${req.user.id}`;
+      const uploads = allFiles.map((f, idx) =>
+        imagekit.upload({
+          file: f.buffer,
+          fileName: `${Date.now()}_${idx}_${f.originalname}`.replace(/\s+/g, '_'),
+          folder,
+          useUniqueFileName: true
+        })
+      );
+      const results = await Promise.all(uploads);
+      updateData.images = results.map((r, idx) => ({
+        url: r.url,
+        publicId: r.fileId,
+        alt: r.name || '',
+        isPrimary: idx === 0,
+        order: idx
       }));
     }
 

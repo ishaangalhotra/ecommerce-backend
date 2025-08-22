@@ -23,6 +23,7 @@ const { PerformanceObserver, performance } = require('perf_hooks');
 const mongoose = require('mongoose');
 const logger = require('./utils/logger');
 
+
 // ================== CONFIG ==================
 const config = {
   NODE_ENV: process.env.NODE_ENV || 'development',
@@ -355,9 +356,13 @@ async function createApp() {
 
   // Load core routes with error handling
   const coreRoutes = [
-    { path: '/api/v1/auth', file: './routes/auth' },
-    { path: '/api/v1/imagekit', file: './routes/imagekit' }
-  ];
+  { path: '/api/v1/auth', file: './routes/auth' },
+  { path: '/api/v1/imagekit', file: './routes/imagekit' },
+  { path: '/api/v1/seller', file: './routes/seller.products' } // ✅ fixed comma
+];
+
+const skipFiles = ['auth.js', 'imagekit.js', 'index.js', 'seller.products.js'];
+
 
   for (const route of coreRoutes) {
     try {
@@ -380,7 +385,6 @@ async function createApp() {
 
   // Dynamic route loading with better error handling
   const routesPath = path.join(__dirname, 'routes');
-  const skipFiles = ['auth.js', 'imagekit.js', 'index.js'];
   
   if (fs.existsSync(routesPath)) {
     try {
