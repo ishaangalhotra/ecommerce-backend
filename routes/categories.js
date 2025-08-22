@@ -52,7 +52,7 @@ router.get('/', async (req, res) => {
 
     const [categories, totalCategories] = await Promise.all([
       query
-        .populate('parent', 'name slug')
+        .populate('parentCategory', 'name slug')
         .populate('children', 'name slug isActive')
         .sort({ order: 1, name: 1 })
         .skip(skip)
@@ -116,7 +116,7 @@ router.get('/:id', async (req, res) => {
         .lean();
     } else {
       category = await Category.findOne({ slug: id })
-        .populate('parent', 'name slug')
+        .populate('parentCategory', 'name slug')
         .populate('children', 'name slug isActive')
         .lean();
     }

@@ -106,7 +106,7 @@ const sendEnhancedTokenResponse = async (user, statusCode, res, remember = false
 };
 
 /* =========================================================
-   1. REGISTER
+   1. REGISTER - MODIFIED FOR NO EMAIL VERIFICATION FOR SELLERS
    ========================================================= */
 router.post(
   '/register',
@@ -114,11 +114,9 @@ router.post(
   [
     body('name').trim().isLength({ min: 2, max: 50 }).withMessage('Name must be 2-50 characters'),
     body('email').isEmail().normalizeEmail().withMessage('Valid email required'),
-    // UPDATED: Simplified password validation
     body('password')
       .isLength({ min: 6, max: 128 })
       .withMessage('Password must be at least 6 characters'),
-    // UPDATED: Allow 'vendor' from frontend
     body('role').isIn(['customer', 'seller', 'vendor']).withMessage('Role must be customer, seller, or vendor'),
     body('phone').optional().isMobilePhone('en-IN').withMessage('Enter a valid phone number')
   ],
@@ -131,7 +129,7 @@ router.post(
 
       const { name, email, password, phone } = req.body;
 
-      // UPDATED: Map 'vendor' to 'seller' for database consistency
+      // Map 'vendor' to 'seller' for database consistency
       const userRole = req.body.role === 'vendor' ? 'seller' : req.body.role;
 
       // Check if user already exists
@@ -153,54 +151,62 @@ router.post(
         walletBalance: userRole === 'customer' ? 0 : undefined
       });
 
-      // Generate email verification token (still generated but not required for sellers)
-      const rawToken = crypto.randomBytes(32).toString('hex');
-      user.emailVerificationToken = crypto.createHash('sha256').update(rawToken).digest('hex');
-      user.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
-
-      await user.save();
-
-      // Send verification email (optional for sellers, they can login without it)
-      try {
-        await sendEmail({
-          email: user.email,
-          subject: 'Verify Your Email - QuickLocal',
-          template: 'verify-email',
-          data: {
-            name: user.name,
-            verificationUrl: `${process.env.CLIENT_URL}/verify-email/${rawToken}`
-          }
-        });
-
-        logger.info(`User registered: ${user.email}`, { 
+      // MODIFIED: Handle sellers vs customers differently
+      if (userRole === 'seller') {
+        // Auto-verify sellers immediately - NO EMAIL PROCESS
+        user.isVerified = true;
+        user.verifiedAt = new Date();
+        // Don't generate verification tokens for sellers
+        user.emailVerificationToken = undefined;
+        user.emailVerificationExpires = undefined;
+        
+        await user.save();
+        
+        logger.info(`Seller registered and auto-verified: ${user.email}`, { 
           userId: user._id, 
           role: user.role, 
           ip: req.ip 
         });
 
-        // Different message for sellers vs customers
-        const message = userRole === 'seller' 
-          ? 'Registration successful! You can login immediately and start adding products.' 
-          : 'Registration successful! Please check your email to verify your account.';
-
-        res.status(201).json({
+        return res.status(201).json({
           success: true,
-          message,
+          message: 'Registration successful! You can login immediately and start adding products.',
           userId: user._id
         });
-
-      } catch (emailError) {
-        logger.error('Registration email failed', emailError);
         
-        // For sellers, don't fail registration if email fails
-        if (userRole === 'seller') {
+      } else {
+        // For customers, keep the existing email verification process
+        const rawToken = crypto.randomBytes(32).toString('hex');
+        user.emailVerificationToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+        user.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+
+        await user.save();
+
+        try {
+          await sendEmail({
+            email: user.email,
+            subject: 'Verify Your Email - QuickLocal',
+            template: 'verify-email',
+            data: {
+              name: user.name,
+              verificationUrl: `${process.env.CLIENT_URL}/verify-email/${rawToken}`
+            }
+          });
+
+          logger.info(`Customer registered: ${user.email}`, { 
+            userId: user._id, 
+            role: user.role, 
+            ip: req.ip 
+          });
+
           res.status(201).json({
             success: true,
-            message: 'Registration successful! You can login and start adding products.',
+            message: 'Registration successful! Please check your email to verify your account.',
             userId: user._id
           });
-        } else {
-          // For customers, still require email functionality
+
+        } catch (emailError) {
+          logger.error('Registration email failed', emailError);
           await User.findByIdAndDelete(user._id); // Cleanup on email failure
           
           return res.status(500).json({
@@ -229,7 +235,7 @@ router.post(
 );
 
 /* =========================================================
-   2. LOGIN - MODIFIED TO SKIP EMAIL VERIFICATION FOR SELLERS
+   2. LOGIN - SIMPLIFIED SINCE SELLERS ARE ALWAYS VERIFIED
    ========================================================= */
 router.post(
   '/login',
@@ -288,8 +294,8 @@ router.post(
         });
       }
 
-      // MODIFIED: Skip email verification for sellers/vendors
-      // Only require verification for customers
+      // SIMPLIFIED: Only customers need email verification
+      // Sellers are always verified upon registration
       if (!user.isVerified && user.role === 'customer') {
         return res.status(403).json({
           success: false,
@@ -298,27 +304,12 @@ router.post(
         });
       }
 
-      // For sellers/vendors, auto-verify if not already verified
-      if (!user.isVerified && (user.role === 'seller' || user.role === 'vendor')) {
-        user.isVerified = true;
-        user.verifiedAt = new Date();
-        user.emailVerificationToken = undefined;
-        user.emailVerificationExpires = undefined;
-        
-        logger.info(`Auto-verified seller account: ${user.email}`, { 
-          userId: user._id, 
-          ip: req.ip 
-        });
-      }
-
       // Reset login attempts on successful login
       if (user.loginAttempts > 0) {
         user.loginAttempts = 0;
         user.lockUntil = undefined;
+        await user.save();
       }
-
-      // Save any changes made above
-      await user.save();
 
       logger.info(`User logged in: ${user.email}`, { 
         userId: user._id, 
@@ -447,7 +438,7 @@ router.post(
 );
 
 /* =========================================================
-   5. VERIFY-EMAIL
+   5. VERIFY-EMAIL (Only for customers now)
    ========================================================= */
 router.post('/verify-email/:token', async (req, res) => {
   try {
@@ -507,7 +498,7 @@ router.post('/verify-email/:token', async (req, res) => {
 });
 
 /* =========================================================
-   6. RESEND-VERIFICATION-EMAIL
+   6. RESEND-VERIFICATION-EMAIL (Only for customers now)
    ========================================================= */
 router.post(
   '/resend-verification',
@@ -529,6 +520,14 @@ router.post(
         return res.status(400).json({ 
           success: false, 
           message: 'Email is already verified' 
+        });
+      }
+
+      // Only allow resend for customers (sellers are auto-verified)
+      if (user.role === 'seller') {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Seller accounts do not require email verification' 
         });
       }
 
