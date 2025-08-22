@@ -1,4 +1,4 @@
-// routes/categories.js  — FIXED (no children populate + route order)
+// routes/categories.js — aligned to model.parentCategory
 const express = require('express');
 const mongoose = require('mongoose');
 const Category = require('../models/Category');
@@ -7,27 +7,37 @@ const { protect, authorize } = require('../middleware/authMiddleware');
 const { body, validationResult } = require('express-validator');
 const router = express.Router();
 
+/** Helper: read query param with backward compatibility */
+function readParentParam(req) {
+  // prefer parentCategory, fallback to parent
+  return typeof req.query.parentCategory !== 'undefined'
+    ? req.query.parentCategory
+    : req.query.parent;
+}
+
 // ==================== GET ALL CATEGORIES ====================
 router.get('/', async (req, res) => {
   try {
-    const { 
-      page = 1, 
-      limit = 50, 
-      search, 
-      parent,
+    const {
+      page = 1,
+      limit = 50,
+      search,
       featured,
-      active = true 
+      active = true
     } = req.query;
 
+    const parentParam = readParentParam(req);
     const filters = {};
+
+    // These require the fields to exist in your schema:
     if (active === 'true') filters.isActive = true;
     if (featured === 'true') filters.isFeatured = true;
 
-    if (parent) {
-      if (parent === 'null' || parent === 'root') {
-        filters.parent = null;
-      } else if (mongoose.isValidObjectId(parent)) {
-        filters.parent = parent;
+    if (typeof parentParam !== 'undefined') {
+      if (parentParam === 'null' || parentParam === 'root') {
+        filters.parentCategory = null;
+      } else if (mongoose.isValidObjectId(parentParam)) {
+        filters.parentCategory = parentParam;
       }
     }
 
@@ -47,7 +57,7 @@ router.get('/', async (req, res) => {
 
     const [categories, totalCategories] = await Promise.all([
       query
-        .populate('parent', 'name slug') // fixed: parentCategory -> parent
+        .populate('parentCategory', 'name slug') // ✅ correct field
         .sort({ order: 1, name: 1 })
         .skip(skip)
         .limit(parseInt(limit))
@@ -58,9 +68,9 @@ router.get('/', async (req, res) => {
     // Add product counts to each category
     const categoriesWithCounts = await Promise.all(
       categories.map(async (category) => {
-        const productCount = await Product.countDocuments({ 
-          category: category._id, 
-          status: 'active' 
+        const productCount = await Product.countDocuments({
+          category: category._id,
+          status: 'active'
         });
         return { ...category, productCount, id: category._id };
       })
@@ -79,7 +89,6 @@ router.get('/', async (req, res) => {
         }
       }
     });
-
   } catch (error) {
     console.error('Error fetching categories:', error);
     res.status(500).json({
@@ -97,13 +106,13 @@ router.get('/tree/hierarchy', async (req, res) => {
       .sort({ order: 1, name: 1 })
       .lean();
 
-    // Build tree structure from parent links
+    // Build tree structure using parentCategory links
     const buildTree = (items, parentId = null) => {
       return items
-        .filter(item => 
-          parentId === null 
-            ? !item.parent 
-            : item.parent && item.parent.toString() === parentId
+        .filter(item =>
+          parentId === null
+            ? !item.parentCategory
+            : item.parentCategory && item.parentCategory.toString() === parentId
         )
         .map(item => ({
           id: item._id,
@@ -123,7 +132,6 @@ router.get('/tree/hierarchy', async (req, res) => {
       message: 'Category tree retrieved successfully',
       data: categoryTree
     });
-
   } catch (error) {
     console.error('Error fetching category tree:', error);
     res.status(500).json({
@@ -139,20 +147,20 @@ router.get('/featured/list', async (req, res) => {
   try {
     const { limit = 10 } = req.query;
 
-    const categories = await Category.find({ 
-      isActive: true, 
-      isFeatured: true 
+    const categories = await Category.find({
+      isActive: true,
+      isFeatured: true
     })
-      .populate('parent', 'name slug')
+      .populate('parentCategory', 'name slug') // ✅
       .sort({ order: 1, name: 1 })
       .limit(parseInt(limit))
       .lean();
 
     const categoriesWithCounts = await Promise.all(
       categories.map(async (category) => {
-        const productCount = await Product.countDocuments({ 
-          category: category._id, 
-          status: 'active' 
+        const productCount = await Product.countDocuments({
+          category: category._id,
+          status: 'active'
         });
         return {
           id: category._id,
@@ -160,7 +168,7 @@ router.get('/featured/list', async (req, res) => {
           slug: category.slug,
           description: category.description,
           image: category.image,
-          parent: category.parent,
+          parentCategory: category.parentCategory,
           productCount
         };
       })
@@ -171,7 +179,6 @@ router.get('/featured/list', async (req, res) => {
       message: 'Featured categories retrieved successfully',
       data: categoriesWithCounts
     });
-
   } catch (error) {
     console.error('Error fetching featured categories:', error);
     res.status(500).json({
@@ -191,11 +198,11 @@ router.get('/:id', async (req, res) => {
     let category;
     if (mongoose.isValidObjectId(id)) {
       category = await Category.findById(id)
-        .populate('parent', 'name slug')
+        .populate('parentCategory', 'name slug') // ✅
         .lean();
     } else {
       category = await Category.findOne({ slug: id })
-        .populate('parent', 'name slug') // fixed: parentCategory -> parent
+        .populate('parentCategory', 'name slug') // ✅
         .lean();
     }
 
@@ -206,17 +213,17 @@ router.get('/:id', async (req, res) => {
       });
     }
 
-    const productCount = await Product.countDocuments({ 
-      category: category._id, 
-      status: 'active' 
+    const productCount = await Product.countDocuments({
+      category: category._id,
+      status: 'active'
     });
 
     const result = { ...category, productCount, id: category._id };
 
     if (includeProducts === 'true') {
-      const products = await Product.find({ 
-        category: category._id, 
-        status: 'active' 
+      const products = await Product.find({
+        category: category._id,
+        status: 'active'
       })
         .select('name price images stock averageRating totalReviews slug discountPercentage')
         .sort({ createdAt: -1 })
@@ -227,9 +234,10 @@ router.get('/:id', async (req, res) => {
         id: product._id,
         name: product.name,
         price: product.price,
-        finalPrice: product.discountPercentage > 0 
-          ? product.price - (product.price * product.discountPercentage / 100)
-          : product.price,
+        finalPrice:
+          product.discountPercentage > 0
+            ? product.price - (product.price * product.discountPercentage / 100)
+            : product.price,
         discountPercentage: product.discountPercentage,
         isOnSale: product.discountPercentage > 0,
         images: Array.isArray(product.images) ? product.images.slice(0, 1) : [],
@@ -246,7 +254,6 @@ router.get('/:id', async (req, res) => {
       message: 'Category retrieved successfully',
       data: result
     });
-
   } catch (error) {
     console.error('Error fetching category:', error);
     res.status(500).json({
@@ -264,7 +271,9 @@ router.post('/', [
   body('name').trim().isLength({ min: 2, max: 100 }).withMessage('Category name must be 2-100 characters'),
   body('description').optional().trim().isLength({ max: 500 }).withMessage('Description cannot exceed 500 characters'),
   body('slug').optional().trim().matches(/^[a-z0-9-]+$/).withMessage('Slug must contain only lowercase letters, numbers, and hyphens'),
-  body('parent').optional().isMongoId().withMessage('Invalid parent category ID'),
+  // accept parent or parentCategory
+  body('parentCategory').optional().isMongoId().withMessage('Invalid parent category ID'),
+  body('parent').optional().isMongoId().withMessage('Invalid parent category ID (legacy param)'),
   body('order').optional().isInt({ min: 0 }).withMessage('Order must be a positive integer'),
   body('isActive').optional().isBoolean().withMessage('isActive must be a boolean'),
   body('isFeatured').optional().isBoolean().withMessage('isFeatured must be a boolean')
@@ -275,7 +284,19 @@ router.post('/', [
       return res.status(400).json({ success: false, error: 'Validation failed', details: errors.array() });
     }
 
-    const { name, description, slug, parent, order = 0, isActive = true, isFeatured = false, image } = req.body;
+    const {
+      name,
+      description,
+      slug,
+      parentCategory: pc, // preferred
+      parent,             // legacy
+      order = 0,
+      isActive = true,
+      isFeatured = false,
+      image
+    } = req.body;
+
+    const parentCategory = pc || parent || null;
 
     // Generate slug if not provided
     let categorySlug = slug || name.toLowerCase()
@@ -291,16 +312,22 @@ router.post('/', [
     }
 
     // Validate parent if provided
-    if (parent) {
-      const parentCategory = await Category.findById(parent);
-      if (!parentCategory) {
+    if (parentCategory) {
+      const parentDoc = await Category.findById(parentCategory);
+      if (!parentDoc) {
         return res.status(400).json({ success: false, error: 'Parent category not found' });
       }
     }
 
     const category = await Category.create({
-      name, description, slug: categorySlug, parent: parent || null,
-      order, isActive, isFeatured, image
+      name,
+      description,
+      slug: categorySlug,
+      parentCategory: parentCategory || null, // ✅
+      order,
+      isActive,
+      isFeatured,
+      image
     });
 
     res.status(201).json({
@@ -311,7 +338,7 @@ router.post('/', [
         name: category.name,
         slug: category.slug,
         description: category.description,
-        parent: category.parent,
+        parentCategory: category.parentCategory, // ✅
         order: category.order,
         isActive: category.isActive,
         isFeatured: category.isFeatured,
@@ -319,7 +346,6 @@ router.post('/', [
         createdAt: category.createdAt
       }
     });
-
   } catch (error) {
     console.error('Error creating category:', error);
     res.status(500).json({ success: false, error: 'Failed to create category', message: error.message });
@@ -333,7 +359,8 @@ router.put('/:id', [
   body('name').optional().trim().isLength({ min: 2, max: 100 }).withMessage('Category name must be 2-100 characters'),
   body('description').optional().trim().isLength({ max: 500 }).withMessage('Description cannot exceed 500 characters'),
   body('slug').optional().trim().matches(/^[a-z0-9-]+$/).withMessage('Slug must contain only lowercase letters, numbers, and hyphens'),
-  body('parent').optional().isMongoId().withMessage('Invalid parent category ID'),
+  body('parentCategory').optional().isMongoId().withMessage('Invalid parent category ID'),
+  body('parent').optional().isMongoId().withMessage('Invalid parent category ID (legacy param)'),
   body('order').optional().isInt({ min: 0 }).withMessage('Order must be a positive integer'),
   body('isActive').optional().isBoolean().withMessage('isActive must be a boolean'),
   body('isFeatured').optional().isBoolean().withMessage('isFeatured must be a boolean')
@@ -360,20 +387,26 @@ router.put('/:id', [
       }
     }
 
+    // normalize parentCategory with legacy 'parent'
+    if (typeof updateData.parentCategory === 'undefined' && typeof updateData.parent !== 'undefined') {
+      updateData.parentCategory = updateData.parent;
+    }
+
     // handle parent updates
-    if (updateData.parent && updateData.parent !== category.parent?.toString()) {
-      if (updateData.parent === 'null') {
-        updateData.parent = null;
+    if (typeof updateData.parentCategory !== 'undefined'
+        && updateData.parentCategory !== category.parentCategory?.toString()) {
+      if (updateData.parentCategory === 'null') {
+        updateData.parentCategory = null;
       } else {
-        const parentCategory = await Category.findById(updateData.parent);
-        if (!parentCategory) {
+        const parentDoc = await Category.findById(updateData.parentCategory);
+        if (!parentDoc) {
           return res.status(400).json({ success: false, error: 'Parent category not found' });
         }
       }
     }
 
     const updated = await Category.findByIdAndUpdate(id, updateData, { new: true, runValidators: true })
-      .populate('parent', 'name slug');
+      .populate('parentCategory', 'name slug'); // ✅
 
     res.json({
       success: true,
@@ -383,7 +416,7 @@ router.put('/:id', [
         name: updated.name,
         slug: updated.slug,
         description: updated.description,
-        parent: updated.parent,
+        parentCategory: updated.parentCategory, // ✅
         order: updated.order,
         isActive: updated.isActive,
         isFeatured: updated.isFeatured,
@@ -391,7 +424,6 @@ router.put('/:id', [
         updatedAt: updated.updatedAt
       }
     });
-
   } catch (error) {
     console.error('Error updating category:', error);
     res.status(500).json({ success: false, error: 'Failed to update category', message: error.message });
@@ -417,7 +449,7 @@ router.delete('/:id', [protect, authorize('admin')], async (req, res) => {
       });
     }
 
-    const childrenCount = await Category.countDocuments({ parent: id });
+    const childrenCount = await Category.countDocuments({ parentCategory: id }); // ✅
     if (childrenCount > 0) {
       return res.status(400).json({
         success: false,
@@ -429,7 +461,6 @@ router.delete('/:id', [protect, authorize('admin')], async (req, res) => {
     await Category.findByIdAndDelete(id);
 
     res.json({ success: true, message: 'Category deleted successfully' });
-
   } catch (error) {
     console.error('Error deleting category:', error);
     res.status(500).json({ success: false, error: 'Failed to delete category', message: error.message });
