@@ -361,7 +361,7 @@ async function createApp() {
   { path: '/api/v1/seller', file: './routes/seller.products' } // ✅ fixed comma
 ];
 
-const skipFiles = ['auth.js', 'imagekit.js', 'index.js', 'seller.products.js'];
+const skipFiles = ['auth.js', 'imagekit.js', 'index.js', 'seller.products.js', 'seller.js'];
 
 
   for (const route of coreRoutes) {
