@@ -82,6 +82,7 @@ try {
 // ===== Controller (with presence checks) =====
 let sellerCtrl;
 let controllerModuleLoaded = false;
+const sellerOrders = require('../controllers/sellerOrdersController'); // <-- ADDED
 
 try {
   sellerCtrl = require('../controllers/sellercontroller');
@@ -475,60 +476,35 @@ router.get('/health', (req, res) => {
   res.status(httpStatus).json(status);
 });
 
-// --- TEMP STUBS: Add these to keep the UI working until Order model is ready ---
 
-// GET /api/v1/seller/orders
+// --- REAL SELLER ORDERS & CUSTOMERS ROUTES ---
 router.get(
   '/orders',
   systemHealthCheck,
   protect,
   authorize('seller', 'admin'),
-  logRequest('Seller orders (stub)'),
-  asyncHandler(async (req, res) => {
-    // Return a valid empty list to prevent frontend 404 errors
-    res.json({
-      success: true,
-      message: 'Orders retrieved (stub)',
-      data: { orders: [] } 
-    });
-  })
+  logRequest('Seller orders'),
+  asyncHandler(sellerOrders.listSellerOrders)
 );
 
-// GET /api/v1/seller/customers
-router.get(
-  '/customers',
-  systemHealthCheck,
-  protect,
-  authorize('seller', 'admin'),
-  logRequest('Seller customers (stub)'),
-  asyncHandler(async (req, res) => {
-    // Return a valid empty list to prevent frontend 404 errors
-    res.json({
-      success: true,
-      message: 'Customers retrieved (stub)',
-      data: { customers: [] }
-    });
-  })
-);
-
-// PATCH /api/v1/seller/orders/:id/status
 router.patch(
   '/orders/:id/status',
   systemHealthCheck,
   protect,
   authorize('seller', 'admin'),
-  validateObjectId('id'), // Validate the order ID from params
-  logRequest('Update order status (stub)'),
-  asyncHandler(async (req, res) => {
-    res.json({ 
-        success: true, 
-        message: 'Order status updated (stub)', 
-        data: { id: req.params.id, newStatus: 'processing' } 
-    });
-  })
+  validateObjectId('id'),
+  logRequest('Update order status'),
+  asyncHandler(sellerOrders.updateOrderStatusForSeller)
 );
 
-// --- End of TEMP STUBS ---
+router.get(
+  '/customers',
+  systemHealthCheck,
+  protect,
+  authorize('seller', 'admin'),
+  logRequest('Seller customers'),
+  asyncHandler(sellerOrders.listSellerCustomers)
+);
 
 
 // Handle 404 for unmatched routes within this router
@@ -548,7 +524,7 @@ router.use('*', (req, res) => {
       'PATCH /seller/products/bulk',
       'GET /seller/dashboard',
       'GET /seller/products/:productId/analytics',
-      // Added for clarity
+      // Real endpoints now
       'GET /seller/orders',
       'GET /seller/customers',
       'PATCH /seller/orders/:id/status'
