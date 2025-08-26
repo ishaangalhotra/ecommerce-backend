@@ -475,6 +475,62 @@ router.get('/health', (req, res) => {
   res.status(httpStatus).json(status);
 });
 
+// --- TEMP STUBS: Add these to keep the UI working until Order model is ready ---
+
+// GET /api/v1/seller/orders
+router.get(
+  '/orders',
+  systemHealthCheck,
+  protect,
+  authorize('seller', 'admin'),
+  logRequest('Seller orders (stub)'),
+  asyncHandler(async (req, res) => {
+    // Return a valid empty list to prevent frontend 404 errors
+    res.json({
+      success: true,
+      message: 'Orders retrieved (stub)',
+      data: { orders: [] } 
+    });
+  })
+);
+
+// GET /api/v1/seller/customers
+router.get(
+  '/customers',
+  systemHealthCheck,
+  protect,
+  authorize('seller', 'admin'),
+  logRequest('Seller customers (stub)'),
+  asyncHandler(async (req, res) => {
+    // Return a valid empty list to prevent frontend 404 errors
+    res.json({
+      success: true,
+      message: 'Customers retrieved (stub)',
+      data: { customers: [] }
+    });
+  })
+);
+
+// PATCH /api/v1/seller/orders/:id/status
+router.patch(
+  '/orders/:id/status',
+  systemHealthCheck,
+  protect,
+  authorize('seller', 'admin'),
+  validateObjectId('id'), // Validate the order ID from params
+  logRequest('Update order status (stub)'),
+  asyncHandler(async (req, res) => {
+    res.json({ 
+        success: true, 
+        message: 'Order status updated (stub)', 
+        data: { id: req.params.id, newStatus: 'processing' } 
+    });
+  })
+);
+
+// --- End of TEMP STUBS ---
+
+
 // Handle 404 for unmatched routes within this router
 router.use('*', (req, res) => {
   res.status(404).json({
@@ -491,7 +547,11 @@ router.use('*', (req, res) => {
       'DELETE /seller/products/:productId',
       'PATCH /seller/products/bulk',
       'GET /seller/dashboard',
-      'GET /seller/products/:productId/analytics'
+      'GET /seller/products/:productId/analytics',
+      // Added for clarity
+      'GET /seller/orders',
+      'GET /seller/customers',
+      'PATCH /seller/orders/:id/status'
     ]
   });
 });
