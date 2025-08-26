@@ -1,20 +1,96 @@
 const Product = require('../models/Product');
 const Category = require('../models/Category');
-const User = require('../models/User');
 const mongoose = require('mongoose');
 const logger = require('../utils/logger');
 const imagekit = require('../utils/imagekit');
+const { body, validationResult } = require('express-validator');
 
+// Input validation rules
+const validateProduct = [
+  body('name')
+    .notEmpty()
+    .withMessage('Product name is required')
+    .isLength({ max: 100 })
+    .withMessage('Product name must be less than 100 characters'),
+  body('description')
+    .optional()
+    .isLength({ max: 1000 })
+    .withMessage('Description must be less than 1000 characters'),
+  body('price')
+    .isFloat({ min: 0 })
+    .withMessage('Price must be a positive number'),
+  // Accept BOTH fields; keep backward compatibility
+  body('comparePrice')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('Compare price must be a positive number'),
+  body('originalPrice')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('Original price must be a positive number'),
+  body().custom((val) => {
+    const price = Number(val.price);
+    const op = val.originalPrice != null ? Number(val.originalPrice)
+             : val.comparePrice != null ? Number(val.comparePrice)
+             : null;
+    if (op != null && price > op) {
+      throw new Error('Price cannot be greater than original/compare price');
+    }
+    return true;
+  }),
+  body('costPerItem')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('Cost per item must be a positive number'),
+  body('stock')
+    .isInt({ min: 0 })
+    .withMessage('Stock must be a non-negative integer'),
+  body('category')
+    .isMongoId()
+    .withMessage('Invalid category ID'),
+  body('tags')
+    .optional()
+    .custom((val) => Array.isArray(val) || typeof val === 'string')
+    .withMessage('Tags must be an array or a comma-separated string'),
+  body('isPublished')
+    .optional()
+    .isBoolean()
+    .withMessage('isPublished must be a boolean'),
+];
+
+// Helper function to normalize tags
+const normalizeTags = (tags) => {
+  if (!tags) return [];
+  
+  return Array.isArray(tags)
+    ? tags.map(t => String(t).trim().toLowerCase()).filter(Boolean)
+    : String(tags)
+        .split(',')
+        .map(t => t.trim().toLowerCase())
+        .filter(Boolean);
+};
 
 // Upload Product
 const uploadProduct = async (req, res) => {
   try {
+    // Check for validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
+
     const sellerId = req.user.id;
     const {
       name,
       description,
       price,
-      comparePrice,
+      // accept either/or from the client for backward compatibility
+      originalPrice: originalPriceBody,
+      comparePrice: comparePriceBody,
       costPerItem,
       stock,
       category,
@@ -39,11 +115,36 @@ const uploadProduct = async (req, res) => {
       ...(req.files?.images || []),
       ...(req.files?.image || []),
     ];
+    
+    // Align with router: allow up to 8 images
+    if (allFiles.length > 8) {
+      return res.status(400).json({
+        success: false,
+        message: 'Maximum 8 images allowed per product'
+      });
+    }
+    
     if (allFiles.length) {
+      // Validate file types and sizes
+      for (const file of allFiles) {
+        if (!file.mimetype.startsWith('image/')) {
+          return res.status(400).json({
+            success: false,
+            message: 'Only image files are allowed'
+          });
+        }
+        if (file.size > 5 * 1024 * 1024) { // 5MB limit
+          return res.status(400).json({
+            success: false,
+            message: 'Image size must be less than 5MB'
+          });
+        }
+      }
+
       const folder = `products/${sellerId}`;
       const uploads = allFiles.map((f, idx) =>
         imagekit.upload({
-          file: f.buffer, // multer.memoryStorage()
+          file: f.buffer,
           fileName: `${Date.now()}_${idx}_${f.originalname}`.replace(/\s+/g, '_'),
           folder,
           useUniqueFileName: true
@@ -52,37 +153,48 @@ const uploadProduct = async (req, res) => {
       const results = await Promise.all(uploads);
       images = results.map((r, idx) => ({
         url: r.url,
-        publicId: r.fileId,        // from ImageKit, for delete later
-        alt: r.name || '',         // or leave blank
-        isPrimary: idx === 0,      // first image = primary
+        publicId: r.fileId,
+        alt: r.name || '',
+        isPrimary: idx === 0,
         order: idx
       }));
     }
-
 
     // Create product slug
     const slug = name.toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)/g, '') + '-' + Date.now();
 
-    // Create product
+    // Normalize original price using either field
+    const productPrice = Number(price);
+    const originalPrice =
+      originalPriceBody != null ? Number(originalPriceBody)
+      : comparePriceBody != null ? Number(comparePriceBody)
+      : null;
+
+    // Calculate discount percentage safely
+    let discountPercentage = 0;
+    if (originalPrice != null && originalPrice > 0 && productPrice < originalPrice) {
+      discountPercentage = Math.round(((originalPrice - productPrice) / originalPrice) * 100);
+    }
+
+    // Create product with improved number conversion and tag normalization
     const product = new Product({
-      name,
-      description,
-      price: parseFloat(price),
-      originalPrice: comparePrice ? parseFloat(comparePrice) : null,
-      discountPercentage: comparePrice ?
-        Math.round(((comparePrice - price) / comparePrice) * 100) : 0,
+      name: name.trim(),
+      description: description ? description.trim() : '',
+      price: productPrice,
+      originalPrice,
+      discountPercentage,
       images,
       category: categoryDoc._id,
       seller: sellerId,
-      stock: parseInt(stock),
-      tags,
-      status: 'active', // Always save as active for immediate visibility
+      stock: Number(stock),
+      tags: normalizeTags(tags),
+      status: (String(isPublished) === 'true') ? 'active' : 'draft',
       slug,
       variants,
       shipping,
-      costPerItem: costPerItem ? parseFloat(costPerItem) : null,
+      costPerItem: costPerItem != null ? Number(costPerItem) : null,
       sellerLocation: req.user.location || {
         type: 'Point',
         coordinates: [0, 0]
@@ -147,6 +259,10 @@ const getMyProducts = async (req, res) => {
       search
     } = req.query;
 
+    // Validate pagination parameters
+    const pageNum = Math.max(1, parseInt(page));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit))); // Max 100 items per page
+
     // Build query
     const query = { seller: sellerId };
     
@@ -154,48 +270,54 @@ const getMyProducts = async (req, res) => {
       query.status = status;
     }
     
-    if (category) {
+    if (category && mongoose.Types.ObjectId.isValid(category)) {
       query.category = category;
     }
     
-    if (minPrice || maxPrice) {
+    if (minPrice != null || maxPrice != null) {
       query.price = {};
-      if (minPrice) query.price.$gte = parseFloat(minPrice);
-      if (maxPrice) query.price.$lte = parseFloat(maxPrice);
+      if (minPrice != null) query.price.$gte = Number(minPrice);
+      if (maxPrice != null) query.price.$lte = Number(maxPrice);
     }
     
-    if (minStock || maxStock) {
+    if (minStock != null || maxStock != null) {
       query.stock = {};
-      if (minStock) query.stock.$gte = parseInt(minStock);
-      if (maxStock) query.stock.$lte = parseInt(maxStock);
+      if (minStock != null) query.stock.$gte = Number(minStock);
+      if (maxStock != null) query.stock.$lte = Number(maxStock);
     }
 
     // Search functionality
     if (search) {
+      const searchRegex = new RegExp(search.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'i');
       query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-        { tags: { $in: [new RegExp(search, 'i')] } }
+        { name: { $regex: searchRegex } },
+        { description: { $regex: searchRegex } },
+        { tags: { $in: [searchRegex] } }
       ];
     }
 
     // Build sort
     const sort = {};
-    sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
+    const validSortFields = ['name', 'price', 'stock', 'createdAt', 'updatedAt', 'views'];
+    if (validSortFields.includes(sortBy)) {
+      sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
+    } else {
+      sort.createdAt = -1; // Default sort
+    }
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
 
     const [products, totalProducts] = await Promise.all([
       Product.find(query)
         .populate('category', 'name slug')
         .sort(sort)
         .skip(skip)
-        .limit(parseInt(limit))
+        .limit(limitNum)
         .lean(),
       Product.countDocuments(query)
     ]);
 
-    const totalPages = Math.ceil(totalProducts / parseInt(limit));
+    const totalPages = Math.ceil(totalProducts / limitNum);
 
     res.json({
       success: true,
@@ -219,12 +341,12 @@ const getMyProducts = async (req, res) => {
           totalReviews: product.totalReviews || 0
         })),
         pagination: {
-          currentPage: parseInt(page),
+          currentPage: pageNum,
           totalPages,
           totalProducts,
-          hasNextPage: parseInt(page) < totalPages,
-          hasPrevPage: parseInt(page) > 1,
-          limit: parseInt(limit)
+          hasNextPage: pageNum < totalPages,
+          hasPrevPage: pageNum > 1,
+          limit: limitNum
         }
       }
     });
@@ -244,7 +366,32 @@ const updateProduct = async (req, res) => {
   try {
     const { productId } = req.params;
     const sellerId = req.user.id;
-    const updateData = req.body;
+
+    // Validate productId
+    if (!mongoose.Types.ObjectId.isValid(productId)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid productId' 
+      });
+    }
+
+    // Check for validation errors
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
+
+    const updateData = { ...req.body };
+
+    // Normalize comparePrice -> originalPrice for consistency with create()
+    if (updateData.comparePrice != null && updateData.originalPrice == null) {
+      updateData.originalPrice = Number(updateData.comparePrice);
+      delete updateData.comparePrice;
+    }
 
     // Process uploaded images if any (ImageKit + upload.fields)
     if (req.files && (req.files.images?.length || req.files.image?.length)) {
@@ -252,6 +399,31 @@ const updateProduct = async (req, res) => {
         ...(req.files.images || []),
         ...(req.files.image || []),
       ];
+      
+      // Limit uploaded file count
+      if (allFiles.length > 8) {
+        return res.status(400).json({
+          success: false,
+          message: 'Maximum 8 images allowed per product'
+        });
+      }
+      
+      // Validate file types and sizes
+      for (const file of allFiles) {
+        if (!file.mimetype.startsWith('image/')) {
+          return res.status(400).json({
+            success: false,
+            message: 'Only image files are allowed'
+          });
+        }
+        if (file.size > 5 * 1024 * 1024) { // 5MB limit
+          return res.status(400).json({
+            success: false,
+            message: 'Image size must be less than 5MB'
+          });
+        }
+      }
+      
       const folder = `products/${req.user.id}`;
       const uploads = allFiles.map((f, idx) =>
         imagekit.upload({
@@ -271,8 +443,21 @@ const updateProduct = async (req, res) => {
       }));
     }
 
-    // Update discount percentage if price changed
-    if (updateData.price && updateData.originalPrice) {
+    // Sanitize string fields
+    if (updateData.name) updateData.name = updateData.name.trim();
+    if (updateData.description) updateData.description = updateData.description.trim();
+    if (updateData.tags) {
+      updateData.tags = normalizeTags(updateData.tags);
+    }
+
+    // Numeric coercion safety
+    if (updateData.price != null) updateData.price = Number(updateData.price);
+    if (updateData.originalPrice != null) updateData.originalPrice = Number(updateData.originalPrice);
+    if (updateData.stock != null) updateData.stock = Number(updateData.stock);
+    if (updateData.costPerItem != null) updateData.costPerItem = Number(updateData.costPerItem);
+
+    // Update discount percentage with improved validation
+    if (updateData.price != null && updateData.originalPrice != null && updateData.originalPrice > 0) {
       updateData.discountPercentage = Math.round(
         ((updateData.originalPrice - updateData.price) / updateData.originalPrice) * 100
       );
@@ -330,7 +515,16 @@ const deleteProduct = async (req, res) => {
     const { productId } = req.params;
     const sellerId = req.user.id;
 
-    const product = await Product.findOneAndDelete({
+    // Validate productId
+    if (!mongoose.Types.ObjectId.isValid(productId)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid productId' 
+      });
+    }
+
+    // First find the product to get image publicIds for cleanup
+    const product = await Product.findOne({
       _id: productId,
       seller: sellerId
     });
@@ -341,6 +535,19 @@ const deleteProduct = async (req, res) => {
         message: 'Product not found or you do not have permission to delete it'
       });
     }
+
+    // Delete images from ImageKit
+    if (product.images && product.images.length > 0) {
+      const deletePromises = product.images.map(image => 
+        imagekit.deleteFile(image.publicId).catch(err => {
+          logger.warn('Failed to delete image from ImageKit:', err);
+        })
+      );
+      await Promise.all(deletePromises);
+    }
+
+    // Delete the product
+    await Product.deleteOne({ _id: productId, seller: sellerId });
 
     logger.info('Product deleted successfully', {
       productId,
@@ -428,7 +635,11 @@ const getSellerDashboard = async (req, res) => {
           lowStockProducts
         },
         topProducts,
-        timeRange
+        timeRange,
+        dateRange: {
+          startDate: startDate.toISOString(),
+          endDate: now.toISOString()
+        }
       }
     });
 
@@ -448,6 +659,14 @@ const getProductAnalytics = async (req, res) => {
     const { productId } = req.params;
     const sellerId = req.user.id;
     const { timeRange = '30d' } = req.query;
+
+    // Validate productId
+    if (!mongoose.Types.ObjectId.isValid(productId)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid productId' 
+      });
+    }
 
     // Verify product ownership
     const product = await Product.findOne({
@@ -469,7 +688,8 @@ const getProductAnalytics = async (req, res) => {
       totalReviews: product.totalReviews || 0,
       stockLevel: product.stock,
       status: product.status,
-      createdAt: product.createdAt
+      createdAt: product.createdAt,
+      timeRange
     };
 
     res.json({
@@ -507,15 +727,32 @@ const bulkUpdateProducts = async (req, res) => {
       });
     }
 
+    // Validate all product IDs
+    const validProductIds = productIds.filter(id => mongoose.Types.ObjectId.isValid(id));
+    if (validProductIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No valid product IDs provided'
+      });
+    }
+
+    // Limit bulk operations to prevent abuse
+    if (validProductIds.length > 100) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot update more than 100 products at once'
+      });
+    }
+
     const result = await Product.updateMany(
-      { _id: { $in: productIds }, seller: sellerId },
+      { _id: { $in: validProductIds }, seller: sellerId },
       updateData
     );
 
     logger.info('Bulk update completed', {
       sellerId,
       updatedCount: result.modifiedCount,
-      totalProducts: productIds.length
+      totalProducts: validProductIds.length
     });
 
     res.json({
@@ -523,7 +760,7 @@ const bulkUpdateProducts = async (req, res) => {
       message: `Successfully updated ${result.modifiedCount} products`,
       data: {
         updatedCount: result.modifiedCount,
-        totalProducts: productIds.length
+        totalProducts: validProductIds.length
       }
     });
 
@@ -583,5 +820,6 @@ module.exports = {
   getSellerDashboard,
   getProductAnalytics,
   bulkUpdateProducts,
-  exportProducts
+  exportProducts,
+  validateProduct
 };
