@@ -1,5 +1,6 @@
 const Product = require('../models/Product');
 const Category = require('../models/Category');
+const Order = require('../models/Order'); // Added Order import
 const mongoose = require('mongoose');
 const logger = require('../utils/logger');
 const imagekit = require('../utils/imagekit');
@@ -19,7 +20,6 @@ const validateProduct = [
   body('price')
     .isFloat({ min: 0 })
     .withMessage('Price must be a positive number'),
-  // Accept BOTH fields; keep backward compatibility
   body('comparePrice')
     .optional()
     .isFloat({ min: 0 })
@@ -73,7 +73,6 @@ const normalizeTags = (tags) => {
 // Upload Product
 const uploadProduct = async (req, res) => {
   try {
-    // Check for validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({
@@ -88,7 +87,6 @@ const uploadProduct = async (req, res) => {
       name,
       description,
       price,
-      // accept either/or from the client for backward compatibility
       originalPrice: originalPriceBody,
       comparePrice: comparePriceBody,
       costPerItem,
@@ -109,14 +107,13 @@ const uploadProduct = async (req, res) => {
       });
     }
 
-    // Process uploaded images (ImageKit)
+    // Process uploaded images
     let images = [];
     const allFiles = [
       ...(req.files?.images || []),
       ...(req.files?.image || []),
     ];
     
-    // Align with router: allow up to 8 images
     if (allFiles.length > 8) {
       return res.status(400).json({
         success: false,
@@ -125,7 +122,6 @@ const uploadProduct = async (req, res) => {
     }
     
     if (allFiles.length) {
-      // Validate file types and sizes
       for (const file of allFiles) {
         if (!file.mimetype.startsWith('image/')) {
           return res.status(400).json({
@@ -133,7 +129,7 @@ const uploadProduct = async (req, res) => {
             message: 'Only image files are allowed'
           });
         }
-        if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        if (file.size > 5 * 1024 * 1024) {
           return res.status(400).json({
             success: false,
             message: 'Image size must be less than 5MB'
@@ -165,20 +161,17 @@ const uploadProduct = async (req, res) => {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)/g, '') + '-' + Date.now();
 
-    // Normalize original price using either field
     const productPrice = Number(price);
     const originalPrice =
       originalPriceBody != null ? Number(originalPriceBody)
       : comparePriceBody != null ? Number(comparePriceBody)
       : null;
 
-    // Calculate discount percentage safely
     let discountPercentage = 0;
     if (originalPrice != null && originalPrice > 0 && productPrice < originalPrice) {
       discountPercentage = Math.round(((originalPrice - productPrice) / originalPrice) * 100);
     }
 
-    // Create product with improved number conversion and tag normalization
     const product = new Product({
       name: name.trim(),
       description: description ? description.trim() : '',
@@ -202,8 +195,6 @@ const uploadProduct = async (req, res) => {
     });
 
     await product.save();
-
-    // Populate category and seller info
     await product.populate('category', 'name slug');
     await product.populate('seller', 'name rating verified');
 
@@ -259,11 +250,9 @@ const getMyProducts = async (req, res) => {
       search
     } = req.query;
 
-    // Validate pagination parameters
     const pageNum = Math.max(1, parseInt(page));
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit))); // Max 100 items per page
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
 
-    // Build query
     const query = { seller: sellerId };
     
     if (status !== 'all') {
@@ -286,7 +275,6 @@ const getMyProducts = async (req, res) => {
       if (maxStock != null) query.stock.$lte = Number(maxStock);
     }
 
-    // Search functionality
     if (search) {
       const searchRegex = new RegExp(search.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&'), 'i');
       query.$or = [
@@ -296,13 +284,12 @@ const getMyProducts = async (req, res) => {
       ];
     }
 
-    // Build sort
     const sort = {};
     const validSortFields = ['name', 'price', 'stock', 'createdAt', 'updatedAt', 'views'];
     if (validSortFields.includes(sortBy)) {
       sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
     } else {
-      sort.createdAt = -1; // Default sort
+      sort.createdAt = -1;
     }
 
     const skip = (pageNum - 1) * limitNum;
@@ -324,6 +311,7 @@ const getMyProducts = async (req, res) => {
       message: 'Products retrieved successfully',
       data: {
         products: products.map(product => ({
+          _id: product._id,
           id: product._id,
           name: product.name,
           price: product.price,
@@ -331,9 +319,12 @@ const getMyProducts = async (req, res) => {
           discountPercentage: product.discountPercentage,
           stock: product.stock,
           status: product.status,
-          category: product.category,
+          category: product.category?.name || 'Uncategorized',
+          categoryId: product.category?._id,
           images: product.images,
           slug: product.slug,
+          description: product.description,
+          tags: product.tags,
           createdAt: product.createdAt,
           updatedAt: product.updatedAt,
           views: product.views || 0,
@@ -367,7 +358,6 @@ const updateProduct = async (req, res) => {
     const { productId } = req.params;
     const sellerId = req.user.id;
 
-    // Validate productId
     if (!mongoose.Types.ObjectId.isValid(productId)) {
       return res.status(400).json({ 
         success: false, 
@@ -375,7 +365,6 @@ const updateProduct = async (req, res) => {
       });
     }
 
-    // Check for validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({
@@ -387,20 +376,17 @@ const updateProduct = async (req, res) => {
 
     const updateData = { ...req.body };
 
-    // Normalize comparePrice -> originalPrice for consistency with create()
     if (updateData.comparePrice != null && updateData.originalPrice == null) {
       updateData.originalPrice = Number(updateData.comparePrice);
       delete updateData.comparePrice;
     }
 
-    // Process uploaded images if any (ImageKit + upload.fields)
     if (req.files && (req.files.images?.length || req.files.image?.length)) {
       const allFiles = [
         ...(req.files.images || []),
         ...(req.files.image || []),
       ];
       
-      // Limit uploaded file count
       if (allFiles.length > 8) {
         return res.status(400).json({
           success: false,
@@ -408,7 +394,6 @@ const updateProduct = async (req, res) => {
         });
       }
       
-      // Validate file types and sizes
       for (const file of allFiles) {
         if (!file.mimetype.startsWith('image/')) {
           return res.status(400).json({
@@ -416,7 +401,7 @@ const updateProduct = async (req, res) => {
             message: 'Only image files are allowed'
           });
         }
-        if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        if (file.size > 5 * 1024 * 1024) {
           return res.status(400).json({
             success: false,
             message: 'Image size must be less than 5MB'
@@ -443,20 +428,17 @@ const updateProduct = async (req, res) => {
       }));
     }
 
-    // Sanitize string fields
     if (updateData.name) updateData.name = updateData.name.trim();
     if (updateData.description) updateData.description = updateData.description.trim();
     if (updateData.tags) {
       updateData.tags = normalizeTags(updateData.tags);
     }
 
-    // Numeric coercion safety
     if (updateData.price != null) updateData.price = Number(updateData.price);
     if (updateData.originalPrice != null) updateData.originalPrice = Number(updateData.originalPrice);
     if (updateData.stock != null) updateData.stock = Number(updateData.stock);
     if (updateData.costPerItem != null) updateData.costPerItem = Number(updateData.costPerItem);
 
-    // Update discount percentage with improved validation
     if (updateData.price != null && updateData.originalPrice != null && updateData.originalPrice > 0) {
       updateData.discountPercentage = Math.round(
         ((updateData.originalPrice - updateData.price) / updateData.originalPrice) * 100
@@ -515,7 +497,6 @@ const deleteProduct = async (req, res) => {
     const { productId } = req.params;
     const sellerId = req.user.id;
 
-    // Validate productId
     if (!mongoose.Types.ObjectId.isValid(productId)) {
       return res.status(400).json({ 
         success: false, 
@@ -523,7 +504,6 @@ const deleteProduct = async (req, res) => {
       });
     }
 
-    // First find the product to get image publicIds for cleanup
     const product = await Product.findOne({
       _id: productId,
       seller: sellerId
@@ -546,7 +526,6 @@ const deleteProduct = async (req, res) => {
       await Promise.all(deletePromises);
     }
 
-    // Delete the product
     await Product.deleteOne({ _id: productId, seller: sellerId });
 
     logger.info('Product deleted successfully', {
@@ -570,10 +549,10 @@ const deleteProduct = async (req, res) => {
   }
 };
 
-// Get Seller Dashboard
+// Get Seller Dashboard - FIXED with real Order integration
 const getSellerDashboard = async (req, res) => {
   try {
-    const sellerId = req.user.id;
+    const sellerId = new mongoose.Types.ObjectId(req.user.id);
     const { timeRange = '30d' } = req.query;
 
     // Calculate date range
@@ -596,21 +575,18 @@ const getSellerDashboard = async (req, res) => {
         startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     }
 
-    // Get dashboard data
+    // Get real dashboard data with proper aggregations
     const [
       totalProducts,
       activeProducts,
-      totalRevenue,
-      totalOrders,
       lowStockProducts,
-      topProducts
+      topProducts,
+      revenueData,
+      orderData,
+      customerData
     ] = await Promise.all([
       Product.countDocuments({ seller: sellerId }),
       Product.countDocuments({ seller: sellerId, status: 'active' }),
-      // Revenue calculation would need Order model integration
-      Promise.resolve(0),
-      // Order count would need Order model integration
-      Promise.resolve(0),
       Product.countDocuments({ 
         seller: sellerId, 
         stock: { $lte: 10 },
@@ -619,9 +595,99 @@ const getSellerDashboard = async (req, res) => {
       Product.find({ seller: sellerId })
         .sort({ views: -1 })
         .limit(5)
-        .select('name views averageRating stock')
-        .lean()
+        .select('name views averageRating stock price')
+        .lean(),
+      
+      // Real revenue calculation
+      Order.aggregate([
+        { $unwind: '$items' },
+        {
+          $lookup: {
+            from: 'products',
+            localField: 'items.product',
+            foreignField: '_id',
+            as: 'prod',
+          },
+        },
+        { $unwind: '$prod' },
+        { $match: { 'prod.seller': sellerId, createdAt: { $gte: startDate } } },
+        {
+          $group: {
+            _id: null,
+            totalRevenue: { $sum: { $multiply: ['$items.price', '$items.quantity'] } }
+          }
+        }
+      ]),
+
+      // Real order count calculation
+      Order.aggregate([
+        { $unwind: '$items' },
+        {
+          $lookup: {
+            from: 'products',
+            localField: 'items.product',
+            foreignField: '_id',
+            as: 'prod',
+          },
+        },
+        { $unwind: '$prod' },
+        { $match: { 'prod.seller': sellerId, createdAt: { $gte: startDate } } },
+        {
+          $group: {
+            _id: '$_id' // Group by order ID to avoid counting duplicates
+          }
+        },
+        { $count: 'totalOrders' }
+      ]),
+
+      // Real customer count
+      Order.aggregate([
+        { $unwind: '$items' },
+        {
+          $lookup: {
+            from: 'products',
+            localField: 'items.product',
+            foreignField: '_id',
+            as: 'prod',
+          },
+        },
+        { $unwind: '$prod' },
+        { $match: { 'prod.seller': sellerId } },
+        {
+          $group: {
+            _id: '$user' // Group by customer/user ID
+          }
+        },
+        { $count: 'totalCustomers' }
+      ])
     ]);
+
+    const totalRevenue = revenueData[0]?.totalRevenue || 0;
+    const totalOrders = orderData[0]?.totalOrders || 0;
+    const totalCustomers = customerData[0]?.totalCustomers || 0;
+
+    // Get pending orders count for seller
+    const pendingOrdersData = await Order.aggregate([
+      { $unwind: '$items' },
+      {
+        $lookup: {
+          from: 'products',
+          localField: 'items.product',
+          foreignField: '_id',
+          as: 'prod',
+        },
+      },
+      { $unwind: '$prod' },
+      { $match: { 'prod.seller': sellerId, 'items.status': 'pending' } },
+      {
+        $group: {
+          _id: '$_id'
+        }
+      },
+      { $count: 'pendingOrders' }
+    ]);
+    
+    const pendingOrders = pendingOrdersData[0]?.pendingOrders || 0;
 
     res.json({
       success: true,
@@ -632,7 +698,9 @@ const getSellerDashboard = async (req, res) => {
           activeProducts,
           totalRevenue,
           totalOrders,
-          lowStockProducts
+          totalCustomers,
+          lowStockProducts,
+          pendingOrders
         },
         topProducts,
         timeRange,
@@ -660,7 +728,6 @@ const getProductAnalytics = async (req, res) => {
     const sellerId = req.user.id;
     const { timeRange = '30d' } = req.query;
 
-    // Validate productId
     if (!mongoose.Types.ObjectId.isValid(productId)) {
       return res.status(400).json({ 
         success: false, 
@@ -668,7 +735,6 @@ const getProductAnalytics = async (req, res) => {
       });
     }
 
-    // Verify product ownership
     const product = await Product.findOne({
       _id: productId,
       seller: sellerId
@@ -681,7 +747,6 @@ const getProductAnalytics = async (req, res) => {
       });
     }
 
-    // Calculate analytics (simplified version)
     const analytics = {
       views: product.views || 0,
       averageRating: product.averageRating || 0,
@@ -727,7 +792,6 @@ const bulkUpdateProducts = async (req, res) => {
       });
     }
 
-    // Validate all product IDs
     const validProductIds = productIds.filter(id => mongoose.Types.ObjectId.isValid(id));
     if (validProductIds.length === 0) {
       return res.status(400).json({
@@ -736,7 +800,6 @@ const bulkUpdateProducts = async (req, res) => {
       });
     }
 
-    // Limit bulk operations to prevent abuse
     if (validProductIds.length > 100) {
       return res.status(400).json({
         success: false,
@@ -795,7 +858,6 @@ const exportProducts = async (req, res) => {
         }
       });
     } else {
-      // For CSV/Excel export, you would implement file generation
       res.status(400).json({
         success: false,
         message: 'CSV/Excel export not implemented yet'
