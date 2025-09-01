@@ -12,6 +12,7 @@ class MemoryOptimizer {
   constructor() {
     this.fixes = [];
     this.backupDir = path.join(__dirname, '../backups/memory-fix');
+    this.monitoringInterval = null;
   }
 
   async optimize() {
@@ -29,6 +30,8 @@ class MemoryOptimizer {
       
     } catch (error) {
       console.error('❌ Optimization failed:', error.message);
+    } finally {
+      this.cleanup();
     }
   }
 
@@ -177,21 +180,6 @@ console.log('Clustering: Disabled');
 console.log('Workers: 1');
 console.log('DB Pool: 1 connection');
 
-// Memory monitoring
-setInterval(() => {
-  const usage = process.memoryUsage();
-  const percent = Math.round((usage.heapUsed / usage.heapTotal) * 100);
-  
-  if (percent > 80) {
-    console.warn(\`⚠️ High memory: \${percent}% (\${Math.round(usage.heapUsed/1024/1024)}MB)\`);
-    
-    // Force garbage collection if available
-    if (global.gc) {
-      global.gc();
-    }
-  }
-}, 30000);
-
 // Start the main server
 require('./server.js');
 `;
@@ -276,10 +264,45 @@ SESSION_CHECK_PERIOD=600000
     console.log('- API endpoints should become stable');
     console.log('- 503 errors should be resolved');
   }
+
+  // Memory monitoring with proper cleanup
+  startMemoryMonitoring() {
+    // Clear any existing interval first
+    this.stopMemoryMonitoring();
+    
+    this.monitoringInterval = setInterval(() => {
+      const usage = process.memoryUsage();
+      const percent = Math.round((usage.heapUsed / usage.heapTotal) * 100);
+      
+      if (percent > 80) {
+        console.warn(`⚠️ High memory: ${percent}% (${Math.round(usage.heapUsed/1024/1024)}MB)`);
+        
+        // Force garbage collection if available
+        if (global.gc) {
+          global.gc();
+        }
+      }
+    }, 30000);
+  }
+
+  stopMemoryMonitoring() {
+    if (this.monitoringInterval) {
+      clearInterval(this.monitoringInterval);
+      this.monitoringInterval = null;
+    }
+  }
+
+  cleanup() {
+    this.stopMemoryMonitoring();
+  }
 }
 
 // Memory check utility (CORRECTED)
 class MemoryChecker {
+  constructor() {
+    this.checkInterval = null;
+  }
+
   static check() {
     const memUsage = process.memoryUsage();
     const usage = Math.round((memUsage.heapUsed / memUsage.heapTotal) * 100);
@@ -301,11 +324,39 @@ class MemoryChecker {
       return 'healthy';
     }
   }
+
+  startPeriodicChecks(intervalMs = 60000) {
+    this.stopPeriodicChecks();
+    this.checkInterval = setInterval(() => {
+      MemoryChecker.check();
+    }, intervalMs);
+  }
+
+  stopPeriodicChecks() {
+    if (this.checkInterval) {
+      clearInterval(this.checkInterval);
+      this.checkInterval = null;
+    }
+  }
 }
 
 // Run optimization if called directly
 if (require.main === module) {
   const optimizer = new MemoryOptimizer();
+  
+  // Setup cleanup handlers
+  process.once('SIGINT', () => {
+    console.log('\n🛑 Received SIGINT, cleaning up...');
+    optimizer.cleanup();
+    process.exit(0);
+  });
+  
+  process.once('SIGTERM', () => {
+    console.log('\n🛑 Received SIGTERM, cleaning up...');
+    optimizer.cleanup();
+    process.exit(0);
+  });
+  
   optimizer.optimize().catch(console.error);
 }
 
