@@ -44,6 +44,15 @@ const config = {
   REDIS_URL: process.env.REDIS_URL,
 };
 
+// ================== GLOBAL STATE ==================
+// Use a single global object to track resources for cleanup
+global.__appState = global.__appState || {
+  servers: new Map(),
+  monitors: new Map(),
+  sockets: new Map(),
+  cleanupHandlers: new Set()
+};
+
 // ================== REDIS MANAGER ==================
 class RedisManager {
   static client = null;
@@ -139,10 +148,11 @@ class Database {
 
 // ================== RESOURCE MONITOR ==================
 class ResourceMonitor {
-  constructor() {
+  constructor(pid = process.pid) {
     this.interval = config.RESOURCE_MONITOR_INTERVAL;
-    this.pid = process.pid;
+    this.pid = pid;
     this.timer = null;
+    this.id = Symbol('ResourceMonitor');
   }
   
   start() {
@@ -168,6 +178,9 @@ class ResourceMonitor {
         logger.warn('Resource monitoring error', { error: err.message });
       }
     }, this.interval);
+    
+    // Store reference for cleanup
+    global.__appState.monitors.set(this.id, this);
   }
   
   stop() { 
@@ -175,15 +188,15 @@ class ResourceMonitor {
       clearInterval(this.timer);
       this.timer = null;
     }
+    global.__appState.monitors.delete(this.id);
   }
 }
 
 // ================== SOCKET.IO MANAGER ==================
-let io = null;
 function initializeSocket(server) {
   try {
     const socketIo = require('socket.io');
-    io = socketIo(server, {
+    const io = socketIo(server, {
       cors: { 
         origin: [
           "http://localhost:3000",
@@ -207,6 +220,11 @@ function initializeSocket(server) {
     });
     
     logger.info('✅ Socket.IO initialized');
+    
+    // Store reference for cleanup
+    const socketId = Symbol('SocketIO');
+    global.__appState.sockets.set(socketId, io);
+    
     return io;
   } catch (error) {
     logger.warn('Socket.IO not available, real-time features disabled');
@@ -356,13 +374,12 @@ async function createApp() {
 
   // Load core routes with error handling
   const coreRoutes = [
-  { path: '/api/v1/auth', file: './routes/auth' },
-  { path: '/api/v1/imagekit', file: './routes/imagekit' },
-  { path: '/api/v1/seller', file: './routes/seller.products' } // ✅ fixed comma
-];
+    { path: '/api/v1/auth', file: './routes/auth' },
+    { path: '/api/v1/imagekit', file: './routes/imagekit' },
+    { path: '/api/v1/seller', file: './routes/seller.products' }
+  ];
 
-const skipFiles = ['auth.js', 'imagekit.js', 'index.js', 'seller.products.js', 'seller.js'];
-
+  const skipFiles = ['auth.js', 'imagekit.js', 'index.js', 'seller.products.js', 'seller.js'];
 
   for (const route of coreRoutes) {
     try {
@@ -491,9 +508,41 @@ async function checkRedisHealth() {
   }
 }
 
+// ================== PROCESS EVENT HANDLERS ==================
+function setupProcessEventHandlers() {
+  // Remove any existing handlers to prevent stacking
+  process.removeAllListeners('SIGINT');
+  process.removeAllListeners('SIGTERM');
+  process.removeAllListeners('uncaughtException');
+  process.removeAllListeners('unhandledRejection');
+  
+  // Add clean handlers
+  process.once('SIGINT', () => shutdown('SIGINT'));
+  process.once('SIGTERM', () => shutdown('SIGTERM'));
+  
+  process.once('uncaughtException', (err) => {
+    logger.error('Uncaught exception - shutting down', { 
+      error: err.message, 
+      stack: err.stack 
+    });
+    shutdown('UNCAUGHT_EXCEPTION');
+  });
+  
+  process.once('unhandledRejection', (reason, promise) => {
+    logger.error('Unhandled promise rejection - shutting down', { 
+      reason: reason?.toString(), 
+      promise: promise?.toString()
+    });
+    shutdown('UNHANDLED_REJECTION');
+  });
+}
+
 // ================== START SERVER ==================
 async function start() {
   try {
+    // Setup process event handlers
+    setupProcessEventHandlers();
+    
     // Cluster mode
     if (config.ENABLE_CLUSTER && cluster.isPrimary) {
       logger.info('Starting cluster mode', { workers: config.MAX_WORKERS });
@@ -521,11 +570,13 @@ async function start() {
     // Single process mode
     const app = await createApp();
     const server = http.createServer(app);
-    global._server = server;
+    
+    // Store server reference for cleanup
+    const serverId = Symbol('HTTPServer');
+    global.__appState.servers.set(serverId, server);
 
     // Initialize Socket.IO if available
     const socketIo = initializeSocket(server);
-    global._io = socketIo;
 
     // Connect to database
     if (config.MONGODB_URI) {
@@ -535,7 +586,6 @@ async function start() {
     // Start resource monitoring
     const monitor = new ResourceMonitor();
     monitor.start();
-    global._monitor = monitor;
 
     // Start server with proper error handling
     server.listen(config.PORT, config.HOST, () => {
@@ -559,26 +609,6 @@ async function start() {
       process.exit(1);
     });
 
-    // Graceful shutdown handlers
-    process.on('SIGINT', () => shutdown('SIGINT'));
-    process.on('SIGTERM', () => shutdown('SIGTERM'));
-    
-    process.on('uncaughtException', (err) => {
-      logger.error('Uncaught exception - shutting down', { 
-        error: err.message, 
-        stack: err.stack 
-      });
-      shutdown('UNCAUGHT_EXCEPTION');
-    });
-    
-    process.on('unhandledRejection', (reason, promise) => {
-      logger.error('Unhandled promise rejection - shutting down', { 
-        reason: reason?.toString(), 
-        promise: promise?.toString()
-      });
-      shutdown('UNHANDLED_REJECTION');
-    });
-
   } catch (error) {
     logger.error('Server startup failed', { 
       error: error.message, 
@@ -598,23 +628,23 @@ async function shutdown(signal = 'SIGTERM') {
   }, 30000); // 30 second timeout
   
   try {
-    // Stop accepting new connections
-    if (global._server) {
-      global._server.close(() => {
+    // Stop all servers
+    for (const [id, server] of global.__appState.servers) {
+      server.close(() => {
         logger.info('HTTP server stopped accepting new connections');
       });
+      global.__appState.servers.delete(id);
     }
     
-    // Stop resource monitoring
-    if (global._monitor) {
-      global._monitor.stop();
-      logger.info('Resource monitoring stopped');
+    // Stop all monitors
+    for (const [id, monitor] of global.__appState.monitors) {
+      monitor.stop();
     }
     
-    // Close Socket.IO
-    if (global._io) {
-      global._io.close();
-      logger.info('Socket.IO closed');
+    // Close all Socket.IO instances
+    for (const [id, io] of global.__appState.sockets) {
+      io.close();
+      global.__appState.sockets.delete(id);
     }
     
     // Close Redis connection
