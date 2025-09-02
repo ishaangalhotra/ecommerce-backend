@@ -1,70 +1,267 @@
-// Memory monitoring and optimization
-const memoryMonitor = {
-  checkInterval: null,
-  
+// Enhanced Memory Monitor with improved error handling and singleton pattern
+class MemoryMonitor {
+  constructor() {
+    this.checkInterval = null;
+    this.isRunning = false;
+    this.metrics = {
+      samples: [],
+      maxSamples: 60, // Keep last 60 samples (2 hours at 2-min intervals)
+      highUsageCount: 0,
+      criticalUsageCount: 0
+    };
+  }
+
   start() {
-    console.log('🧠 Starting memory monitoring...');
-    
-    // Check memory every 2 minutes instead of 5
-    this.checkInterval = setInterval(() => {
+    // Prevent multiple instances
+    if (this.isRunning) {
+      console.log('🧠 Memory monitoring is already running.');
+      return false;
+    }
+
+    try {
+      console.log('🧠 Starting enhanced memory monitoring...');
+      this.isRunning = true;
+      
+      // Initial memory check
+      this.checkMemory();
+      
+      // Set up interval
+      this.checkInterval = setInterval(() => {
+        this.checkMemory();
+      }, 2 * 60 * 1000); // Every 2 minutes
+
+      return true;
+    } catch (error) {
+      console.error('❌ Failed to start memory monitoring:', error);
+      this.isRunning = false;
+      return false;
+    }
+  }
+
+  checkMemory() {
+    try {
       const memUsage = process.memoryUsage();
       const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
       const heapTotalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
       const usage = Math.round((memUsage.heapUsed / memUsage.heapTotal) * 100);
-      
+      const timestamp = new Date().toISOString();
+
+      // Store sample for trend analysis
+      this.storeSample({
+        timestamp,
+        heapUsed: heapUsedMB,
+        heapTotal: heapTotalMB,
+        usage,
+        rss: Math.round(memUsage.rss / 1024 / 1024),
+        external: Math.round(memUsage.external / 1024 / 1024)
+      });
+
       console.log(`💾 Memory: ${heapUsedMB}MB/${heapTotalMB}MB (${usage}%)`);
       
-      // Alert at 80% instead of trying to force GC
+      // Enhanced alerting with trend analysis
       if (usage > 80) {
-        console.warn(`⚠️ HIGH MEMORY USAGE: ${usage}% (${heapUsedMB}MB/${heapTotalMB}MB)`);
+        this.metrics.highUsageCount++;
+        const trend = this.getUsageTrend();
         
-        // Log memory breakdown for debugging
-        console.log('Memory breakdown:', {
-          rss: Math.round(memUsage.rss / 1024 / 1024) + 'MB',
-          heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024) + 'MB',
-          heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024) + 'MB',
-          external: Math.round(memUsage.external / 1024 / 1024) + 'MB'
-        });
+        console.warn(`⚠️ HIGH MEMORY USAGE: ${usage}% (${heapUsedMB}MB/${heapTotalMB}MB)`);
+        console.warn(`📈 Usage trend: ${trend > 0 ? '↗️ Increasing' : trend < 0 ? '↘️ Decreasing' : '➡️ Stable'} (${trend.toFixed(1)}%)`);
+        
+        // Detailed breakdown for high usage
+        this.logMemoryBreakdown(memUsage);
+        
+        // Suggest action if trend is concerning
+        if (trend > 5) {
+          console.warn(`🔍 Memory usage increasing rapidly. Consider investigating memory leaks.`);
+        }
       }
       
-      // Critical memory warning at 95%
+      // Critical memory warning
       if (usage > 95) {
+        this.metrics.criticalUsageCount++;
         console.error(`🚨 CRITICAL MEMORY USAGE: ${usage}% - Server may crash soon!`);
+        console.error(`🆘 Critical usage count: ${this.metrics.criticalUsageCount}`);
+        
+        // Log recent memory history for debugging
+        this.logMemoryHistory();
+        
+        // Suggest immediate action
+        if (this.metrics.criticalUsageCount >= 3) {
+          console.error(`💥 SUSTAINED CRITICAL USAGE - Consider restarting the service!`);
+        }
       }
-    }, 2 * 60 * 1000); // Every 2 minutes
-  },
-  
-  stop() {
-    if (this.checkInterval) {
-      clearInterval(this.checkInterval);
-      this.checkInterval = null;
-      console.log('🧠 Memory monitoring stopped');
+
+      // Reset counters on healthy usage
+      if (usage < 70) {
+        this.metrics.highUsageCount = Math.max(0, this.metrics.highUsageCount - 1);
+        this.metrics.criticalUsageCount = Math.max(0, this.metrics.criticalUsageCount - 1);
+      }
+
+    } catch (error) {
+      console.error('❌ Error during memory check:', error);
     }
   }
-};
 
-// Handle memory warnings
+  storeSample(sample) {
+    this.metrics.samples.push(sample);
+    
+    // Keep only the most recent samples
+    if (this.metrics.samples.length > this.metrics.maxSamples) {
+      this.metrics.samples.shift();
+    }
+  }
+
+  getUsageTrend() {
+    if (this.metrics.samples.length < 5) {
+      return 0; // Not enough data
+    }
+
+    const recent = this.metrics.samples.slice(-5); // Last 5 samples
+    const older = this.metrics.samples.slice(-10, -5); // Previous 5 samples
+    
+    if (older.length === 0) return 0;
+
+    const recentAvg = recent.reduce((sum, s) => sum + s.usage, 0) / recent.length;
+    const olderAvg = older.reduce((sum, s) => sum + s.usage, 0) / older.length;
+    
+    return recentAvg - olderAvg;
+  }
+
+  logMemoryBreakdown(memUsage) {
+    const breakdown = {
+      rss: Math.round(memUsage.rss / 1024 / 1024) + 'MB',
+      heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024) + 'MB', 
+      heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024) + 'MB',
+      external: Math.round(memUsage.external / 1024 / 1024) + 'MB',
+      arrayBuffers: Math.round((memUsage.arrayBuffers || 0) / 1024 / 1024) + 'MB'
+    };
+
+    console.log('📊 Memory breakdown:', breakdown);
+
+    // Calculate percentages
+    const totalMB = memUsage.rss / 1024 / 1024;
+    console.log('📊 Memory distribution:', {
+      'Heap Used': Math.round((memUsage.heapUsed / memUsage.rss) * 100) + '%',
+      'External': Math.round((memUsage.external / memUsage.rss) * 100) + '%',
+      'Stack/Other': Math.round(((memUsage.rss - memUsage.heapUsed - memUsage.external) / memUsage.rss) * 100) + '%'
+    });
+  }
+
+  logMemoryHistory() {
+    if (this.metrics.samples.length < 5) return;
+
+    console.log('📜 Recent memory history (last 10 samples):');
+    const recent = this.metrics.samples.slice(-10);
+    
+    recent.forEach((sample, index) => {
+      const time = new Date(sample.timestamp).toLocaleTimeString();
+      const indicator = sample.usage > 95 ? '🚨' : sample.usage > 80 ? '⚠️' : '✅';
+      console.log(`${indicator} ${time}: ${sample.usage}% (${sample.heapUsed}MB/${sample.heapTotal}MB)`);
+    });
+  }
+
+  getStats() {
+    if (this.metrics.samples.length === 0) {
+      return { error: 'No samples collected yet' };
+    }
+
+    const samples = this.metrics.samples;
+    const usages = samples.map(s => s.usage);
+    const heapSizes = samples.map(s => s.heapUsed);
+
+    return {
+      sampleCount: samples.length,
+      currentUsage: usages[usages.length - 1],
+      averageUsage: Math.round(usages.reduce((a, b) => a + b, 0) / usages.length),
+      maxUsage: Math.max(...usages),
+      minUsage: Math.min(...usages),
+      currentHeap: heapSizes[heapSizes.length - 1],
+      averageHeap: Math.round(heapSizes.reduce((a, b) => a + b, 0) / heapSizes.length),
+      maxHeap: Math.max(...heapSizes),
+      trend: this.getUsageTrend(),
+      alerts: {
+        highUsageCount: this.metrics.highUsageCount,
+        criticalUsageCount: this.metrics.criticalUsageCount
+      },
+      isHealthy: usages[usages.length - 1] < 80 && this.metrics.criticalUsageCount === 0
+    };
+  }
+
+  stop() {
+    if (!this.isRunning) {
+      console.log('🧠 Memory monitoring is not running.');
+      return false;
+    }
+
+    try {
+      if (this.checkInterval) {
+        clearInterval(this.checkInterval);
+        this.checkInterval = null;
+      }
+      
+      this.isRunning = false;
+      
+      // Log final stats
+      const stats = this.getStats();
+      console.log('🧠 Memory monitoring stopped. Final stats:', {
+        averageUsage: stats.averageUsage + '%',
+        maxUsage: stats.maxUsage + '%',
+        totalAlerts: stats.alerts.highUsageCount + stats.alerts.criticalUsageCount,
+        samplesCollected: stats.sampleCount
+      });
+      
+      return true;
+    } catch (error) {
+      console.error('❌ Error stopping memory monitoring:', error);
+      return false;
+    }
+  }
+
+  restart() {
+    console.log('🔄 Restarting memory monitoring...');
+    this.stop();
+    return this.start();
+  }
+
+  // Graceful cleanup
+  cleanup() {
+    this.stop();
+    this.metrics.samples = [];
+    this.metrics.highUsageCount = 0;
+    this.metrics.criticalUsageCount = 0;
+  }
+}
+
+// Export singleton instance
+const memoryMonitor = new MemoryMonitor();
+
+// Handle memory warnings from Node.js
 process.on('warning', (warning) => {
-  console.warn('⚠️ Node.js warning:', {
-    name: warning.name,
-    message: warning.message,
-    stack: warning.stack
-  });
+  if (warning.name === 'MaxListenersExceededWarning' || 
+      warning.name === 'DeprecationWarning' ||
+      warning.message?.includes('memory')) {
+    console.warn('⚠️ Node.js memory-related warning:', {
+      name: warning.name,
+      message: warning.message,
+      stack: warning.stack
+    });
+  }
 });
 
 // Start memory monitoring
 memoryMonitor.start();
 
-// Stop monitoring on exit
-process.on('SIGTERM', () => {
-  console.log('🛑 SIGTERM received, stopping memory monitoring...');
-  memoryMonitor.stop();
-});
+// Enhanced process exit handlers
+const gracefulShutdownHandler = (signal) => {
+  console.log(`🛑 ${signal} received, cleaning up memory monitoring...`);
+  memoryMonitor.cleanup();
+  // The server's own graceful shutdown will handle process.exit
+};
 
-process.on('SIGINT', () => {
-  console.log('🛑 SIGINT received, stopping memory monitoring...');
-  memoryMonitor.stop();
-});
+// These handlers are specifically for the memory monitor cleanup.
+// The main server's graceful shutdown will handle closing connections and exiting.
+process.on('SIGTERM', () => gracefulShutdownHandler('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdownHandler('SIGINT'));
+
 // server.js - QuickLocal Production-Ready Server with Complete Integration
 // Version: 2.0.0 - Integrated with Environment Configuration
 require('dotenv').config(); // Load .env variables
