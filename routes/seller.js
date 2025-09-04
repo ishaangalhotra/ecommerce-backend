@@ -95,14 +95,19 @@ try {
     'getSellerDashboard',
     'getProductAnalytics',
     'bulkUpdateProducts',
-    'exportProducts',
-    'validateProduct'
+    'exportProducts'
+    // 'validateProduct' was removed from this list as it is an array, not a function.
   ];
 
   for (const method of requiredMethods) {
     if (typeof sellerCtrl[method] !== 'function') {
       throw new Error(`Required controller method '${method}' is missing or not a function`);
     }
+  }
+  
+  // Also check that validateProduct exists and is an array
+  if (!Array.isArray(sellerCtrl['validateProduct'])) {
+    throw new Error(`Required controller middleware 'validateProduct' is missing or not an array`);
   }
 
   controllerModuleLoaded = true;
