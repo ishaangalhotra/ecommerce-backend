@@ -1,6 +1,6 @@
 const Product = require('../models/Product');
 const Category = require('../models/Category');
-const Order = require('../models/Order'); // Added Order import
+const Order = require('../models/Order'); 
 const mongoose = require('mongoose');
 const logger = require('../utils/logger');
 const imagekit = require('../utils/imagekit');
@@ -549,7 +549,7 @@ const deleteProduct = async (req, res) => {
   }
 };
 
-// Get Seller Dashboard - FIXED with real Order integration
+// Get Seller Dashboard - Fixed with proper Order integration
 const getSellerDashboard = async (req, res) => {
   try {
     const sellerId = new mongoose.Types.ObjectId(req.user.id);
@@ -575,7 +575,7 @@ const getSellerDashboard = async (req, res) => {
         startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     }
 
-    // Get real dashboard data with proper aggregations
+    // Get dashboard data with proper aggregations
     const [
       totalProducts,
       activeProducts,
@@ -598,7 +598,7 @@ const getSellerDashboard = async (req, res) => {
         .select('name views averageRating stock price')
         .lean(),
       
-      // Real revenue calculation
+      // Revenue calculation
       Order.aggregate([
         { $unwind: '$items' },
         {
@@ -619,7 +619,7 @@ const getSellerDashboard = async (req, res) => {
         }
       ]),
 
-      // Real order count calculation
+      // Order count calculation
       Order.aggregate([
         { $unwind: '$items' },
         {
@@ -640,7 +640,7 @@ const getSellerDashboard = async (req, res) => {
         { $count: 'totalOrders' }
       ]),
 
-      // Real customer count
+      // Customer count
       Order.aggregate([
         { $unwind: '$items' },
         {
@@ -807,9 +807,24 @@ const bulkUpdateProducts = async (req, res) => {
       });
     }
 
+    // Normalize updateData
+    const data = { ...updateData };
+    if (data.tags) {
+      data.tags = normalizeTags(data.tags);
+    }
+    if (data.price != null) data.price = Number(data.price);
+    if (data.originalPrice != null) data.originalPrice = Number(data.originalPrice);
+    if (data.stock != null) data.stock = Number(data.stock);
+    if (data.costPerItem != null) data.costPerItem = Number(data.costPerItem);
+
+    // Recompute discount if relevant
+    if (data.price != null && data.originalPrice != null && data.originalPrice > 0) {
+      data.discountPercentage = Math.round(((data.originalPrice - data.price) / data.originalPrice) * 100);
+    }
+
     const result = await Product.updateMany(
       { _id: { $in: validProductIds }, seller: sellerId },
-      updateData
+      { $set: data }
     );
 
     logger.info('Bulk update completed', {
@@ -847,22 +862,31 @@ const exportProducts = async (req, res) => {
       .populate('category', 'name')
       .lean();
 
-    if (format === 'json') {
-      res.json({
-        success: true,
-        message: 'Products exported successfully',
-        data: {
-          products,
-          totalProducts: products.length,
-          exportDate: new Date().toISOString()
-        }
-      });
-    } else {
-      res.status(400).json({
-        success: false,
-        message: 'CSV/Excel export not implemented yet'
-      });
+    if (format === 'csv') {
+      const fields = ['_id', 'name', 'price', 'stock', 'status', 'slug', 'createdAt', 'updatedAt'];
+      const lines = [
+        fields.join(','),
+        ...products.map(p => fields.map(f => {
+          const val = p[f] ?? '';
+          // CSV-escape
+          const s = (val instanceof Date) ? val.toISOString() : String(val);
+          return `"${s.replace(/"/g, '""')}"`;
+        }).join(','))
+      ];
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="products.csv"');
+      return res.send(lines.join('\n'));
     }
+
+    res.json({
+      success: true,
+      message: 'Products exported successfully',
+      data: {
+        products,
+        totalProducts: products.length,
+        exportDate: new Date().toISOString()
+      }
+    });
 
   } catch (error) {
     logger.error('Export products error:', error);
@@ -875,6 +899,7 @@ const exportProducts = async (req, res) => {
 };
 
 module.exports = {
+  validateProduct,       // array of validators
   uploadProduct,
   getMyProducts,
   updateProduct,
@@ -882,6 +907,5 @@ module.exports = {
   getSellerDashboard,
   getProductAnalytics,
   bulkUpdateProducts,
-  exportProducts,
-  validateProduct
+  exportProducts
 };
