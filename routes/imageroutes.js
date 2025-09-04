@@ -42,11 +42,9 @@ router.post('/upload-image', upload.single('image'), async (req, res) => {
       return res.status(400).json({ error: 'No image file provided' });
     }
 
-    const fileBuffer = fs.readFileSync(req.file.path);
-    const base64File = fileBuffer.toString('base64');
-
-    const uploadResponse = await imagekit.upload({
-      file: base64File,
+    const fileStream = fs.createReadStream(req.file.path);
+const uploadResponse = await imagekit.upload({
+      file: fileStream,
       fileName: `product-${Date.now()}-${req.file.originalname}`,
       folder: '/quicklocal-products',
       useUniqueFileName: true,
@@ -97,11 +95,9 @@ router.post('/upload-multiple-images', upload.array('images', 5), async (req, re
     }
 
     const uploadPromises = req.files.map(async (file) => {
-      const fileBuffer = fs.readFileSync(file.path);
-      const base64File = fileBuffer.toString('base64');
-
-      const uploadResponse = await imagekit.upload({
-        file: base64File,
+      const fileStream = fs.createReadStream(file.path);
+const uploadResponse = await imagekit.upload({
+        file: fileStream,
         fileName: `product-${Date.now()}-${file.originalname}`,
         folder: '/quicklocal-products',
         useUniqueFileName: true,

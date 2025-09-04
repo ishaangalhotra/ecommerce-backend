@@ -1,9 +1,10 @@
 const express = require('express');
 const mongoose = require('mongoose');
+const fs = require('fs');
 const Product = require('../models/Product');
 const Category = require('../models/Category');
-const multer = require('multer');
 const ImageKit = require('imagekit');
+const upload = require('../utils/multer'); // centralized diskStorage
 const router = express.Router();
 
 // ImageKit configuration
@@ -11,22 +12,6 @@ const imagekit = new ImageKit({
   publicKey: process.env.IMAGEKIT_PUBLIC_KEY,
   privateKey: process.env.IMAGEKIT_PRIVATE_KEY,
   urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT || 'https://ik.imagekit.io/phea4zmjs'
-});
-
-// Multer configuration for handling file uploads
-const storage = multer.memoryStorage();
-const upload = multer({
-  storage,
-  limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
-  },
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only image files are allowed!'), false);
-    }
-  }
 });
 
 // ==================== PRODUCT CREATION WITH IMAGE UPLOAD ====================
@@ -80,12 +65,15 @@ router.post('/', upload.array('images', 5), async (req, res) => {
           const fileName = `products/${Date.now()}_${index}_${name.replace(/[^a-zA-Z0-9]/g, '_')}.${file.mimetype.split('/')[1]}`;
           
           const uploadResponse = await imagekit.upload({
-            file: file.buffer,
+            file: fs.createReadStream(file.path),  // ✅ stream from disk
             fileName: fileName,
             folder: '/products/',
             useUniqueFileName: true,
             tags: ['product', brand || 'unknown', categoryDoc.name.toLowerCase()].filter(Boolean)
           });
+
+          // Delete temp file after successful upload
+          try { if (file && file.path) await fs.promises.unlink(file.path); } catch (e) {}
 
           return {
             url: uploadResponse.url,
@@ -95,6 +83,8 @@ router.post('/', upload.array('images', 5), async (req, res) => {
           };
         } catch (uploadError) {
           console.error(`Failed to upload image ${index}:`, uploadError);
+          // Clean up temp file on error too
+          try { if (file && file.path) await fs.promises.unlink(file.path); } catch (e) {}
           throw new Error(`Image upload failed: ${uploadError.message}`);
         }
       });
@@ -103,6 +93,12 @@ router.post('/', upload.array('images', 5), async (req, res) => {
         imageUrls = await Promise.all(uploadPromises);
         console.log(`✅ Successfully uploaded ${imageUrls.length} images to ImageKit`);
       } catch (uploadError) {
+        // Clean up any remaining temp files
+        if (req.files) {
+          req.files.forEach(async (file) => {
+            try { if (file && file.path) await fs.promises.unlink(file.path); } catch (e) {}
+          });
+        }
         return res.status(400).json({
           success: false,
           message: 'Image upload failed',
@@ -196,6 +192,12 @@ router.post('/', upload.array('images', 5), async (req, res) => {
 
   } catch (error) {
     console.error('Create product error:', error);
+    // Clean up any remaining temp files on error
+    if (req.files) {
+      req.files.forEach(async (file) => {
+        try { if (file && file.path) await fs.promises.unlink(file.path); } catch (e) {}
+      });
+    }
     res.status(500).json({
       success: false,
       message: 'Error creating product',
@@ -227,29 +229,54 @@ router.put('/:productId', upload.array('newImages', 5), async (req, res) => {
       console.log(`📸 Uploading ${req.files.length} new images for product update...`);
       
       const uploadPromises = req.files.map(async (file, index) => {
-        const fileName = `products/${Date.now()}_${index}_${existingProduct.name.replace(/[^a-zA-Z0-9]/g, '_')}.${file.mimetype.split('/')[1]}`;
-        
-        const uploadResponse = await imagekit.upload({
-          file: file.buffer,
-          fileName: fileName,
-          folder: '/products/',
-          useUniqueFileName: true,
-          tags: ['product', existingProduct.brand || 'unknown', 'updated'].filter(Boolean)
-        });
+        try {
+          const fileName = `products/${Date.now()}_${index}_${existingProduct.name.replace(/[^a-zA-Z0-9]/g, '_')}.${file.mimetype.split('/')[1]}`;
+          
+          const uploadResponse = await imagekit.upload({
+            file: fs.createReadStream(file.path),  // ✅ stream from disk
+            fileName: fileName,
+            folder: '/products/',
+            useUniqueFileName: true,
+            tags: ['product', existingProduct.brand || 'unknown', 'updated'].filter(Boolean)
+          });
 
-        return {
-          url: uploadResponse.url,
-          alt: `${existingProduct.name} - Updated Image ${index + 1}`,
-          imagekitFileId: uploadResponse.fileId,
-          thumbnail: uploadResponse.thumbnailUrl
-        };
+          // Delete temp file after successful upload
+          try { if (file && file.path) await fs.promises.unlink(file.path); } catch (e) {}
+
+          return {
+            url: uploadResponse.url,
+            alt: `${existingProduct.name} - Updated Image ${index + 1}`,
+            imagekitFileId: uploadResponse.fileId,
+            thumbnail: uploadResponse.thumbnailUrl
+          };
+        } catch (uploadError) {
+          console.error(`Failed to upload image ${index}:`, uploadError);
+          // Clean up temp file on error too
+          try { if (file && file.path) await fs.promises.unlink(file.path); } catch (e) {}
+          throw uploadError;
+        }
       });
 
-      const newImageUrls = await Promise.all(uploadPromises);
-      
-      // Combine existing images with new ones (or replace based on your logic)
-      updateData.images = [...(existingProduct.images || []), ...newImageUrls];
-      console.log(`✅ Successfully uploaded ${newImageUrls.length} new images`);
+      try {
+        const newImageUrls = await Promise.all(uploadPromises);
+        
+        // Combine existing images with new ones (or replace based on your logic)
+        updateData.images = [...(existingProduct.images || []), ...newImageUrls];
+        console.log(`✅ Successfully uploaded ${newImageUrls.length} new images`);
+      } catch (uploadError) {
+        // Clean up any remaining temp files
+        if (req.files) {
+          req.files.forEach(async (file) => {
+            try { if (file && file.path) await fs.promises.unlink(file.path); } catch (e) {}
+          });
+        }
+        return res.status(400).json({
+          success: false,
+          message: 'Image upload failed',
+          error: uploadError.message,
+          requestId: req.requestId
+        });
+      }
     }
 
     // Parse tags if provided
@@ -311,6 +338,12 @@ router.put('/:productId', upload.array('newImages', 5), async (req, res) => {
 
   } catch (error) {
     console.error('Update product error:', error);
+    // Clean up any remaining temp files on error
+    if (req.files) {
+      req.files.forEach(async (file) => {
+        try { if (file && file.path) await fs.promises.unlink(file.path); } catch (e) {}
+      });
+    }
     res.status(500).json({
       success: false,
       message: 'Error updating product',

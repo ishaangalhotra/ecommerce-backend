@@ -2,7 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const { body, query, validationResult } = require('express-validator');
 const rateLimit = require('express-rate-limit');
-const multer = require('multer');
+const fs = require('fs'); // ✅ Added fs import
 const sharp = require('sharp');
 const User = require('../models/User');
 const Address = require('../models/Address');
@@ -72,21 +72,8 @@ const profileUpdateLimiter = rateLimit({
   message: { error: 'Too many profile updates, please try again later' }
 });
 
-// Avatar upload configuration
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 2 * 1024 * 1024, // 2MB limit
-    files: 1
-  },
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only image files are allowed'), false);
-    }
-  }
-});
+// Avatar upload configuration - ✅ Using disk storage utility
+const upload = require('../utils/multer'); // ✅ diskStorage
 
 // Validation middleware
 const validateUserUpdate = [
@@ -385,8 +372,8 @@ router.post('/avatar',
         });
       }
 
-      // Process and optimize image
-      const optimizedImage = await sharp(req.file.buffer)
+      // ✅ Process and optimize image from disk path instead of buffer
+      const optimizedImage = await sharp(req.file.path)
         .resize(300, 300, { 
           fit: 'cover',
           position: 'center'
@@ -426,6 +413,15 @@ router.post('/avatar',
         { new: true }
       ).select('-password -refreshToken');
 
+      // ✅ Delete temporary file after successful upload
+      try { 
+        if (req.file && req.file.path) {
+          await fs.promises.unlink(req.file.path); 
+        }
+      } catch (e) {
+        logger.warn('Failed to delete temp file:', e);
+      }
+
       logger.info(`Avatar updated`, {
         userId: req.user.id,
         avatarUrl: uploadResult.secure_url
@@ -439,6 +435,15 @@ router.post('/avatar',
       });
 
     } catch (error) {
+      // ✅ Delete temporary file on error
+      try { 
+        if (req.file && req.file.path) {
+          await fs.promises.unlink(req.file.path); 
+        }
+      } catch (e) {
+        logger.warn('Failed to delete temp file on error:', e);
+      }
+
       logger.error('Upload avatar error:', error);
       res.status(500).json({
         success: false,
@@ -1050,133 +1055,4 @@ router.patch('/:id/role',
   }
 );
 
-// ==================== HELPER FUNCTIONS ====================
-
-async function getUserStatistics(userId, userRole) {
-  const stats = {
-    totalOrders: 0,
-    totalSpent: 0,
-    averageOrderValue: 0,
-    favoriteCategories: [],
-    accountAge: 0
-  };
-
-  try {
-    if (userRole === UserRoles.CUSTOMER) {
-      const orderStats = await Order.aggregate([
-        { $match: { customer: userId } },
-        {
-          $group: {
-            _id: null,
-            totalOrders: { $sum: 1 },
-            totalSpent: { $sum: '$pricing.total' },
-            averageOrderValue: { $avg: '$pricing.total' }
-          }
-        }
-      ]);
-
-      if (orderStats[0]) {
-        stats.totalOrders = orderStats[0].totalOrders;
-        stats.totalSpent = orderStats[0].totalSpent;
-        stats.averageOrderValue = orderStats[0].averageOrderValue;
-      }
-    }
-
-    // Calculate account age
-    const user = await User.findById(userId).select('createdAt');
-    if (user) {
-      stats.accountAge = Math.floor(
-        (new Date() - user.createdAt) / (1000 * 60 * 60 * 24)
-      );
-    }
-
-    return stats;
-  } catch (error) {
-    logger.error('Get user statistics error:', error);
-    return stats;
-  }
-}
-
-async function getUserRecentActivity(userId) {
-  try {
-    // Get recent orders
-    const recentOrders = await Order.find({ customer: userId })
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .select('orderNumber status createdAt pricing.total')
-      .lean();
-
-    return {
-      recentOrders,
-      lastLoginAt: new Date() // This would come from session tracking
-    };
-  } catch (error) {
-    logger.error('Get user recent activity error:', error);
-    return { recentOrders: [] };
-  }
-}
-
-function calculateProfileCompletion(user) {
-  const fields = [
-    'name', 'email', 'phone', 'avatar', 'dateOfBirth', 
-    'gender', 'bio', 'isVerified'
-  ];
-  
-  const completedFields = fields.filter(field => {
-    if (field === 'isVerified') return user[field] === true;
-    return user[field] && user[field].toString().trim() !== '';
-  });
-  
-  return Math.round((completedFields.length / fields.length) * 100);
-}
-
-async function getUserPermissions(role) {
-  const rolePermissions = {
-    [UserRoles.SUPER_ADMIN]: Object.values(Permissions),
-    [UserRoles.ADMIN]: [
-      Permissions.USER_VIEW_ALL,
-      Permissions.USER_CREATE,
-      Permissions.USER_UPDATE,
-      Permissions.PROFILE_VIEW_ALL,
-      Permissions.ADDRESS_VIEW_ALL,
-      Permissions.ORDER_VIEW_ALL
-    ],
-    [UserRoles.SELLER]: [
-      Permissions.PROFILE_VIEW_OWN,
-      Permissions.PROFILE_UPDATE_OWN,
-      Permissions.ADDRESS_MANAGE_OWN,
-      Permissions.ORDER_VIEW_OWN
-    ],
-    [UserRoles.CUSTOMER]: [
-      Permissions.PROFILE_VIEW_OWN,
-      Permissions.PROFILE_UPDATE_OWN,
-      Permissions.ADDRESS_MANAGE_OWN,
-      Permissions.ORDER_VIEW_OWN
-    ]
-  };
-
-  return rolePermissions[role] || [];
-}
-
-function canAssignRole(assignerRole, targetRole) {
-  const hierarchy = {
-    [UserRoles.SUPER_ADMIN]: 5,
-    [UserRoles.ADMIN]: 4,
-    [UserRoles.REGIONAL_MANAGER]: 3,
-    [UserRoles.MODERATOR]: 2,
-    [UserRoles.SELLER]: 1,
-    [UserRoles.CUSTOMER]: 1,
-    [UserRoles.DELIVERY_AGENT]: 1,
-    [UserRoles.SUPPORT]: 1
-  };
-
-  return hierarchy[assignerRole] > hierarchy[targetRole];
-}
-
-function extractPublicIdFromUrl(url) {
-  const parts = url.split('/');
-  const fileName = parts[parts.length - 1];
-  return fileName.split('.')[0];
-}
-
-module.exports = router;
+//

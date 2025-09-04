@@ -36,7 +36,13 @@ const createUploadConfig = (fileType = 'IMAGES', options = {}) => {
   } = options;
 
   return multer({
-    storage: multer.memoryStorage(),
+    storage: multer.diskStorage({
+      destination: (req, file, cb) => cb(null, require('path').join(__dirname, '..', 'tmp', 'uploads')),
+      filename: (req, file, cb) => {
+        const safe = (file.originalname || 'upload').replace(/[^\w.\-]/g, '_');
+        cb(null, Date.now() + '-' + safe);
+      }
+    }),
     limits: {
       fileSize: maxSize,
       files: maxFiles
