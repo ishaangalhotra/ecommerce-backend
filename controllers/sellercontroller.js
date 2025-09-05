@@ -3,8 +3,24 @@ const Category = require('../models/Category');
 const Order = require('../models/Order'); 
 const mongoose = require('mongoose');
 const logger = require('../utils/logger');
-const imagekit = require('../utils/imagekit');
 const { body, validationResult } = require('express-validator');
+
+// Initialize ImageKit with error handling
+let imagekit;
+try {
+  imagekit = require('../utils/imagekit');
+  // Test if ImageKit is properly configured
+  if (!imagekit || !imagekit.upload) {
+    throw new Error('ImageKit not properly configured');
+  }
+} catch (error) {
+  console.warn('ImageKit initialization failed:', error.message);
+  // Create a mock imagekit object
+  imagekit = {
+    upload: () => Promise.reject(new Error('ImageKit not configured')),
+    deleteFile: () => Promise.reject(new Error('ImageKit not configured'))
+  };
+}
 
 // Input validation rules
 const validateProduct = [
@@ -137,23 +153,35 @@ const uploadProduct = async (req, res) => {
         }
       }
 
-      const folder = `products/${sellerId}`;
-      const uploads = allFiles.map((f, idx) =>
-        imagekit.upload({
-          file: f.buffer,
-          fileName: `${Date.now()}_${idx}_${f.originalname}`.replace(/\s+/g, '_'),
-          folder,
-          useUniqueFileName: true
-        })
-      );
-      const results = await Promise.all(uploads);
-      images = results.map((r, idx) => ({
-        url: r.url,
-        publicId: r.fileId,
-        alt: r.name || '',
-        isPrimary: idx === 0,
-        order: idx
-      }));
+      try {
+        const folder = `products/${sellerId}`;
+        const uploads = allFiles.map((f, idx) =>
+          imagekit.upload({
+            file: f.buffer,
+            fileName: `${Date.now()}_${idx}_${f.originalname}`.replace(/\s+/g, '_'),
+            folder,
+            useUniqueFileName: true
+          }).catch(error => {
+            console.error('Image upload failed:', error);
+            return null;
+          })
+        );
+        
+        const results = await Promise.all(uploads);
+        images = results
+          .filter(result => result !== null)
+          .map((r, idx) => ({
+            url: r.url,
+            publicId: r.fileId,
+            alt: r.name || '',
+            isPrimary: idx === 0,
+            order: idx
+          }));
+      } catch (error) {
+        console.error('Image upload process failed:', error);
+        // Continue without images rather than failing the entire request
+        images = [];
+      }
     }
 
     // Create product slug
@@ -409,23 +437,34 @@ const updateProduct = async (req, res) => {
         }
       }
       
-      const folder = `products/${req.user.id}`;
-      const uploads = allFiles.map((f, idx) =>
-        imagekit.upload({
-          file: f.buffer,
-          fileName: `${Date.now()}_${idx}_${f.originalname}`.replace(/\s+/g, '_'),
-          folder,
-          useUniqueFileName: true
-        })
-      );
-      const results = await Promise.all(uploads);
-      updateData.images = results.map((r, idx) => ({
-        url: r.url,
-        publicId: r.fileId,
-        alt: r.name || '',
-        isPrimary: idx === 0,
-        order: idx
-      }));
+      try {
+        const folder = `products/${req.user.id}`;
+        const uploads = allFiles.map((f, idx) =>
+          imagekit.upload({
+            file: f.buffer,
+            fileName: `${Date.now()}_${idx}_${f.originalname}`.replace(/\s+/g, '_'),
+            folder,
+            useUniqueFileName: true
+          }).catch(error => {
+            console.error('Image upload failed:', error);
+            return null;
+          })
+        );
+        
+        const results = await Promise.all(uploads);
+        updateData.images = results
+          .filter(result => result !== null)
+          .map((r, idx) => ({
+            url: r.url,
+            publicId: r.fileId,
+            alt: r.name || '',
+            isPrimary: idx === 0,
+            order: idx
+          }));
+      } catch (error) {
+        console.error('Image upload process failed:', error);
+        // Continue without updating images rather than failing the entire request
+      }
     }
 
     if (updateData.name) updateData.name = updateData.name.trim();
@@ -520,7 +559,8 @@ const deleteProduct = async (req, res) => {
     if (product.images && product.images.length > 0) {
       const deletePromises = product.images.map(image => 
         imagekit.deleteFile(image.publicId).catch(err => {
-          logger.warn('Failed to delete image from ImageKit:', err);
+          console.warn('Failed to delete image from ImageKit:', err);
+          // Don't fail the entire operation if image deletion fails
         })
       );
       await Promise.all(deletePromises);
