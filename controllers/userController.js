@@ -1056,7 +1056,8 @@ const validateSocialLinks = (links) => {
   const allowedPlatforms = ['facebook', 'twitter', 'instagram', 'linkedin', 'youtube'];
 
   for (const [platform, url] of Object.entries(links)) {
-    if (allowedPlatforms.includes(platform) {
+    // Add the missing ')' before the '{'
+    if (allowedPlatforms.includes(platform)) { 
       try {
         new URL(url); // Validate URL format
         validLinks[platform] = url;
