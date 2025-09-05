@@ -467,8 +467,23 @@ class CORSManager {
   static isValidOrigin(origin) {
     if (!origin) return true;
     
-    const allowedOrigins = this.getOrigins();
-    if (allowedOrigins.includes(origin)) return true;
+    // Get allowed origins from environment variables
+    const allowedOrigins = [];
+    
+    // Add from ALLOWED_ORIGINS
+    if (process.env.ALLOWED_ORIGINS) {
+      allowedOrigins.push(...process.env.ALLOWED_ORIGINS.split(',').map(url => url.trim()));
+    }
+    
+    // Add from FRONTEND_URLS
+    if (process.env.FRONTEND_URLS) {
+      allowedOrigins.push(...process.env.FRONTEND_URLS.split(',').map(url => url.trim()));
+    }
+    
+    // Check if origin is in allowed list
+    if (allowedOrigins.includes(origin)) {
+      return true;
+    }
     
     // Check deployment platform patterns
     const platformPatterns = [
@@ -907,14 +922,20 @@ class QuickLocalServer {
       500
     ));
 
-    // CORS with dynamic origins
+    // CORS with dynamic origins - FIXED IMPLEMENTATION
     this.app.use(cors({
       origin: (origin, callback) => {
+        // Allow requests with no origin (like mobile apps, Postman, curl)
+        if (!origin) {
+          return callback(null, true);
+        }
+        
+        // Check if origin is allowed
         if (CORSManager.isValidOrigin(origin)) {
           callback(null, true);
         } else {
-          console.warn(`🚫 CORS blocked origin: ${origin || 'null'}`);
-          callback(null, false);
+          console.warn(`🚫 CORS blocked origin: ${origin}`);
+          callback(new Error('Not allowed by CORS'), false);
         }
       },
       credentials: true,
@@ -941,6 +962,9 @@ class QuickLocalServer {
       optionsSuccessStatus: 200,
       maxAge: 86400
     }));
+    
+    // Handle preflight requests for all routes
+    this.app.options('*', cors());
 
     // Body parsing
     this.app.use(express.json({
