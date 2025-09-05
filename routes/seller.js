@@ -1,4 +1,4 @@
-// routes/seller.js
+// routes/seller.js - FIXED VERSION
 const express = require('express');
 const mongoose = require('mongoose');
 const router = express.Router();
@@ -21,7 +21,7 @@ try {
 } catch (error) {
   console.error('🔐 CRITICAL SECURITY ERROR: Auth middleware failed to load:', error.message);
 
-  protect = () => (req, res) => { // Ensure fallback is also a factory
+  protect = () => (req, res) => {
     console.error('🚨 SECURITY BREACH ATTEMPT: Auth middleware unavailable, blocking request');
     res.status(503).json({
       error: 'Service temporarily unavailable due to security module failure',
@@ -65,8 +65,8 @@ let rateLimiter;
 try {
   const rateLimit = require('express-rate-limit');
   rateLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // limit each IP to 100 requests per windowMs
+    windowMs: 15 * 60 * 1000,
+    max: 100,
     message: {
       error: 'Too many requests from this IP, please try again later',
       code: 'RATE_LIMIT_EXCEEDED'
@@ -79,7 +79,7 @@ try {
   rateLimiter = (req, res, next) => next();
 }
 
-// ===== Controller (with presence checks) =====
+// ===== Controller (with fixed presence checks) =====
 let sellerCtrl;
 let controllerModuleLoaded = false;
 const sellerOrders = require('../controllers/sellerOrdersController');
@@ -87,6 +87,7 @@ const sellerOrders = require('../controllers/sellerOrdersController');
 try {
   sellerCtrl = require('../controllers/sellercontroller');
 
+  // Check required methods (functions only)
   const requiredMethods = [
     'uploadProduct',
     'getMyProducts',
@@ -96,7 +97,6 @@ try {
     'getProductAnalytics',
     'bulkUpdateProducts',
     'exportProducts'
-    // 'validateProduct' was removed from this list as it is an array, not a function.
   ];
 
   for (const method of requiredMethods) {
@@ -105,9 +105,10 @@ try {
     }
   }
   
-  // Also check that validateProduct exists and is an array
-  if (!Array.isArray(sellerCtrl['validateProduct'])) {
-    throw new Error(`Required controller middleware 'validateProduct' is missing or not an array`);
+  // Check validateProduct separately - it can be an array OR undefined
+  // If it exists, it should be an array
+  if (sellerCtrl.validateProduct !== undefined && !Array.isArray(sellerCtrl.validateProduct)) {
+    throw new Error(`validateProduct must be an array if defined`);
   }
 
   controllerModuleLoaded = true;
@@ -132,7 +133,7 @@ try {
     getProductAnalytics: fallback('getProductAnalytics'),
     bulkUpdateProducts: fallback('bulkUpdateProducts'),
     exportProducts: fallback('exportProducts'),
-    validateProduct: []
+    validateProduct: [] // Empty array as fallback
   };
 }
 
@@ -198,18 +199,19 @@ const validateExportFormat = (req, res, next) => {
 
 router.use(rateLimiter);
 
-// Create product
-router.post(
-  '/products',
+// Create product - using spread operator for validateProduct array
+const createProductMiddleware = [
   systemHealthCheck,
   protect(),
   authorize(['seller', 'admin']),
   upload.fields([{ name: 'images', maxCount: 8 }]),
   validateFileUpload,
-  sellerCtrl.validateProduct,
+  ...(sellerCtrl.validateProduct || []), // Spread the array or empty array
   logRequest('Product creation'),
   asyncHandler(sellerCtrl.uploadProduct)
-);
+];
+
+router.post('/products', ...createProductMiddleware);
 
 // List my products
 router.get(
@@ -251,7 +253,7 @@ const updateProductMiddleware = [
   validateObjectId('productId'),
   upload.fields([{ name: 'images', maxCount: 8 }]),
   validateFileUpload,
-  sellerCtrl.validateProduct,
+  ...(sellerCtrl.validateProduct || []), // Spread the array or empty array
   logRequest('Product update')
 ];
 
