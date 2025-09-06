@@ -916,22 +916,18 @@ class QuickLocalServer {
       500
     ));
 
-    // CORS with dynamic origins - FIXED IMPLEMENTATION
+    // ##################################################################
+    // ## START: CORS CONFIGURATION FIX
+    // ##################################################################
+    
+    // CORS with dynamic origins - REVISED AND IMPROVED IMPLEMENTATION
+    const allowedOrigins = CORSManager.getOrigins();
+    
+    // Add this line for debugging purposes to see what origins are allowed on startup
+    console.log('✅ [CORS] Allowed Origins:', allowedOrigins);
+
     this.app.use(cors({
-      origin: (origin, callback) => {
-        // Allow requests with no origin (like mobile apps, Postman, curl)
-        if (!origin) {
-          return callback(null, true);
-        }
-        
-        // Check if origin is allowed
-        if (CORSManager.isValidOrigin(origin)) {
-          callback(null, true);
-        } else {
-          console.warn(`🚫 CORS blocked origin: ${origin}`);
-          callback(new Error('Not allowed by CORS'), false);
-        }
-      },
+      origin: allowedOrigins, // Use the array of origins directly
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
       allowedHeaders: [
@@ -958,7 +954,11 @@ class QuickLocalServer {
     }));
     
     // Handle preflight requests for all routes
-    this.app.options('*', cors());
+    this.app.options('*', cors({ origin: allowedOrigins, credentials: true }));
+
+    // ##################################################################
+    // ## END: CORS CONFIGURATION FIX
+    // ##################################################################
 
     // Body parsing
     this.app.use(express.json({
