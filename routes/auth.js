@@ -105,6 +105,13 @@ const sendEnhancedTokenResponse = async (user, statusCode, res, remember = false
   }
 };
 
+
+const generateTokens = (payload) => {
+    const accessToken = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '15m' });
+    const refreshToken = jwt.sign(payload, process.env.JWT_REFRESH_SECRET, { expiresIn: '7d' });
+    return { accessToken, refreshToken };
+};
+
 /* =========================================================
    1. REGISTER - MODIFIED FOR NO EMAIL VERIFICATION FOR SELLERS
    ========================================================= */
@@ -898,11 +905,12 @@ router.patch(
 );
 
 /* =========================================================
-   12. REFRESH TOKEN
+   12. REFRESH TOKEN - UPDATED
    ========================================================= */
 router.post('/refresh-token', async (req, res) => {
   try {
-    const { refreshToken } = req.cookies;
+    // Get refresh token from cookies or body
+    const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
     
     if (!refreshToken) {
       return res.status(401).json({ 
@@ -914,46 +922,60 @@ router.post('/refresh-token', async (req, res) => {
     // Verify refresh token
     const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
     
-    // Find user and verify refresh token
-    const hashedToken = crypto.createHash('sha256').update(refreshToken).digest('hex');
-    const user = await User.findOne({ 
-      _id: decoded.id,
-      refreshToken: hashedToken,
-      isActive: true
-    });
-
-    if (!user || (user.tokenVersion || 0) !== decoded.tokenVersion) {
+    // Find user by the decoded ID
+    const user = await User.findById(decoded.id);
+    if (!user) {
       return res.status(401).json({ 
         success: false, 
-        message: 'Invalid refresh token' 
+        message: 'User not found' 
       });
     }
+    
+    // Invalidate old refresh token in DB for enhanced security
+    user.refreshToken = undefined; 
+    await user.save();
 
-    // Generate new access token
-    const newAccessToken = jwt.sign(
-      { id: user._id, tokenVersion: user.tokenVersion || 0 },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || '15m' }
-    );
 
-    // Set new access token cookie
-    res.cookie('accessToken', newAccessToken, {
-      expires: new Date(Date.now() + 15 * 60 * 1000), // 15 minutes
+    // Generate new tokens
+    const tokens = generateTokens({
+      id: user._id,
+      email: user.email,
+      role: user.role,
+      tokenVersion: user.tokenVersion || 0
+    });
+    
+    // Save the new refresh token hash to the user model
+    user.refreshToken = crypto.createHash('sha256').update(tokens.refreshToken).digest('hex');
+    await user.save();
+
+    // Set new cookies
+    res.cookie('refreshToken', tokens.refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict'
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     });
 
+    res.cookie('accessToken', tokens.accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 15 * 60 * 1000 // 15 minutes
+    });
+
+    // Also return tokens in response for clients that can't use cookies
     res.json({
       success: true,
-      accessToken: newAccessToken,
-      message: 'Token refreshed successfully'
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      expiresIn: '15m'
     });
 
   } catch (err) {
-    logger.error('Token refresh error', err);
+    console.error('Token refresh error:', err);
     
-    // Clear invalid refresh token
+    // Clear invalid tokens
+    res.clearCookie('accessToken');
     res.clearCookie('refreshToken');
     
     res.status(401).json({ 

@@ -431,7 +431,10 @@ class QuickLocalConfig {
 // CORS Origins Configuration
 class CORSManager {
   static getOrigins() {
-    const origins = [];
+    const origins = [
+      'https://www.quicklocal.shop',
+      'https://quicklocal.shop',
+    ];
     
     // Add from FRONTEND_URLS
     if (process.env.FRONTEND_URLS) {
@@ -465,27 +468,17 @@ class CORSManager {
   }
 
   static isValidOrigin(origin) {
+    // Allow requests with no origin (like mobile apps, Postman, curl)
     if (!origin) return true;
     
-    // Get allowed origins from environment variables
-    const allowedOrigins = [];
-    
-    // Add from ALLOWED_ORIGINS
-    if (process.env.ALLOWED_ORIGINS) {
-      allowedOrigins.push(...process.env.ALLOWED_ORIGINS.split(',').map(url => url.trim()));
-    }
-    
-    // Add from FRONTEND_URLS
-    if (process.env.FRONTEND_URLS) {
-      allowedOrigins.push(...process.env.FRONTEND_URLS.split(',').map(url => url.trim()));
-    }
-    
-    // Check if origin is in allowed list
+    const allowedOrigins = CORSManager.getOrigins();
+
+    // Check if origin is in the dynamically generated list
     if (allowedOrigins.includes(origin)) {
       return true;
     }
     
-    // Check deployment platform patterns
+    // Check deployment platform patterns for preview/staging environments
     const platformPatterns = [
       /^https:\/\/.*\.vercel\.app$/,
       /^https:\/\/.*\.netlify\.app$/,
@@ -498,6 +491,7 @@ class CORSManager {
     return platformPatterns.some(pattern => pattern.test(origin));
   }
 }
+
 
 // Enhanced Security Manager
 class EnhancedSecurityManager {
