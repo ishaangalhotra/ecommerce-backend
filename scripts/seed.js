@@ -47,7 +47,7 @@ async function seedDatabase() {
       email: 'admin@quicklocal.com',
       password: adminPassword,
       role: 'admin',
-      phone: '+1234567890',
+      phone: '+919876543210',
       isActive: true,
       emailVerified: true
     });
@@ -61,7 +61,7 @@ async function seedDatabase() {
       email: 'seller@quicklocal.com',
       password: sellerPassword,
       role: 'seller',
-      phone: '+1234567891',
+      phone: '+919876543211',
       isActive: true,
       emailVerified: true,
       location: {
@@ -82,7 +82,7 @@ async function seedDatabase() {
       email: 'customer@quicklocal.com',
       password: customerPassword,
       role: 'customer',
-      phone: '+1234567892',
+      phone: '+919876543212',
       isActive: true,
       emailVerified: true,
       location: {
@@ -154,7 +154,12 @@ async function seedDatabase() {
         description: 'Sweet and crisp organic apples, perfect for snacking',
         price: 2.99,
         originalPrice: 3.49,
-        images: ['https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=400'],
+        images: [{
+          url: 'https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=400',
+          alt: 'Fresh Organic Apples',
+          isPrimary: true,
+          order: 0
+        }],
         category: categories[0]._id,
         seller: sellerUser._id,
         stock: 50,
@@ -171,7 +176,12 @@ async function seedDatabase() {
         description: 'Fresh whole milk from local dairy farms',
         price: 1.99,
         originalPrice: 2.29,
-        images: ['https://images.unsplash.com/photo-1550583724-b2692b85b150?w=400'],
+        images: [{
+          url: 'https://images.unsplash.com/photo-1550583724-b2692b85b150?w=400',
+          alt: 'Whole Milk',
+          isPrimary: true,
+          order: 0
+        }],
         category: categories[1]._id,
         seller: sellerUser._id,
         stock: 30,
@@ -188,7 +198,12 @@ async function seedDatabase() {
         description: 'Artisan bread baked fresh daily',
         price: 3.49,
         originalPrice: 3.99,
-        images: ['https://images.unsplash.com/photo-1509440159596-0249088772ff?w=400'],
+        images: [{
+          url: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=400',
+          alt: 'Fresh Bread',
+          isPrimary: true,
+          order: 0
+        }],
         category: categories[1]._id,
         seller: sellerUser._id,
         stock: 25,
@@ -205,7 +220,12 @@ async function seedDatabase() {
         description: 'Fresh boneless chicken breast, perfect for grilling',
         price: 8.99,
         originalPrice: 10.99,
-        images: ['https://images.unsplash.com/photo-1604503468506-a8da13d82791?w=400'],
+        images: [{
+          url: 'https://images.unsplash.com/photo-1604503468506-a8da13d82791?w=400',
+          alt: 'Chicken Breast',
+          isPrimary: true,
+          order: 0
+        }],
         category: categories[2]._id,
         seller: sellerUser._id,
         stock: 15,
@@ -222,7 +242,12 @@ async function seedDatabase() {
         description: 'Premium long-grain basmati rice',
         price: 4.99,
         originalPrice: 5.99,
-        images: ['https://images.unsplash.com/photo-1586201375761-83865001e31c?w=400'],
+        images: [{
+          url: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=400',
+          alt: 'Basmati Rice',
+          isPrimary: true,
+          order: 0
+        }],
         category: categories[3]._id,
         seller: sellerUser._id,
         stock: 40,

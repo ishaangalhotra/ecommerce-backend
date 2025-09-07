@@ -73,15 +73,31 @@ const customValidators = {
         return value;
     }, 'Strong secret validation'),
 
-    // Enhanced URL list validation
+    // Enhanced URL list validation with support for local development protocols
     urlList: Joi.string().custom((value, helpers) => {
         if (!value) return '';
         
-        const urls = value.split(',').map(url => url.trim());
+        const urls = value.split(',').map(url => url.trim()).filter(Boolean);
         const invalidUrls = urls.filter(url => {
             try {
+                // Allow common local development protocols
+                if (url.startsWith('file://') || 
+                    url.startsWith('http://localhost') ||
+                    url.startsWith('http://127.0.0.1') ||
+                    url.startsWith('http://0.0.0.0')) {
+                    return false; // These are valid for development
+                }
+                
                 const parsed = new URL(url);
+                
+                // For production URLs, ensure proper format
                 if (!parsed.protocol || !parsed.hostname) return true;
+                
+                // Allow http/https protocols
+                if (!['http:', 'https:'].includes(parsed.protocol)) {
+                    return true;
+                }
+                
                 return false;
             } catch {
                 return true;

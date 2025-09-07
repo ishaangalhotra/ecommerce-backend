@@ -20,6 +20,23 @@ services:
         value: 70
       - key: MEMORY_CRITICAL_THRESHOLD
         value: 85
+      # CORS Configuration for Production
+      - key: CORS_ORIGINS
+        value: "https://www.quicklocal.shop,https://quicklocal.shop"
+      - key: CLIENT_URL
+        value: "https://www.quicklocal.shop"
+      - key: API_URL
+        value: "https://quicklocal-backend.onrender.com"
+      # Database Configuration
+      - key: MONGODB_URI
+        sync: false  # You'll need to set this in Render dashboard
+      # Required for configuration validation
+      - key: JWT_SECRET
+        generateValue: true
+      - key: COOKIE_SECRET
+        generateValue: true
+      - key: SESSION_SECRET
+        generateValue: true
     scaling:
       minInstances: 1
       maxInstances: 1
