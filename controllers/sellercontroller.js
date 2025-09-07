@@ -1,6 +1,6 @@
 const Product = require('../models/Product');
 const Category = require('../models/Category');
-const Order = require('../models/Order'); 
+const Order = require('../models/Order');
 const mongoose = require('mongoose');
 const logger = require('../utils/logger');
 const { body, validationResult } = require('express-validator');
@@ -592,6 +592,14 @@ const deleteProduct = async (req, res) => {
 // Get Seller Dashboard - Fixed with proper Order integration
 const getSellerDashboard = async (req, res) => {
   try {
+    // Verify the user is a seller or admin
+    if (req.user.role !== 'seller' && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Seller account required.'
+      });
+    }
+
     const sellerId = new mongoose.Types.ObjectId(req.user.id);
     const { timeRange = '30d' } = req.query;
 

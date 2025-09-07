@@ -2,6 +2,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const router = express.Router();
+const Category = require('../models/Category'); // Added Category model import
 
 // ===== Auth middleware (fail-secure) =====
 let protect, authorize;
@@ -243,6 +244,32 @@ router.patch(
   validateBulkOperation,
   logRequest('Bulk product update'),
   asyncHandler(sellerCtrl.bulkUpdateProducts)
+);
+
+// Add categories endpoint to seller routes
+router.get(
+  '/categories',
+  systemHealthCheck,
+  protect(),
+  authorize(['seller', 'admin']),
+  asyncHandler(async (req, res) => {
+    try {
+      const categories = await Category.find({ status: 'active' })
+        .select('name description')
+        .sort({ name: 1 });
+      
+      res.json({
+        success: true,
+        categories
+      });
+    } catch (error) {
+      console.error('Categories fetch error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Failed to fetch categories'
+      });
+    }
+  })
 );
 
 // Update product middleware stack

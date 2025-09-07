@@ -106,9 +106,9 @@ const sendEnhancedTokenResponse = async (user, statusCode, res, remember = false
 };
 
 
-const generateTokens = (payload) => {
+const generateTokens = (payload, remember = false) => {
     const accessToken = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '15m' });
-    const refreshToken = jwt.sign(payload, process.env.JWT_REFRESH_SECRET, { expiresIn: '7d' });
+    const refreshToken = jwt.sign(payload, process.env.JWT_REFRESH_SECRET, { expiresIn: remember ? '30d' : '7d' });
     return { accessToken, refreshToken };
 };
 
@@ -273,7 +273,7 @@ router.post(
           user.loginAttempts = (user.loginAttempts || 0) + 1;
           
           if (user.loginAttempts >= 5) {
-            user.lockUntil = Date.now() + 15 * 60 * 60 * 1000; // 15 minutes
+            user.lockUntil = Date.now() + 15 * 60 * 1000; // 15 minutes
             await user.save();
             
             logger.warn(`Account locked due to failed attempts: ${user.email}`, {
@@ -315,7 +315,6 @@ router.post(
       if (user.loginAttempts > 0) {
         user.loginAttempts = 0;
         user.lockUntil = undefined;
-        await user.save();
       }
 
       logger.info(`User logged in: ${user.email}`, { 
@@ -833,9 +832,7 @@ router.patch(
     body('currentPassword').notEmpty().withMessage('Current password required'),
     body('newPassword')
       .isLength({ min: 6, max: 128 })
-      .withMessage('Password must be 6-128 characters')
-      .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/)
-      .withMessage('Password must contain upper, lower, number & special char'),
+      .withMessage('Password must be 6-128 characters'),
     body('confirmPassword').custom((val, { req }) => {
       if (val !== req.body.newPassword) throw new Error('Passwords do not match');
       return true;
@@ -905,85 +902,68 @@ router.patch(
 );
 
 /* =========================================================
-   12. REFRESH TOKEN - UPDATED
+   12. REFRESH TOKEN - SECURELY IMPLEMENTED
    ========================================================= */
 router.post('/refresh-token', async (req, res) => {
   try {
-    // Get refresh token from cookies or body
     const refreshToken = req.cookies.refreshToken || req.body.refreshToken;
-    
     if (!refreshToken) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'No refresh token provided' 
-      });
+      return res.status(401).json({ success: false, message: 'Refresh token required' });
     }
 
-    // Verify refresh token
+    // Verify JWT signature and expiration
     const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
-    
-    // Find user by the decoded ID
     const user = await User.findById(decoded.id);
-    if (!user) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'User not found' 
-      });
+
+    // Hash the incoming token to compare with the stored hash
+    const hashedToken = crypto.createHash('sha256').update(refreshToken).digest('hex');
+
+    // CRITICAL: Ensure user exists and the token matches the one in the DB
+    if (!user || user.refreshToken !== hashedToken) {
+       // If user exists but token doesn't match, it might be a stolen token.
+       // Invalidate all tokens for this user as a precaution.
+      if (user) {
+        user.refreshToken = undefined;
+        user.tokenVersion = (user.tokenVersion || 0) + 1;
+        await user.save();
+        logger.warn(`Potential token reuse detected for user: ${user.email}`, { userId: user._id });
+      }
+      return res.status(403).json({ success: false, message: 'Authentication failed. Please log in again.' });
     }
-    
-    // Invalidate old refresh token in DB for enhanced security
-    user.refreshToken = undefined; 
-    await user.save();
 
-
-    // Generate new tokens
-    const tokens = generateTokens({
+    // --- Token Rotation ---
+    // Generate new access and refresh tokens
+    const newTokens = generateTokens({
       id: user._id,
-      email: user.email,
-      role: user.role,
       tokenVersion: user.tokenVersion || 0
     });
-    
-    // Save the new refresh token hash to the user model
-    user.refreshToken = crypto.createHash('sha256').update(tokens.refreshToken).digest('hex');
+
+    // Save the hash of the *new* refresh token
+    user.refreshToken = crypto.createHash('sha256').update(newTokens.refreshToken).digest('hex');
     await user.save();
 
-    // Set new cookies
-    res.cookie('refreshToken', tokens.refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-    });
+    // Set new secure cookies
+    const cookieOptions = {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+    };
+    res.cookie('accessToken', newTokens.accessToken, { ...cookieOptions, maxAge: 15 * 60 * 1000 });
+    res.cookie('refreshToken', newTokens.refreshToken, { ...cookieOptions, maxAge: 7 * 24 * 60 * 60 * 1000 });
 
-    res.cookie('accessToken', tokens.accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 15 * 60 * 1000 // 15 minutes
-    });
-
-    // Also return tokens in response for clients that can't use cookies
     res.json({
       success: true,
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
-      expiresIn: '15m'
+      accessToken: newTokens.accessToken,
     });
 
   } catch (err) {
-    console.error('Token refresh error:', err);
-    
-    // Clear invalid tokens
+    logger.error('Token refresh error:', err.message);
     res.clearCookie('accessToken');
     res.clearCookie('refreshToken');
-    
-    res.status(401).json({ 
-      success: false, 
-      message: 'Token refresh failed' 
-    });
+    res.status(403).json({ success: false, message: 'Authentication failed. Please log in again.' });
   }
 });
+
 
 /* =========================================================
    13. LOGOUT ALL SESSIONS
