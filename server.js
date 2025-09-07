@@ -917,47 +917,31 @@ class QuickLocalServer {
     ));
 
     // ##################################################################
-    // ## START: CORS CONFIGURATION FIX
+    // ## START: CORS CONFIGURATION
     // ##################################################################
     
-    // CORS with dynamic origins - REVISED AND IMPROVED IMPLEMENTATION
-    const allowedOrigins = CORSManager.getOrigins();
-    
-    // Add this line for debugging purposes to see what origins are allowed on startup
-    console.log('✅ [CORS] Allowed Origins:', allowedOrigins);
-
-    this.app.use(cors({
-      origin: allowedOrigins, // Use the array of origins directly
+    const corsOptions = {
+      origin: function (origin, callback) {
+        if (CORSManager.isValidOrigin(origin)) {
+          callback(null, true);
+        } else {
+          callback(new Error('Not allowed by CORS'));
+        }
+      },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
       allowedHeaders: [
-        'Content-Type', 
-        'Authorization', 
-        'x-auth-token', 
+        'Content-Type',
+        'Authorization',
         'X-Requested-With',
-        'Accept',
-        'Origin',
-        'Cache-Control',
-        'Pragma',
-        'X-API-Key'
-      ],
-      exposedHeaders: [
-        'X-Total-Count', 
-        'X-Page-Count', 
-        'X-Correlation-ID', 
-        'API-Version',
-        'X-Rate-Limit-Remaining',
-        'X-Rate-Limit-Reset'
-      ],
-      optionsSuccessStatus: 200,
-      maxAge: 86400
-    }));
-    
-    // Handle preflight requests for all routes
-    this.app.options('*', cors({ origin: allowedOrigins, credentials: true }));
+        'Accept'
+      ]
+    };
 
+    this.app.use(cors(corsOptions));
+    
     // ##################################################################
-    // ## END: CORS CONFIGURATION FIX
+    // ## END: CORS CONFIGURATION
     // ##################################################################
 
     // Body parsing
