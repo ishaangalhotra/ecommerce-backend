@@ -428,7 +428,10 @@ class QuickLocalConfig {
   }
 }
 
-// CORS Origins Configuration
+// ==================================================================
+// == START: ENHANCED CORS MANAGER WITH DEBUGGING
+// ==================================================================
+// Enhanced CORS Manager with detailed logging for easier debugging
 class CORSManager {
   static getOrigins() {
     const origins = [
@@ -464,33 +467,47 @@ class CORSManager {
       );
     }
     
+    // Return a unique, filtered list of origins
     return [...new Set(origins)].filter(Boolean);
   }
 
   static isValidOrigin(origin) {
-    // Allow requests with no origin (like mobile apps, Postman, curl)
-    if (!origin) return true;
-    
-    const allowedOrigins = CORSManager.getOrigins();
-
-    // Check if origin is in the dynamically generated list
-    if (allowedOrigins.includes(origin)) {
+    // Allow requests with no origin, like mobile apps, server-to-server, and tools (Postman, curl)
+    if (!origin) {
+      console.log(`[CORS] ✅ Allowed request with no origin (e.g., Postman, server-to-server)`);
       return true;
     }
     
-    // Check deployment platform patterns for preview/staging environments
+    const allowedOrigins = CORSManager.getOrigins();
+
+    // Check if the exact origin is in the dynamically generated list
+    if (allowedOrigins.includes(origin)) {
+      console.log(`[CORS] ✅ Allowed origin (exact match): ${origin}`);
+      return true;
+    }
+    
+    // Check deployment platform patterns for preview/staging environments (e.g., Vercel, Render)
     const platformPatterns = [
       /^https:\/\/.*\.vercel\.app$/,
       /^https:\/\/.*\.netlify\.app$/,
       /^https:\/\/.*\.herokuapp\.com$/,
       /^https:\/\/.*\.railway\.app$/,
-      /^https:\/\/.*\.render\.com$/,
       /^https:\/\/.*\.onrender\.com$/
     ];
     
-    return platformPatterns.some(pattern => pattern.test(origin));
+    if (platformPatterns.some(pattern => pattern.test(origin))) {
+      console.log(`[CORS] ✅ Allowed origin (platform pattern match): ${origin}`);
+      return true;
+    }
+
+    // If we reach here, the origin is not allowed
+    console.warn(`[CORS] ❌ Denied origin: ${origin}`);
+    return false;
   }
 }
+// ==================================================================
+// == END: ENHANCED CORS MANAGER
+// ==================================================================
 
 
 // Enhanced Security Manager
@@ -916,34 +933,56 @@ class QuickLocalServer {
       500
     ));
 
-    // ##################################################################
-    // ## START: CORS CONFIGURATION
-    // ##################################################################
-    
+    // ==================================================================
+    // == START: ROBUST CORS CONFIGURATION WITH DEBUGGING
+    // ==================================================================
     const corsOptions = {
+      /**
+       * The origin function determines which origins are allowed to access the server.
+       * @param {string} origin - The origin of the incoming request.
+       * @param {function} callback - The callback to signal whether the origin is allowed.
+       */
       origin: function (origin, callback) {
+        // The `origin` will be `undefined` for server-to-server requests, REST clients (like Postman), or mobile apps.
+        // The `CORSManager.isValidOrigin` function is designed to allow these by default.
         if (CORSManager.isValidOrigin(origin)) {
+          // If the origin is valid, allow it.
+          // The first argument is for an error (null here), and the second is a boolean (true = allowed).
           callback(null, true);
         } else {
-          callback(new Error('Not allowed by CORS'));
+          // If the origin is not in our list, reject the request.
+          // IMPORTANT: We pass `false` instead of an error object. The `cors` library will then
+          // handle the rejection correctly, sending the appropriate headers and HTTP status.
+          // Passing an error here (e.g., new Error('...')) would result in a 500 server error.
+          callback(null, false);
         }
       },
+      // Allows the browser to send cookies and authorization headers with the request.
       credentials: true,
+      // Specifies the HTTP methods that are allowed.
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+      // Specifies the headers that are allowed in a request.
       allowedHeaders: [
         'Content-Type',
         'Authorization',
         'X-Requested-With',
-        'Accept'
-      ]
+        'Accept',
+        'Origin' // It's good practice to include Origin
+      ],
+      // Some legacy browsers (IE11, various SmartTVs) choke on 204.
+      optionsSuccessStatus: 200 
     };
-
+    
     this.app.use(cors(corsOptions));
     
-    // ##################################################################
-    // ## END: CORS CONFIGURATION
-    // ##################################################################
-
+    // Explicitly handle preflight requests for all routes.
+    // This ensures that OPTIONS requests get a successful response quickly,
+    // which is crucial for complex requests (e.g., with custom headers or methods like PUT/DELETE).
+    this.app.options('*', cors(corsOptions));
+    // ==================================================================
+    // == END: ROBUST CORS CONFIGURATION
+    // ==================================================================
+    
     // Body parsing
     this.app.use(express.json({
       limit: this.config.MAX_REQUEST_SIZE,
