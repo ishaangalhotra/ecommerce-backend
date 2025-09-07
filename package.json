@@ -23,8 +23,9 @@
     "npm": ">=10.0.0"
   },
   "scripts": {
-    "start": "node --max-old-space-size=512 --optimize-for-size --gc-interval=100 server.js",
-    "start:safe": "node --max-old-space-size=256 --optimize-for-size --gc-interval=50 server.js",
+    "start": "node --max-old-space-size=512 --expose-gc server.js",
+    "start:safe": "node --max-old-space-size=256 --expose-gc server.js",
+    "start:render": "node --max-old-space-size=256 --expose-gc server.js",
     "dev": "cross-env NODE_ENV=development nodemon --inspect server.js",
     "debug": "cross-env NODE_ENV=development node --inspect-brk server.js",
     "prod": "NODE_ENV=production PM2_HOME=.pm2 pm2-runtime start ecosystem.config.js",
