@@ -749,4 +749,174 @@ router.get('/', async (req, res) => {
 // Keep all your other existing GET routes (search, category, individual product, etc.)
 // ... (add your existing routes here)
 
+// Enhanced product search route
+router.get('/search', async (req, res) => {
+  try {
+    const { 
+      q, 
+      category, 
+      priceRange, 
+      availability, 
+      page = 1, 
+      limit = 20,
+      sortBy = 'relevance'
+    } = req.query;
+
+    let query = { status: 'active' };
+    
+    // Text search
+    if (q && q.trim()) {
+      query.$or = [
+        { name: { $regex: q.trim(), $options: 'i' } },
+        { description: { $regex: q.trim(), $options: 'i' } },
+        { brand: { $regex: q.trim(), $options: 'i' } },
+        { tags: { $in: [new RegExp(q.trim(), 'i')] } }
+      ];
+    }
+
+    // Category filter
+    if (category && category !== '') {
+      const categoryDoc = await Category.findOne({ 
+        $or: [
+          { name: new RegExp(category, 'i') },
+          { slug: category.toLowerCase() }
+        ]
+      });
+      if (categoryDoc) {
+        query.category = categoryDoc._id;
+      }
+    }
+
+    // Price range filter
+    if (priceRange && priceRange !== '') {
+      if (priceRange === '500+') {
+        query.price = { $gte: 500 };
+      } else if (priceRange.includes('-')) {
+        const [min, max] = priceRange.split('-').map(Number);
+        query.price = { $gte: min, $lte: max };
+      }
+    }
+
+    // Availability filter
+    if (availability && availability !== '') {
+      if (availability === 'instock') {
+        query.stock = { $gt: 0 };
+      } else if (availability === 'fastdelivery') {
+        query.fastDelivery = true;
+      }
+    }
+
+    // Sorting
+    let sortOptions = {};
+    switch (sortBy) {
+      case 'price-low':
+        sortOptions.price = 1;
+        break;
+      case 'price-high':
+        sortOptions.price = -1;
+        break;
+      case 'newest':
+        sortOptions.createdAt = -1;
+        break;
+      case 'rating':
+        sortOptions.averageRating = -1;
+        break;
+      case 'name':
+        sortOptions.name = 1;
+        break;
+      default:
+        sortOptions.createdAt = -1;
+    }
+
+    // Execute search with pagination
+    const skip = (page - 1) * limit;
+    
+    const products = await Product.find(query)
+      .sort(sortOptions)
+      .skip(skip)
+      .limit(parseInt(limit))
+      .populate('category', 'name slug')
+      .populate('seller', 'name storeName rating')
+      .lean();
+
+    // Get total count for pagination
+    const totalProducts = await Product.countDocuments(query);
+
+    res.json({
+      success: true,
+      products,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(totalProducts / limit),
+        totalProducts,
+        hasNext: skip + products.length < totalProducts,
+        hasPrev: page > 1
+      },
+      searchQuery: q,
+      appliedFilters: {
+        category,
+        priceRange,
+        availability,
+        sortBy
+      }
+    });
+
+  } catch (error) {
+    console.error('Product search error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Product search failed',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Search error'
+    });
+  }
+});
+
+// Quick search suggestions route (for autocomplete)
+router.get('/suggestions', async (req, res) => {
+  try {
+    const { q } = req.query;
+    
+    if (!q || q.trim().length < 2) {
+      return res.json({
+        success: true,
+        suggestions: []
+      });
+    }
+
+    const suggestions = await Product.aggregate([
+      {
+        $match: {
+          status: 'active',
+          $or: [
+            { name: { $regex: q.trim(), $options: 'i' } },
+            { brand: { $regex: q.trim(), $options: 'i' } },
+            { tags: { $in: [new RegExp(q.trim(), 'i')] } }
+          ]
+        }
+      },
+      {
+        $project: {
+          name: 1,
+          images: { $arrayElemAt: ['$images', 0] },
+          price: 1,
+          brand: 1
+        }
+      },
+      { $limit: 8 }
+    ]);
+
+    res.json({
+      success: true,
+      suggestions
+    });
+
+  } catch (error) {
+    console.error('Search suggestions error:', error);
+    res.json({
+      success: true,
+      suggestions: []
+    });
+  }
+});
+
 module.exports = router;

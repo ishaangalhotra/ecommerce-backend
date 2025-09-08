@@ -1,0 +1,97 @@
+<!-- Google Analytics 4 Setup for QuickLocal -->
+<!-- Add this to your HTML <head> section -->
+
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=GA_MEASUREMENT_ID"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  
+  gtag('config', 'GA_MEASUREMENT_ID', {
+    page_title: document.title,
+    page_location: window.location.href,
+    send_page_view: true
+  });
+
+  // E-commerce tracking functions
+  function trackPurchase(transactionId, value, items) {
+    gtag('event', 'purchase', {
+      transaction_id: transactionId,
+      value: value,
+      currency: 'INR',
+      items: items
+    });
+  }
+
+  function trackAddToCart(item) {
+    gtag('event', 'add_to_cart', {
+      currency: 'INR',
+      value: item.price,
+      items: [item]
+    });
+  }
+
+  function trackViewProduct(item) {
+    gtag('event', 'view_item', {
+      currency: 'INR',
+      value: item.price,
+      items: [item]
+    });
+  }
+
+  function trackBeginCheckout(items, value) {
+    gtag('event', 'begin_checkout', {
+      currency: 'INR',
+      value: value,
+      items: items
+    });
+  }
+
+  function trackSearch(searchTerm) {
+    gtag('event', 'search', {
+      search_term: searchTerm
+    });
+  }
+
+  // Custom events for quick commerce
+  function trackQuickOrder(deliveryTime) {
+    gtag('event', 'quick_order_placed', {
+      custom_parameter: deliveryTime,
+      event_category: 'Quick Commerce',
+      event_label: 'Fast Delivery'
+    });
+  }
+</script>
+
+<!-- Usage Examples: -->
+<script>
+  // Track product view
+  // trackViewProduct({
+  //   item_id: 'product_123',
+  //   item_name: 'Fresh Tomatoes',
+  //   category: 'Vegetables',
+  //   price: 50,
+  //   quantity: 1
+  // });
+
+  // Track add to cart
+  // trackAddToCart({
+  //   item_id: 'product_123',
+  //   item_name: 'Fresh Tomatoes',
+  //   category: 'Vegetables', 
+  //   price: 50,
+  //   quantity: 2
+  // });
+
+  // Track purchase
+  // trackPurchase('ORDER_001', 500, [
+  //   {
+  //     item_id: 'product_123',
+  //     item_name: 'Fresh Tomatoes',
+  //     category: 'Vegetables',
+  //     quantity: 2,
+  //     price: 50
+  //   }
+  // ]);
+</script>

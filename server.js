@@ -300,6 +300,74 @@ const AuthenticationMiddleware = require('./middleware/authMiddleware');
 const MetricsCollector = require('./utils/metrics');
 const CircuitBreaker = require('./utils/circuitBreaker');
 
+// Advanced feature imports
+let dbOptimizer, memoryCacheMiddleware, RealtimeInventorySystem, monitoringRoutes;
+try {
+  const dbOptimization = require('./database-optimization');
+  dbOptimizer = dbOptimization.dbOptimizer;
+  memoryCacheMiddleware = dbOptimization.memoryCacheMiddleware;
+} catch (error) {
+  console.warn('⚠️ Database optimization module not found, skipping...');
+}
+
+try {
+  const inventorySystem = require('./realtime-inventory-system');
+  RealtimeInventorySystem = inventorySystem.RealtimeInventorySystem;
+} catch (error) {
+  console.warn('⚠️ Real-time inventory system not found, skipping...');
+}
+
+try {
+  const monitoring = require('./performance-monitoring-system');
+  monitoringRoutes = monitoring.monitoringRoutes;
+} catch (error) {
+  console.warn('⚠️ Performance monitoring system not found, skipping...');
+}
+
+let advancedSearchSystem, createSearchRoutes;
+try {
+  const searchSystem = require('./advanced-search-system');
+  advancedSearchSystem = searchSystem.advancedSearchSystem;
+  createSearchRoutes = searchSystem.createSearchRoutes;
+} catch (error) {
+  console.warn('⚠️ Advanced search system not found, skipping...');
+}
+
+let cdnImageOptimization, createImageRoutes, createImageMiddleware;
+try {
+  const imageSystem = require('./cdn-image-optimization');
+  cdnImageOptimization = imageSystem.cdnImageOptimization;
+  createImageRoutes = imageSystem.createImageRoutes;
+  createImageMiddleware = imageSystem.createImageMiddleware;
+} catch (error) {
+  console.warn('⚠️ CDN image optimization system not found, skipping...');
+}
+
+let smsGatewaySystem, createSMSRoutes, createSMSMiddleware;
+try {
+  const smsSystem = require('./sms-gateway-system');
+  smsGatewaySystem = smsSystem.smsGatewaySystem;
+  createSMSRoutes = smsSystem.createSMSRoutes;
+  createSMSMiddleware = smsSystem.createSMSMiddleware;
+} catch (error) {
+  console.warn('⚠️ SMS gateway system not found, skipping...');
+}
+
+let twoFactorSystem, create2FARoutes, create2FAMiddleware;
+try {
+  const twoFASystem = require('./two-factor-authentication');
+  twoFactorSystem = twoFASystem.twoFactorSystem;
+  create2FARoutes = twoFASystem.create2FARoutes;
+  create2FAMiddleware = twoFASystem.create2FAMiddleware;
+  
+  // Inject SMS system into 2FA system
+  if (smsGatewaySystem) {
+    twoFactorSystem.setSMSSystem(smsGatewaySystem);
+  }
+} catch (error) {
+  console.warn('⚠️ Two-Factor Authentication system not found, skipping...');
+}
+
 // Enhanced Configuration Class with Environment Integration
 class QuickLocalConfig {
   constructor() {
@@ -1157,6 +1225,18 @@ class QuickLocalServer {
       next();
     });
 
+    // Advanced caching middleware (if available)
+    if (memoryCacheMiddleware) {
+      try {
+        console.log('📋 Adding memory cache middleware...');
+        this.app.use('/api/v1/products', memoryCacheMiddleware.productCache());
+        this.app.use('/api/v1/search', memoryCacheMiddleware.searchCache());
+        console.log('✅ Memory cache middleware enabled');
+      } catch (error) {
+        console.warn('⚠️ Memory cache middleware setup failed:', error.message);
+      }
+    }
+
     // Security and validation middleware
     this.app.use((req, res, next) => {
       // Security headers
@@ -1192,6 +1272,29 @@ class QuickLocalServer {
         });
         
         console.log(`✅ Database connected: ${this.config.DB_NAME}`);
+        
+        // Initialize database optimizations if available
+        if (dbOptimizer) {
+          try {
+            console.log('🔧 Initializing database optimizations...');
+            await dbOptimizer.createOptimizedIndexes();
+            console.log('✅ Database optimizations initialized');
+          } catch (error) {
+            console.warn('⚠️ Database optimization initialization failed:', error.message);
+          }
+        }
+        
+        // Initialize advanced search system if available
+        if (advancedSearchSystem) {
+          try {
+            console.log('🔍 Initializing advanced search system...');
+            await advancedSearchSystem.initialize();
+            console.log('✅ Advanced search system initialized');
+          } catch (error) {
+            console.warn('⚠️ Advanced search system initialization failed:', error.message);
+          }
+        }
+        
         return;
       } catch (error) {
         retries++;
@@ -1239,6 +1342,176 @@ class QuickLocalServer {
   }
 
   setupEndpoints() {
+    // Add static file serving for the frontend
+    const frontendPath = path.join(__dirname, '../frontend');
+    console.log(`📁 Setting up static file serving from: ${frontendPath}`);
+    
+    // Serve static files with proper caching headers
+    this.app.use('/static', express.static(frontendPath, {
+      maxAge: this.config.IS_PRODUCTION ? '1d' : '0',
+      etag: true,
+      lastModified: true,
+      setHeaders: (res, filepath) => {
+        // Cache static assets longer in production
+        if (filepath.match(/\.(css|js|png|jpg|jpeg|gif|ico|svg)$/)) {
+          res.setHeader('Cache-Control', this.config.IS_PRODUCTION ? 'public, max-age=31536000' : 'no-cache');
+        }
+      }
+    }));
+    
+    // Enhanced marketplace routing
+    this.app.get('/', (req, res) => {
+      // Redirect to enhanced marketplace
+      res.redirect('/marketplace');
+    });
+    
+    this.app.get('/marketplace', (req, res) => {
+      const marketplacePath = path.join(frontendPath, 'marketplace-enhanced-flipkart.html');
+      if (fs.existsSync(marketplacePath)) {
+        res.sendFile(marketplacePath);
+      } else {
+        console.warn('⚠️ Enhanced marketplace file not found, falling back to index');
+        res.sendFile(path.join(frontendPath, 'index.html'));
+      }
+    });
+    
+    // Original home page access
+    this.app.get('/home', (req, res) => {
+      const homePath = path.join(frontendPath, 'index-enhanced-flipkart.html');
+      if (fs.existsSync(homePath)) {
+        res.sendFile(homePath);
+      } else {
+        res.sendFile(path.join(frontendPath, 'index.html'));
+      }
+    });
+    
+    // Other frontend page routes
+    const frontendRoutes = [
+      { path: '/admin', file: 'admin-dashboard.html' },
+      { path: '/cart', file: 'cart.html' },
+      { path: '/checkout', file: 'checkout.html' },
+      { path: '/product/:id', file: 'customer-product.html' },
+      { path: '/seller', file: 'add-product.html' }
+    ];
+    
+    frontendRoutes.forEach(route => {
+      this.app.get(route.path, (req, res) => {
+        const filePath = path.join(frontendPath, route.file);
+        if (fs.existsSync(filePath)) {
+          res.sendFile(filePath);
+        } else {
+          res.status(404).json({ error: 'Page not found', requested_file: route.file });
+        }
+      });
+    });
+    
+    // SPA fallback - catch all frontend routes and serve appropriate pages
+    const spaRoutes = [
+      '/login', '/register', '/profile', '/dashboard',
+      '/search', '/category/:category', '/brand/:brand',
+      '/orders', '/order/:id', '/wishlist', '/reviews',
+      '/settings', '/help', '/about', '/contact'
+    ];
+    
+    spaRoutes.forEach(route => {
+      this.app.get(route, (req, res) => {
+        // For SPA routes, serve the enhanced marketplace which has routing logic
+        const marketplacePath = path.join(frontendPath, 'marketplace-enhanced-flipkart.html');
+        if (fs.existsSync(marketplacePath)) {
+          res.sendFile(marketplacePath);
+        } else {
+          res.sendFile(path.join(frontendPath, 'index.html'));
+        }
+      });
+    });
+    
+    // API documentation route (if exists)
+    this.app.get('/api-docs', (req, res) => {
+      const docsPath = path.join(__dirname, 'docs', 'index.html');
+      if (fs.existsSync(docsPath)) {
+        res.sendFile(docsPath);
+      } else {
+        res.json({
+          message: 'QuickLocal API Documentation',
+          version: this.config.APP_VERSION,
+          baseUrl: '/api/v1',
+          endpoints: this.loadedRoutes?.map(route => route.path) || []
+        });
+      }
+    });
+    
+    console.log('✅ Static file serving and frontend routes configured');
+    console.log('🔄 SPA routing enabled for enhanced user experience');
+    
+    // Add monitoring routes if available
+    if (monitoringRoutes) {
+      try {
+        console.log('📈 Adding performance monitoring routes...');
+        const monitorRouter = monitoringRoutes(express.Router());
+        this.app.use('/api/v1/monitoring', monitorRouter.router || monitorRouter);
+        console.log('✅ Performance monitoring routes enabled');
+      } catch (error) {
+        console.warn('⚠️ Monitoring routes setup failed:', error.message);
+      }
+    }
+    
+    // Add advanced search routes if available
+    if (createSearchRoutes && advancedSearchSystem) {
+      try {
+        console.log('🔍 Adding advanced search routes...');
+        const searchRouter = createSearchRoutes(advancedSearchSystem);
+        this.app.use('/api/v1', searchRouter);
+        console.log('✅ Advanced search routes enabled');
+      } catch (error) {
+        console.warn('⚠️ Search routes setup failed:', error.message);
+      }
+    }
+    
+    // Add image optimization routes if available
+    if (createImageRoutes && cdnImageOptimization) {
+      try {
+        console.log('🇿️ Adding image optimization routes...');
+        const imageRoutes = createImageRoutes(cdnImageOptimization);
+        this.app.use('/api/v1', imageRoutes.router);
+        console.log('✅ Image optimization routes enabled');
+        
+        // Make middleware available globally for use in product routes
+        this.app.locals.imageMiddleware = imageRoutes.middleware;
+      } catch (error) {
+        console.warn('⚠️ Image optimization routes setup failed:', error.message);
+      }
+    }
+    
+    // Add SMS gateway routes if available
+    if (createSMSRoutes && smsGatewaySystem) {
+      try {
+        console.log('📱 Adding SMS gateway routes...');
+        const smsRoutes = createSMSRoutes(smsGatewaySystem);
+        this.app.use('/api/v1', smsRoutes.router);
+        console.log('✅ SMS gateway routes enabled');
+        
+        // Make middleware available globally
+        this.app.locals.smsMiddleware = smsRoutes.middleware;
+      } catch (error) {
+        console.warn('⚠️ SMS routes setup failed:', error.message);
+      }
+    }
+    
+    // Add Two-Factor Authentication routes if available
+    if (create2FARoutes && twoFactorSystem) {
+      try {
+        console.log('🔐 Adding Two-Factor Authentication routes...');
+        const twoFARoutes = create2FARoutes(twoFactorSystem);
+        this.app.use('/api/v1', twoFARoutes.router);
+        console.log('✅ Two-Factor Authentication routes enabled');
+        
+        // Make middleware available globally
+        this.app.locals.twoFAMiddleware = twoFARoutes.middleware;
+      } catch (error) {
+        console.warn('⚠️ 2FA routes setup failed:', error.message);
+      }
+    }
+    
     // Enhanced root endpoint with QuickLocal branding
     this.app.get('/', (req, res) => {
       res.json({
@@ -1430,6 +1703,9 @@ class QuickLocalServer {
       });
     }
 
+    // Advanced UX Features API endpoints
+    this.setupUXFeaturesEndpoints();
+    
     // Server status endpoint
     this.app.get('/status', (req, res) => {
       res.json({
@@ -1444,6 +1720,333 @@ class QuickLocalServer {
         version: this.config.APP_VERSION
       });
     });
+  }
+
+  setupUXFeaturesEndpoints() {
+    // Recently viewed products endpoint
+    this.app.post('/api/v1/user/recently-viewed', async (req, res) => {
+      try {
+        const { productId } = req.body;
+        const userId = req.user?.id;
+        
+        if (!productId) {
+          return res.status(400).json({
+            success: false,
+            error: 'Product ID required'
+          });
+        }
+
+        // If user is logged in, store in database
+        if (userId) {
+          try {
+            const User = mongoose.model('User');
+            await User.findByIdAndUpdate(
+              userId,
+              {
+                $pull: { recentlyViewed: productId },
+                $push: {
+                  recentlyViewed: {
+                    $each: [{ productId, viewedAt: new Date() }],
+                    $position: 0,
+                    $slice: 20 // Keep only last 20 items
+                  }
+                }
+              },
+              { upsert: false }
+            );
+          } catch (error) {
+            console.warn('Failed to save recently viewed to database:', error);
+          }
+        }
+
+        res.json({
+          success: true,
+          message: 'Product view tracked'
+        });
+      } catch (error) {
+        console.error('Recently viewed tracking error:', error);
+        res.status(500).json({
+          success: false,
+          error: 'Failed to track product view',
+          message: error.message
+        });
+      }
+    });
+
+    // Get recently viewed products
+    this.app.get('/api/v1/user/recently-viewed', async (req, res) => {
+      try {
+        const userId = req.user?.id;
+        const limit = parseInt(req.query.limit) || 10;
+        
+        if (!userId) {
+          return res.json({
+            success: true,
+            products: []
+          });
+        }
+
+        const User = mongoose.model('User');
+        const Product = mongoose.model('Product');
+        
+        const user = await User.findById(userId)
+          .select('recentlyViewed')
+          .lean();
+        
+        if (!user?.recentlyViewed?.length) {
+          return res.json({
+            success: true,
+            products: []
+          });
+        }
+
+        const productIds = user.recentlyViewed
+          .slice(0, limit)
+          .map(item => item.productId);
+        
+        const products = await Product.find({
+          _id: { $in: productIds },
+          isDeleted: { $ne: true }
+        })
+        .select('name price images averageRating reviewCount stock')
+        .lean();
+
+        // Maintain order from recently viewed
+        const orderedProducts = productIds
+          .map(id => products.find(p => p._id.toString() === id.toString()))
+          .filter(Boolean);
+
+        res.json({
+          success: true,
+          products: orderedProducts
+        });
+      } catch (error) {
+        console.error('Get recently viewed error:', error);
+        res.status(500).json({
+          success: false,
+          error: 'Failed to get recently viewed products',
+          message: error.message
+        });
+      }
+    });
+
+    // Product comparison endpoints
+    this.app.post('/api/v1/products/compare', async (req, res) => {
+      try {
+        const { productIds } = req.body;
+        
+        if (!productIds || !Array.isArray(productIds) || productIds.length === 0) {
+          return res.status(400).json({
+            success: false,
+            error: 'Product IDs array required'
+          });
+        }
+
+        if (productIds.length > 5) {
+          return res.status(400).json({
+            success: false,
+            error: 'Maximum 5 products can be compared'
+          });
+        }
+
+        const Product = mongoose.model('Product');
+        const products = await Product.find({
+          _id: { $in: productIds },
+          isDeleted: { $ne: true }
+        })
+        .select('name brand price originalPrice images averageRating reviewCount stock specifications category')
+        .lean();
+
+        // Generate comparison data
+        const comparison = {
+          products,
+          comparisonTable: this.generateComparisonTable(products),
+          summary: this.generateComparisonSummary(products)
+        };
+
+        res.json({
+          success: true,
+          comparison
+        });
+      } catch (error) {
+        console.error('Product comparison error:', error);
+        res.status(500).json({
+          success: false,
+          error: 'Failed to compare products',
+          message: error.message
+        });
+      }
+    });
+
+    // Quick view endpoint (enhanced product details)
+    this.app.get('/api/v1/products/:id/quickview', async (req, res) => {
+      try {
+        const { id } = req.params;
+        const userId = req.user?.id;
+        
+        const Product = mongoose.model('Product');
+        const product = await Product.findById(id)
+          .populate('sellerId', 'businessName verified')
+          .lean();
+
+        if (!product || product.isDeleted) {
+          return res.status(404).json({
+            success: false,
+            error: 'Product not found'
+          });
+        }
+
+        // Check if in user's wishlist
+        let inWishlist = false;
+        if (userId) {
+          try {
+            const User = mongoose.model('User');
+            const user = await User.findById(userId).select('wishlist').lean();
+            inWishlist = user?.wishlist?.some(item => item.toString() === id);
+          } catch (error) {
+            console.warn('Failed to check wishlist status:', error);
+          }
+        }
+
+        res.json({
+          success: true,
+          product: {
+            ...product,
+            inWishlist
+          }
+        });
+      } catch (error) {
+        console.error('Quick view error:', error);
+        res.status(500).json({
+          success: false,
+          error: 'Failed to get product details',
+          message: error.message
+        });
+      }
+    });
+
+    // Product recommendations endpoint
+    this.app.get('/api/v1/products/:id/recommendations', async (req, res) => {
+      try {
+        const { id } = req.params;
+        const limit = parseInt(req.query.limit) || 10;
+        const userId = req.user?.id;
+        
+        const Product = mongoose.model('Product');
+        const currentProduct = await Product.findById(id).select('category brand tags').lean();
+        
+        if (!currentProduct) {
+          return res.status(404).json({
+            success: false,
+            error: 'Product not found'
+          });
+        }
+
+        // Build recommendation query
+        const recommendationQuery = {
+          _id: { $ne: id },
+          isDeleted: { $ne: true },
+          stock: { $gt: 0 },
+          $or: [
+            { category: currentProduct.category },
+            { brand: currentProduct.brand },
+            { tags: { $in: currentProduct.tags || [] } }
+          ]
+        };
+
+        const recommendations = await Product.find(recommendationQuery)
+          .select('name price originalPrice images averageRating reviewCount stock')
+          .sort({ averageRating: -1, reviewCount: -1 })
+          .limit(limit)
+          .lean();
+
+        res.json({
+          success: true,
+          recommendations
+        });
+      } catch (error) {
+        console.error('Product recommendations error:', error);
+        res.status(500).json({
+          success: false,
+          error: 'Failed to get product recommendations',
+          message: error.message
+        });
+      }
+    });
+
+    console.log('✨ UX Features API endpoints initialized');
+  }
+
+  generateComparisonTable(products) {
+    if (!products.length) return {};
+
+    const comparisonFields = ['price', 'originalPrice', 'brand', 'averageRating', 'reviewCount', 'stock'];
+    const specificationFields = new Set();
+    
+    // Collect all specification keys
+    products.forEach(product => {
+      if (product.specifications) {
+        Object.keys(product.specifications).forEach(key => {
+          specificationFields.add(key);
+        });
+      }
+    });
+
+    const comparison = {};
+    
+    // Basic fields
+    comparisonFields.forEach(field => {
+      comparison[field] = products.map(product => product[field] || 'N/A');
+    });
+    
+    // Specifications
+    Array.from(specificationFields).forEach(spec => {
+      comparison[spec] = products.map(product => 
+        product.specifications?.[spec] || 'N/A'
+      );
+    });
+
+    return comparison;
+  }
+
+  generateComparisonSummary(products) {
+    if (!products.length) return {};
+
+    const summary = {
+      cheapest: null,
+      mostExpensive: null,
+      bestRated: null,
+      mostReviewed: null
+    };
+
+    let minPrice = Infinity;
+    let maxPrice = 0;
+    let maxRating = 0;
+    let maxReviews = 0;
+
+    products.forEach(product => {
+      if (product.price < minPrice) {
+        minPrice = product.price;
+        summary.cheapest = product;
+      }
+      
+      if (product.price > maxPrice) {
+        maxPrice = product.price;
+        summary.mostExpensive = product;
+      }
+      
+      if ((product.averageRating || 0) > maxRating) {
+        maxRating = product.averageRating || 0;
+        summary.bestRated = product;
+      }
+      
+      if ((product.reviewCount || 0) > maxReviews) {
+        maxReviews = product.reviewCount || 0;
+        summary.mostReviewed = product;
+      }
+    });
+
+    return summary;
   }
 
   async checkDatabase() {

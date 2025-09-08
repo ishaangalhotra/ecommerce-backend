@@ -114,6 +114,24 @@ const UserSchema = new mongoose.Schema({
     }
   },
 
+  // OAuth Integration
+  googleId: {
+    type: String,
+    sparse: true
+  },
+  facebookId: {
+    type: String,
+    sparse: true
+  },
+  authProvider: {
+    type: String,
+    enum: ['local', 'google', 'facebook'],
+    default: 'local'
+  },
+  profilePicture: {
+    type: String
+  },
+
   privacy: {
     shareToken: { type: String },
     isProfilePublic: { type: Boolean, default: false },

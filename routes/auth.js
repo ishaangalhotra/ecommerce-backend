@@ -5,6 +5,8 @@ const jwt = require('jsonwebtoken');
 const geoip = require('geoip-lite');
 const validator = require('validator');
 const { body, validationResult } = require('express-validator');
+const { OAuth2Client } = require('google-auth-library');
+const axios = require('axios');
 const { rateLimit } = require('express-rate-limit');
 
 // CREATE THE ROUTER
@@ -1103,4 +1105,137 @@ router.post('/test-login-validation', [
 });
 
 // Export the router
+/* =========================================================
+   GOOGLE OAUTH LOGIN
+   ========================================================= */
+router.post('/google-login', async (req, res) => {
+  try {
+    const { credential } = req.body;
+    
+    // Verify Google JWT token
+    const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+    
+    const ticket = await client.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    
+    const payload = ticket.getPayload();
+    const { sub: googleId, email, name, picture } = payload;
+
+    // Check if user exists
+    let user = await User.findOne({ 
+      $or: [
+        { email: email },
+        { googleId: googleId }
+      ]
+    });
+
+    if (!user) {
+      // Create new user
+      user = new User({
+        name: name,
+        email: email,
+        googleId: googleId,
+        profilePicture: picture,
+        isVerified: true, // Google accounts are pre-verified
+        role: 'customer',
+        authProvider: 'google',
+        password: crypto.randomBytes(32).toString('hex') // Random password for OAuth users
+      });
+      
+      await user.save();
+      
+      logger.info(`New user registered via Google OAuth: ${email}`);
+    } else if (!user.googleId) {
+      // Link existing account
+      user.googleId = googleId;
+      user.profilePicture = picture || user.profilePicture;
+      user.authProvider = 'google';
+      await user.save();
+    }
+
+    // Generate JWT tokens
+    await sendEnhancedTokenResponse(user, 200, res, false, {
+      message: 'Google login successful',
+      loginMethod: 'google'
+    });
+
+  } catch (error) {
+    console.error('Google login error:', error);
+    res.status(401).json({
+      success: false,
+      message: 'Google authentication failed'
+    });
+  }
+});
+
+/* =========================================================
+   FACEBOOK OAUTH LOGIN
+   ========================================================= */
+router.post('/facebook-login', async (req, res) => {
+  try {
+    const { accessToken, userID, userInfo } = req.body;
+    
+    // Verify Facebook token
+    const fbResponse = await axios.get(
+      `https://graph.facebook.com/me?access_token=${accessToken}&fields=id,name,email`
+    );
+    
+    if (fbResponse.data.id !== userID) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid Facebook token'
+      });
+    }
+
+    const { id: facebookId, name, email } = fbResponse.data;
+
+    // Check if user exists
+    let user = await User.findOne({
+      $or: [
+        { email: email },
+        { facebookId: facebookId }
+      ]
+    });
+
+    if (!user) {
+      // Create new user
+      user = new User({
+        name: name,
+        email: email,
+        facebookId: facebookId,
+        profilePicture: userInfo.picture?.data?.url,
+        isVerified: true,
+        role: 'customer',
+        authProvider: 'facebook',
+        password: crypto.randomBytes(32).toString('hex') // Random password for OAuth users
+      });
+      
+      await user.save();
+      
+      logger.info(`New user registered via Facebook OAuth: ${email}`);
+    } else if (!user.facebookId) {
+      // Link existing account
+      user.facebookId = facebookId;
+      user.profilePicture = userInfo.picture?.data?.url || user.profilePicture;
+      user.authProvider = 'facebook';
+      await user.save();
+    }
+
+    // Generate JWT tokens
+    await sendEnhancedTokenResponse(user, 200, res, false, {
+      message: 'Facebook login successful',
+      loginMethod: 'facebook'
+    });
+
+  } catch (error) {
+    console.error('Facebook login error:', error);
+    res.status(401).json({
+      success: false,
+      message: 'Facebook authentication failed'
+    });
+  }
+});
+
 module.exports = router;
