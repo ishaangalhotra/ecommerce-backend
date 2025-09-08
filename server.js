@@ -435,28 +435,43 @@ class QuickLocalConfig {
 class CORSManager {
   static getOrigins() {
     const origins = [
+      // Primary domains
       'https://www.quicklocal.shop',
       'https://quicklocal.shop',
     ];
     
     // Add from FRONTEND_URLS
     if (process.env.FRONTEND_URLS) {
-      origins.push(...process.env.FRONTEND_URLS.split(',').map(url => url.trim()));
+      const frontendUrls = process.env.FRONTEND_URLS.split(',').map(url => url.trim());
+      console.log(`[CORS] Adding FRONTEND_URLS: ${JSON.stringify(frontendUrls)}`);
+      origins.push(...frontendUrls);
     }
     
     // Add from ALLOWED_ORIGINS
     if (process.env.ALLOWED_ORIGINS) {
-      origins.push(...process.env.ALLOWED_ORIGINS.split(',').map(url => url.trim()));
+      const allowedOrigins = process.env.ALLOWED_ORIGINS.split(',').map(url => url.trim());
+      console.log(`[CORS] Adding ALLOWED_ORIGINS: ${JSON.stringify(allowedOrigins)}`);
+      origins.push(...allowedOrigins);
+    }
+    
+    // Add from CORS_ORIGINS
+    if (process.env.CORS_ORIGINS) {
+      const corsOrigins = process.env.CORS_ORIGINS.split(',').map(url => url.trim());
+      console.log(`[CORS] Adding CORS_ORIGINS: ${JSON.stringify(corsOrigins)}`);
+      origins.push(...corsOrigins);
     }
     
     // Add individual URLs
     [process.env.CLIENT_URL, process.env.ADMIN_URL, process.env.API_URL].forEach(url => {
-      if (url) origins.push(url.trim());
+      if (url) {
+        console.log(`[CORS] Adding individual URL: ${url.trim()}`);
+        origins.push(url.trim());
+      }
     });
     
     // Development origins
     if (process.env.NODE_ENV !== 'production') {
-      origins.push(
+      const devOrigins = [
         'http://localhost:3000',
         'http://localhost:3001',
         'http://localhost:5173',
@@ -464,17 +479,32 @@ class CORSManager {
         'http://127.0.0.1:3001',
         'http://127.0.0.1:5173',
         'http://127.0.0.1:5500'
-      );
+      ];
+      console.log(`[CORS] Adding development origins: ${JSON.stringify(devOrigins)}`);
+      origins.push(...devOrigins);
     }
     
     // Return a unique, filtered list of origins
-    return [...new Set(origins)].filter(Boolean);
+    const finalOrigins = [...new Set(origins)].filter(Boolean);
+    console.log(`[CORS] Final allowed origins: ${JSON.stringify(finalOrigins)}`);
+    return finalOrigins;
   }
 
   static isValidOrigin(origin) {
     // Allow requests with no origin, like mobile apps, server-to-server, and tools (Postman, curl)
     if (!origin) {
       console.log(`[CORS] ✅ Allowed request with no origin (e.g., Postman, server-to-server)`);
+      return true;
+    }
+    
+    // Manual override for your production domains
+    const productionDomains = [
+      'https://www.quicklocal.shop',
+      'https://quicklocal.shop'
+    ];
+    
+    if (productionDomains.includes(origin)) {
+      console.log(`[CORS] ✅ Allowed origin (production override): ${origin}`);
       return true;
     }
     
@@ -914,6 +944,22 @@ class QuickLocalServer {
       }
     }
 
+    // EARLY CORS HANDLER (must run before any auth/rate-limit middleware)
+    this.app.use((req, res, next) => {
+      const origin = req.headers.origin;
+      if (CORSManager.isValidOrigin(origin)) {
+        res.header('Access-Control-Allow-Origin', origin);
+        res.header('Vary', 'Origin');
+        res.header('Access-Control-Allow-Credentials', 'true');
+        res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS');
+        res.header('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept,Origin,X-Api-Key,X-Correlation-ID');
+      }
+      if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+      }
+      return next();
+    });
+
     // Brute force protection
     const bruteForce = EnhancedSecurityManager.createBruteForceProtection();
     this.app.use('/api/v1/auth/login', bruteForce.prevent);
@@ -943,13 +989,18 @@ class QuickLocalServer {
        * @param {function} callback - The callback to signal whether the origin is allowed.
        */
       origin: function (origin, callback) {
+        console.log(`[CORS] Checking origin: ${origin}`);
+        
         // The `origin` will be `undefined` for server-to-server requests, REST clients (like Postman), or mobile apps.
         // The `CORSManager.isValidOrigin` function is designed to allow these by default.
         if (CORSManager.isValidOrigin(origin)) {
+          console.log(`[CORS] ✅ Origin allowed: ${origin}`);
           // If the origin is valid, allow it.
           // The first argument is for an error (null here), and the second is a boolean (true = allowed).
           callback(null, true);
         } else {
+          console.log(`[CORS] ❌ Origin denied: ${origin}`);
+          console.log(`[CORS] Allowed origins: ${JSON.stringify(CORSManager.getOrigins())}`);
           // If the origin is not in our list, reject the request.
           // IMPORTANT: We pass `false` instead of an error object. The `cors` library will then
           // handle the rejection correctly, sending the appropriate headers and HTTP status.
@@ -967,7 +1018,15 @@ class QuickLocalServer {
         'Authorization',
         'X-Requested-With',
         'Accept',
-        'Origin' // It's good practice to include Origin
+        'Origin',
+        'X-Api-Key',
+        'X-Correlation-ID'
+      ],
+      // Expose headers that the frontend can access
+      exposedHeaders: [
+        'X-Correlation-ID',
+        'X-Response-Time',
+        'X-Instance-ID'
       ],
       // Some legacy browsers (IE11, various SmartTVs) choke on 204.
       optionsSuccessStatus: 200 
@@ -979,6 +1038,31 @@ class QuickLocalServer {
     // This ensures that OPTIONS requests get a successful response quickly,
     // which is crucial for complex requests (e.g., with custom headers or methods like PUT/DELETE).
     this.app.options('*', cors(corsOptions));
+    
+    // Additional manual preflight handler for extra safety
+    this.app.use((req, res, next) => {
+      const origin = req.headers.origin;
+      
+      if (req.method === 'OPTIONS') {
+        console.log(`[CORS] Preflight request from origin: ${origin}`);
+        
+        // Check if origin is allowed
+        if (CORSManager.isValidOrigin(origin)) {
+          res.header('Access-Control-Allow-Origin', origin);
+          res.header('Access-Control-Allow-Credentials', 'true');
+          res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS');
+          res.header('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept,Origin,X-Api-Key,X-Correlation-ID');
+          res.header('Access-Control-Max-Age', '86400'); // 24 hours
+          
+          console.log(`[CORS] ✅ Preflight response sent for ${origin}`);
+          return res.status(200).end();
+        } else {
+          console.log(`[CORS] ❌ Preflight denied for ${origin}`);
+        }
+      }
+      
+      next();
+    });
     // ==================================================================
     // == END: ROBUST CORS CONFIGURATION
     // ==================================================================
