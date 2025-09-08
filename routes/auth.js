@@ -3,6 +3,7 @@ const express = require('express');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const geoip = require('geoip-lite');
+const validator = require('validator');
 const { body, validationResult } = require('express-validator');
 const { rateLimit } = require('express-rate-limit');
 
@@ -139,12 +140,21 @@ router.post(
       // Map 'vendor' to 'seller' for database consistency
       const userRole = req.body.role === 'vendor' ? 'seller' : req.body.role;
 
-      // Check if user already exists
-      const existingUser = await User.findOne({ email: email.toLowerCase() });
+      // Check if user already exists with email or phone
+      const existingUserQuery = { email: email.toLowerCase() };
+      if (phone) {
+        existingUserQuery.$or = [
+          { email: email.toLowerCase() },
+          { phone: phone }
+        ];
+      }
+      
+      const existingUser = await User.findOne(existingUserQuery);
       if (existingUser) {
+        const conflictField = existingUser.email === email.toLowerCase() ? 'email' : 'phone';
         return res.status(400).json({
           success: false,
-          message: 'User already exists with this email'
+          message: `User already exists with this ${conflictField}`
         });
       }
 
@@ -242,13 +252,22 @@ router.post(
 );
 
 /* =========================================================
-   2. LOGIN - SIMPLIFIED SINCE SELLERS ARE ALWAYS VERIFIED
+   2. LOGIN - SUPPORTS EMAIL OR PHONE LOGIN
    ========================================================= */
 router.post(
   '/login',
   authLimiter,
   [
-    body('email').isEmail().normalizeEmail().withMessage('Valid email required'),
+    body('identifier')
+      .notEmpty()
+      .withMessage('Email or phone number required')
+      .custom((value) => {
+        // Check if it's a valid email or phone number
+        if (validator.isEmail(value) || validator.isMobilePhone(value, 'en-IN')) {
+          return true;
+        }
+        throw new Error('Please provide a valid email address or Indian phone number');
+      }),
     body('password').notEmpty().withMessage('Password required'),
     body('remember').optional().isBoolean()
   ],
@@ -259,11 +278,15 @@ router.post(
         return res.status(400).json({ success: false, errors: errors.array() });
       }
 
-      const { email, password, remember = false } = req.body;
+      const { identifier, password, remember = false } = req.body;
 
-      // Find user and include password for verification
+      // Find user by email or phone and include password for verification
+      const searchQuery = validator.isEmail(identifier) 
+        ? { email: identifier.toLowerCase() }
+        : { phone: identifier };
+      
       const user = await User.findOne({ 
-        email: email.toLowerCase(),
+        ...searchQuery,
         isActive: true 
       }).select('+password +loginAttempts +lockUntil');
 
@@ -276,7 +299,7 @@ router.post(
             user.lockUntil = Date.now() + 15 * 60 * 1000; // 15 minutes
             await user.save();
             
-            logger.warn(`Account locked due to failed attempts: ${user.email}`, {
+            logger.warn(`Account locked due to failed attempts: ${user.email || user.phone}`, {
               userId: user._id,
               attempts: user.loginAttempts,
               ip: req.ip
@@ -288,7 +311,7 @@ router.post(
 
         return res.status(401).json({
           success: false,
-          message: 'Invalid email or password'
+          message: 'Invalid credentials. Please check your email/phone and password.'
         });
       }
 
@@ -317,10 +340,11 @@ router.post(
         user.lockUntil = undefined;
       }
 
-      logger.info(`User logged in: ${user.email}`, { 
+      logger.info(`User logged in: ${user.email || user.phone}`, { 
         userId: user._id, 
         ip: req.ip,
-        remember 
+        remember,
+        loginMethod: validator.isEmail(identifier) ? 'email' : 'phone'
       });
 
       // Send enhanced token response
@@ -1000,6 +1024,42 @@ router.post('/logout-all', protect, async (req, res) => {
       message: 'Failed to logout from all sessions'
     });
   }
+});
+
+/* =========================================================
+   TEST ENDPOINT FOR VALIDATION
+   ========================================================= */
+router.post('/test-login-validation', [
+  body('identifier')
+    .notEmpty()
+    .withMessage('Email or phone number required')
+    .custom((value) => {
+      if (validator.isEmail(value) || validator.isMobilePhone(value, 'en-IN')) {
+        return true;
+      }
+      throw new Error('Please provide a valid email address or Indian phone number');
+    })
+], (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ 
+      success: false, 
+      errors: errors.array(),
+      message: 'Validation failed'
+    });
+  }
+  
+  const { identifier } = req.body;
+  const isEmail = validator.isEmail(identifier);
+  const isPhone = validator.isMobilePhone(identifier, 'en-IN');
+  
+  res.json({
+    success: true,
+    identifier,
+    type: isEmail ? 'email' : 'phone',
+    isValid: isEmail || isPhone,
+    message: `Valid ${isEmail ? 'email' : 'phone'} provided`
+  });
 });
 
 // Export the router

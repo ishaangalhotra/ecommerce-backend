@@ -116,6 +116,27 @@ async function seedDatabase() {
     });
     console.log('✅ Seller user created:', sellerUser.email);
     
+    // Create demo user with phone login
+    console.log('📱 Creating phone demo user...');
+    const phoneDemoPassword = await bcrypt.hash('phone123', 12);
+    const phoneDemoUser = await User.create({
+      name: 'Phone Demo User',
+      email: 'phone@quicklocal.shop',
+      phone: '+919876543220', // Demo phone number
+      password: phoneDemoPassword,
+      role: 'customer',
+      isActive: true,
+      emailVerified: true,
+      location: {
+        address: '789 Phone Street',
+        city: 'Phone City',
+        state: 'Phone State',
+        pincode: '54321',
+        coordinates: [0.002, 0.002]
+      }
+    });
+    console.log('✅ Phone demo user created:', phoneDemoUser.phone);
+    
     // Create categories
     console.log('📂 Creating categories...');
     const categories = await Category.create([
@@ -289,6 +310,7 @@ async function seedDatabase() {
     console.log('Demo: demo@quicklocal.shop / demo123');
     console.log('User: user@quicklocal.shop / user123');
     console.log('Seller: seller@quicklocal.shop / seller123');
+    console.log('Phone User: +919876543220 / phone123');
     
     console.log('\n🔗 API Endpoints:');
     console.log('Products: http://localhost:10000/api/v1/products');

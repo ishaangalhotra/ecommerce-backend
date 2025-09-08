@@ -39,8 +39,9 @@ async function seedProductionDatabase() {
     const existingDemo = await User.findOne({ email: 'demo@quicklocal.shop' });
     const existingAdmin = await User.findOne({ email: 'admin@quicklocal.shop' });
     const existingUser = await User.findOne({ email: 'user@quicklocal.shop' });
+    const existingPhoneUser = await User.findOne({ phone: '+919876543220' });
     
-    if (existingDemo && existingAdmin && existingUser) {
+    if (existingDemo && existingAdmin && existingUser && existingPhoneUser) {
       console.log('✅ Demo users already exist. Skipping user creation.');
     } else {
       console.log('👥 Creating missing demo users...');
@@ -129,6 +130,29 @@ async function seedProductionDatabase() {
           }
         });
         console.log('✅ Seller user created:', sellerUser.email);
+      }
+      
+      // Create demo user with phone login if doesn't exist
+      if (!existingPhoneUser) {
+        console.log('📱 Creating phone demo user...');
+        const phoneDemoPassword = await bcrypt.hash('phone123', 12);
+        const phoneDemoUser = await User.create({
+          name: 'Phone Demo User',
+          email: 'phone@quicklocal.shop',
+          phone: '+919876543220',
+          password: phoneDemoPassword,
+          role: 'customer',
+          isActive: true,
+          emailVerified: true,
+          location: {
+            address: '789 Phone Street',
+            city: 'Phone City',
+            state: 'Phone State',
+            pincode: '54321',
+            coordinates: [0.002, 0.002]
+          }
+        });
+        console.log('✅ Phone demo user created:', phoneDemoUser.phone);
       }
     }
     
@@ -254,6 +278,7 @@ async function seedProductionDatabase() {
     console.log('🎯 Demo: demo@quicklocal.shop / demo123');
     console.log('👤 User: user@quicklocal.shop / user123');
     console.log('🏪 Seller: seller@quicklocal.shop / seller123');
+    console.log('📱 Phone User: +919876543220 / phone123');
     
     console.log('\n🔗 Production API Endpoints:');
     console.log('🌍 Base: https://quicklocal-backend.onrender.com');
