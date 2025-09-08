@@ -39,12 +39,12 @@ async function seedDatabase() {
     await Category.deleteMany({});
     await Product.deleteMany({});
     
-    // Create admin user
+    // Create admin user (matching frontend expectations)
     console.log('👤 Creating admin user...');
     const adminPassword = await bcrypt.hash('admin123', 12);
     const adminUser = await User.create({
       name: 'Admin User',
-      email: 'admin@quicklocal.com',
+      email: 'admin@quicklocal.shop',
       password: adminPassword,
       role: 'admin',
       phone: '+919876543210',
@@ -53,12 +53,54 @@ async function seedDatabase() {
     });
     console.log('✅ Admin user created:', adminUser.email);
     
+    // Create demo user (matching frontend expectations)
+    console.log('🎯 Creating demo user...');
+    const demoPassword = await bcrypt.hash('demo123', 12);
+    const demoUser = await User.create({
+      name: 'Demo User',
+      email: 'demo@quicklocal.shop',
+      password: demoPassword,
+      role: 'customer',
+      phone: '+919876543213',
+      isActive: true,
+      emailVerified: true,
+      location: {
+        address: '123 Demo Street',
+        city: 'Demo City',
+        state: 'Demo State',
+        pincode: '12345',
+        coordinates: [0, 0]
+      }
+    });
+    console.log('✅ Demo user created:', demoUser.email);
+    
+    // Create user user (matching frontend expectations)
+    console.log('👤 Creating user account...');
+    const userPassword = await bcrypt.hash('user123', 12);
+    const userUser = await User.create({
+      name: 'Regular User',
+      email: 'user@quicklocal.shop',
+      password: userPassword,
+      role: 'customer',
+      phone: '+919876543214',
+      isActive: true,
+      emailVerified: true,
+      location: {
+        address: '456 User Ave',
+        city: 'User City',
+        state: 'User State',
+        pincode: '12345',
+        coordinates: [0.001, 0.001]
+      }
+    });
+    console.log('✅ Regular user created:', userUser.email);
+    
     // Create seller user
     console.log('🏪 Creating seller user...');
     const sellerPassword = await bcrypt.hash('seller123', 12);
     const sellerUser = await User.create({
       name: 'Local Store',
-      email: 'seller@quicklocal.com',
+      email: 'seller@quicklocal.shop',
       password: sellerPassword,
       role: 'seller',
       phone: '+919876543211',
@@ -73,27 +115,6 @@ async function seedDatabase() {
       }
     });
     console.log('✅ Seller user created:', sellerUser.email);
-    
-    // Create customer user
-    console.log('👤 Creating customer user...');
-    const customerPassword = await bcrypt.hash('customer123', 12);
-    const customerUser = await User.create({
-      name: 'John Customer',
-      email: 'customer@quicklocal.com',
-      password: customerPassword,
-      role: 'customer',
-      phone: '+919876543212',
-      isActive: true,
-      emailVerified: true,
-      location: {
-        address: '456 Customer Ave',
-        city: 'Local City',
-        state: 'Local State',
-        pincode: '12345',
-        coordinates: [0.001, 0.001]
-      }
-    });
-    console.log('✅ Customer user created:', customerUser.email);
     
     // Create categories
     console.log('📂 Creating categories...');
@@ -264,9 +285,10 @@ async function seedDatabase() {
     
     console.log('\n🎉 Database seeding completed successfully!');
     console.log('\n📋 Test Accounts:');
-    console.log('Admin: admin@quicklocal.com / admin123');
-    console.log('Seller: seller@quicklocal.com / seller123');
-    console.log('Customer: customer@quicklocal.com / customer123');
+    console.log('Admin: admin@quicklocal.shop / admin123');
+    console.log('Demo: demo@quicklocal.shop / demo123');
+    console.log('User: user@quicklocal.shop / user123');
+    console.log('Seller: seller@quicklocal.shop / seller123');
     
     console.log('\n🔗 API Endpoints:');
     console.log('Products: http://localhost:10000/api/v1/products');
