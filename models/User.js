@@ -19,11 +19,14 @@ const UserSchema = new mongoose.Schema({
   },
   email: {
     type: String,
-    required: [true, 'Email is required'],
+    required: false, // Made optional
     lowercase: true,
     trim: true,
+    sparse: true, // Allow null/undefined values in unique index
     validate: {
-      validator: validator.isEmail,
+      validator: function(v) {
+        return !v || validator.isEmail(v);
+      },
       message: 'Please provide a valid email'
     }
   },
@@ -154,7 +157,7 @@ const UserSchema = new mongoose.Schema({
 
 // Indexes - Fixed duplicate index issue
 UserSchema.index({ uuid: 1 }, { unique: true });
-UserSchema.index({ email: 1 }, { unique: true });
+UserSchema.index({ email: 1 }, { unique: true, sparse: true });
 UserSchema.index({ phone: 1 }, { unique: true, sparse: true }); // Keep sparse here in index definition
 UserSchema.index({ emailVerificationToken: 1 }, { sparse: true });
 UserSchema.index({ passwordResetToken: 1 }, { sparse: true });
@@ -171,6 +174,14 @@ UserSchema.index(
   { name: 'text', email: 'text' },
   { weights: { name: 5, email: 3 }, name: 'user_search_index' }
 );
+
+// Validation - ensure either email or phone is provided
+UserSchema.pre('save', function(next) {
+  if (!this.email && !this.phone) {
+    return next(new Error('Either email or phone number must be provided'));
+  }
+  next();
+});
 
 // Middleware
 UserSchema.pre('save', async function (next) {

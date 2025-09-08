@@ -121,12 +121,19 @@ router.post(
   //authLimiter, // Kept commented out for development testing
   [
     body('name').trim().isLength({ min: 2, max: 50 }).withMessage('Name must be 2-50 characters'),
-    body('email').isEmail().normalizeEmail().withMessage('Valid email required'),
+    body('email').optional().isEmail().normalizeEmail().withMessage('Valid email required'),
+    body('phone').optional().isMobilePhone('en-IN').withMessage('Enter a valid Indian phone number'),
     body('password')
       .isLength({ min: 6, max: 128 })
       .withMessage('Password must be at least 6 characters'),
     body('role').isIn(['customer', 'seller', 'vendor']).withMessage('Role must be customer, seller, or vendor'),
-    body('phone').optional().isMobilePhone('en-IN').withMessage('Enter a valid phone number')
+    // Custom validation to ensure at least email or phone is provided
+    body().custom((value, { req }) => {
+      if (!req.body.email && !req.body.phone) {
+        throw new Error('Either email address or phone number is required');
+      }
+      return true;
+    })
   ],
   async (req, res) => {
     try {
@@ -141,13 +148,18 @@ router.post(
       const userRole = req.body.role === 'vendor' ? 'seller' : req.body.role;
 
       // Check if user already exists with email or phone
-      const existingUserQuery = { email: email.toLowerCase() };
-      if (phone) {
-        existingUserQuery.$or = [
-          { email: email.toLowerCase() },
-          { phone: phone }
-        ];
+      const existingUserQueries = [];
+      
+      if (email) {
+        existingUserQueries.push({ email: email.toLowerCase() });
       }
+      if (phone) {
+        existingUserQueries.push({ phone: phone });
+      }
+      
+      const existingUserQuery = existingUserQueries.length > 1 ? 
+        { $or: existingUserQueries } : 
+        existingUserQueries[0];
       
       const existingUser = await User.findOne(existingUserQuery);
       if (existingUser) {
@@ -159,14 +171,18 @@ router.post(
       }
 
       // Create new user with the corrected role
-      const user = new User({
+      const userData = {
         name: name.trim(),
-        email: email.toLowerCase(),
         password,
         role: userRole,
-        phone: phone || undefined,
         walletBalance: userRole === 'customer' ? 0 : undefined
-      });
+      };
+      
+      // Add email or phone (at least one is guaranteed by validation)
+      if (email) userData.email = email.toLowerCase();
+      if (phone) userData.phone = phone;
+      
+      const user = new User(userData);
 
       // MODIFIED: Handle sellers vs customers differently
       if (userRole === 'seller') {
@@ -179,10 +195,11 @@ router.post(
         
         await user.save();
         
-        logger.info(`Seller registered and auto-verified: ${user.email}`, { 
+        logger.info(`Seller registered and auto-verified: ${user.email || user.phone}`, { 
           userId: user._id, 
           role: user.role, 
-          ip: req.ip 
+          ip: req.ip,
+          registrationMethod: user.email ? 'email' : 'phone'
         });
 
         return res.status(201).json({
@@ -192,43 +209,66 @@ router.post(
         });
         
       } else {
-        // For customers, keep the existing email verification process
-        const rawToken = crypto.randomBytes(32).toString('hex');
-        user.emailVerificationToken = crypto.createHash('sha256').update(rawToken).digest('hex');
-        user.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
+        // For customers, handle email verification if email provided
+        if (user.email) {
+          // Email verification process
+          const rawToken = crypto.randomBytes(32).toString('hex');
+          user.emailVerificationToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+          user.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
 
-        await user.save();
+          await user.save();
 
-        try {
-          await sendEmail({
-            email: user.email,
-            subject: 'Verify Your Email - QuickLocal',
-            template: 'verify-email',
-            data: {
-              name: user.name,
-              verificationUrl: `${process.env.CLIENT_URL}/verify-email/${rawToken}`
-            }
-          });
+          try {
+            await sendEmail({
+              email: user.email,
+              subject: 'Verify Your Email - QuickLocal',
+              template: 'verify-email',
+              data: {
+                name: user.name,
+                verificationUrl: `${process.env.CLIENT_URL}/verify-email/${rawToken}`
+              }
+            });
 
-          logger.info(`Customer registered: ${user.email}`, { 
+            logger.info(`Customer registered with email: ${user.email}`, { 
+              userId: user._id, 
+              role: user.role, 
+              ip: req.ip,
+              registrationMethod: 'email'
+            });
+
+            return res.status(201).json({
+              success: true,
+              message: 'Registration successful! Please check your email to verify your account.',
+              userId: user._id
+            });
+
+          } catch (emailError) {
+            logger.error('Registration email failed', emailError);
+            await User.findByIdAndDelete(user._id); // Cleanup on email failure
+            
+            return res.status(500).json({
+              success: false,
+              message: 'Registration failed - could not send verification email'
+            });
+          }
+        } else {
+          // Phone-only registration - auto-verify since we can't send email
+          user.isVerified = true;
+          user.verifiedAt = new Date();
+          
+          await user.save();
+          
+          logger.info(`Customer registered with phone: ${user.phone}`, { 
             userId: user._id, 
             role: user.role, 
-            ip: req.ip 
+            ip: req.ip,
+            registrationMethod: 'phone'
           });
 
-          res.status(201).json({
+          return res.status(201).json({
             success: true,
-            message: 'Registration successful! Please check your email to verify your account.',
+            message: 'Registration successful! You can login immediately.',
             userId: user._id
-          });
-
-        } catch (emailError) {
-          logger.error('Registration email failed', emailError);
-          await User.findByIdAndDelete(user._id); // Cleanup on email failure
-          
-          return res.status(500).json({
-            success: false,
-            message: 'Registration failed - could not send verification email'
           });
         }
       }
