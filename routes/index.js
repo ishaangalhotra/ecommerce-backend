@@ -3,6 +3,7 @@ const router = express.Router();
 
 // Import all route modules
 const authRoutes = require('./auth');
+const testAuthRoutes = require('./testAuth');
 const userRoutes = require('./users');
 const productRoutes = require('./products');
 const orderRoutes = require('./orders');
@@ -14,6 +15,7 @@ const wishlistRoutes = require('./wishlist');
 
 // Mount routes
 router.use('/auth', authRoutes);
+router.use('/test', testAuthRoutes);
 router.use('/users', userRoutes);
 router.use('/products', productRoutes);
 router.use('/orders', orderRoutes);
