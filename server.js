@@ -437,11 +437,15 @@ class QuickLocalConfig {
       COMPRESSION_ENABLED: process.env.ENABLE_COMPRESSION === 'true',
       COMPRESSION_LEVEL: this.getEnvNumber('COMPRESSION_LEVEL', 6),
       
-      // Features
+      // Features (optimized for API-only deployment)
       ENABLE_SOCKET_IO: process.env.FEATURE_LIVE_TRACKING === 'true' || process.env.FEATURE_CHAT === 'true',
       ENABLE_METRICS: process.env.ENABLE_ERROR_TRACKING === 'true',
       ENABLE_CACHING: process.env.ENABLE_RESPONSE_CACHING === 'true',
       CACHE_TTL: this.getEnvNumber('CACHE_TTL', 3600),
+      
+      // API-only optimizations
+      API_ONLY_MODE: process.env.API_ONLY_MODE === 'true' || process.env.NODE_ENV === 'production',
+      DISABLE_STATIC_SERVING: process.env.DISABLE_STATIC_SERVING === 'true' || process.env.API_ONLY_MODE === 'true',
       
       // Security Headers
       HELMET_ENABLED: process.env.ENABLE_HELMET === 'true',
@@ -541,7 +545,7 @@ class CORSManager {
     }
     
     // Add individual URLs
-    [process.env.CLIENT_URL, process.env.ADMIN_URL, process.env.API_URL].forEach(url => {
+    [process.env.CLIENT_URL, process.env.ADMIN_URL, process.env.API_URL, process.env.FRONTEND_URL].forEach(url => {
       if (url) {
         console.log(`[CORS] Adding individual URL: ${url.trim()}`);
         origins.push(url.trim());
@@ -1240,8 +1244,8 @@ class QuickLocalServer {
       next();
     });
 
-    // Advanced caching middleware (if available)
-    if (memoryCacheMiddleware) {
+    // Advanced caching middleware (if available and not in API-only mode)
+    if (memoryCacheMiddleware && !this.config.API_ONLY_MODE) {
       try {
         console.log('📋 Adding memory cache middleware...');
         this.app.use('/api/v1/products', memoryCacheMiddleware.productCache());
@@ -1250,6 +1254,8 @@ class QuickLocalServer {
       } catch (error) {
         console.warn('⚠️ Memory cache middleware setup failed:', error.message);
       }
+    } else if (this.config.API_ONLY_MODE) {
+      console.log('💳 API-only mode: Skipping memory cache middleware to reduce memory usage');
     }
 
     // Security and validation middleware
@@ -1357,119 +1363,24 @@ class QuickLocalServer {
   }
 
   setupEndpoints() {
-    // Add static file serving for the frontend
-    const frontendPath = process.env.FRONTEND_PATH ? 
-      path.resolve(process.env.FRONTEND_PATH) : 
-      path.join(__dirname, '../frontend');
-    console.log(`📁 Setting up static file serving from: ${frontendPath}`);
+    console.log('🚀 Configuring API-only server (frontend is deployed separately on Vercel)');
     
-    // Serve static files with proper caching headers
-    this.app.use('/static', express.static(frontendPath, {
-      maxAge: this.config.IS_PRODUCTION ? '1d' : '0',
-      etag: true,
-      lastModified: true,
-      setHeaders: (res, filepath) => {
-        // Cache static assets longer in production
-        if (filepath.match(/\.(css|js|png|jpg|jpeg|gif|ico|svg)$/)) {
-          res.setHeader('Cache-Control', this.config.IS_PRODUCTION ? 'public, max-age=31536000' : 'no-cache');
-        }
-      }
-    }));
-    
-    // Enhanced marketplace routing
+    // Root endpoint - API server info
     this.app.get('/', (req, res) => {
-      // For API access, provide server info
-      if (req.accepts('json') && !req.accepts('html')) {
-        return res.json({
-          name: this.config.APP_NAME,
-          version: this.config.APP_VERSION,
-          status: 'operational',
-          api_version: this.config.API_VERSION,
-          docs: '/api/v1/docs',
-          health: '/health'
-        });
-      }
-      // For web access, redirect to marketplace
-      res.redirect('/marketplace');
-    });
-    
-    this.app.get('/marketplace', (req, res) => {
-      const marketplacePath = path.join(frontendPath, 'marketplace.html');
-      console.log(`📁 Looking for marketplace at: ${marketplacePath}`);
-      
-      if (fs.existsSync(marketplacePath)) {
-        console.log('✅ Marketplace file found, serving...');
-        res.sendFile(marketplacePath);
-      } else {
-        console.warn(`⚠️ Marketplace file not found at ${marketplacePath}`);
-        
-        // Try index.html as fallback
-        const indexPath = path.join(frontendPath, 'index.html');
-        if (fs.existsSync(indexPath)) {
-          console.log('✅ Serving index.html as fallback');
-          res.sendFile(indexPath);
-        } else {
-          console.error('❌ No frontend files found!');
-          res.status(404).json({ 
-            error: 'Marketplace not found', 
-            searchedPaths: [marketplacePath, indexPath],
-            frontendPath
-          });
-        }
-      }
-    });
-    
-    // Original home page access
-    this.app.get('/home', (req, res) => {
-      const homePath = path.join(frontendPath, 'index-enhanced-flipkart.html');
-      if (fs.existsSync(homePath)) {
-        res.sendFile(homePath);
-      } else {
-        res.sendFile(path.join(frontendPath, 'index.html'));
-      }
-    });
-    
-    // Other frontend page routes
-    const frontendRoutes = [
-      { path: '/admin', file: 'admin-dashboard.html' },
-      { path: '/cart', file: 'cart.html' },
-      { path: '/checkout', file: 'checkout.html' },
-      { path: '/product/:id', file: 'customer-product.html' },
-      { path: '/seller', file: 'add-product.html' }
-    ];
-    
-    frontendRoutes.forEach(route => {
-      this.app.get(route.path, (req, res) => {
-        const filePath = path.join(frontendPath, route.file);
-        if (fs.existsSync(filePath)) {
-          res.sendFile(filePath);
-        } else {
-          res.status(404).json({ error: 'Page not found', requested_file: route.file });
-        }
+      res.json({
+        name: this.config.APP_NAME,
+        version: this.config.APP_VERSION,
+        status: 'operational',
+        api_version: this.config.API_VERSION,
+        docs: '/api/v1/docs',
+        health: '/health',
+        frontend_url: process.env.FRONTEND_URL || 'https://your-vercel-app.vercel.app',
+        api_base: '/api/v1',
+        message: 'This is an API-only server. Frontend is deployed separately.'
       });
     });
     
-    // SPA fallback - catch all frontend routes and serve appropriate pages
-    const spaRoutes = [
-      '/login', '/register', '/profile', '/dashboard',
-      '/search', '/category/:category', '/brand/:brand',
-      '/orders', '/order/:id', '/wishlist', '/reviews',
-      '/settings', '/help', '/about', '/contact'
-    ];
-    
-    spaRoutes.forEach(route => {
-      this.app.get(route, (req, res) => {
-        // For SPA routes, serve the main marketplace which has routing logic
-        const marketplacePath = path.join(frontendPath, 'marketplace.html');
-        if (fs.existsSync(marketplacePath)) {
-          res.sendFile(marketplacePath);
-        } else {
-          res.sendFile(path.join(frontendPath, 'index.html'));
-        }
-      });
-    });
-    
-    // API documentation route (if exists)
+    // API documentation route
     this.app.get('/api-docs', (req, res) => {
       const docsPath = path.join(__dirname, 'docs', 'index.html');
       if (fs.existsSync(docsPath)) {
@@ -1479,13 +1390,34 @@ class QuickLocalServer {
           message: 'QuickLocal API Documentation',
           version: this.config.APP_VERSION,
           baseUrl: '/api/v1',
-          endpoints: this.loadedRoutes?.map(route => route.path) || []
+          endpoints: this.loadedRoutes?.map(route => route.path) || [],
+          frontend_url: process.env.FRONTEND_URL || 'https://your-vercel-app.vercel.app',
+          swagger_docs: '/api/v1/docs/swagger'
         });
       }
     });
     
-    console.log('✅ Static file serving and frontend routes configured');
-    console.log('🔄 SPA routing enabled for enhanced user experience');
+    // Redirect common frontend routes to Vercel frontend
+    const redirectRoutes = [
+      '/marketplace', '/home', '/admin', '/cart', '/checkout', 
+      '/login', '/register', '/profile', '/dashboard',
+      '/search', '/orders', '/wishlist', '/reviews',
+      '/settings', '/help', '/about', '/contact'
+    ];
+    
+    const frontendUrl = process.env.FRONTEND_URL || 'https://your-vercel-app.vercel.app';
+    
+    redirectRoutes.forEach(route => {
+      this.app.get(route, (req, res) => {
+        // Instead of trying to serve files, redirect to the Vercel frontend
+        const redirectUrl = `${frontendUrl}${route === '/marketplace' ? '/' : route}`;
+        console.log(`🔄 Redirecting ${route} to frontend: ${redirectUrl}`);
+        res.redirect(302, redirectUrl);
+      });
+    });
+    
+    console.log('✅ API-only server configuration completed');
+    console.log(`🌐 Frontend URL: ${frontendUrl}`);
     
     // CRITICAL: Mount main API routes
     try {
