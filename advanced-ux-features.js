@@ -597,6 +597,114 @@ class AdvancedUXFeatures {
     this.initializeSmartFilters();
   }
 
+  initializeSmartFilters() {
+    // Initialize price range sliders
+    const minPriceSlider = document.getElementById('minPrice');
+    const maxPriceSlider = document.getElementById('maxPrice');
+    const minPriceValue = document.getElementById('minPriceValue');
+    const maxPriceValue = document.getElementById('maxPriceValue');
+
+    if (minPriceSlider && maxPriceSlider) {
+      minPriceSlider.addEventListener('input', () => {
+        const minVal = parseInt(minPriceSlider.value);
+        const maxVal = parseInt(maxPriceSlider.value);
+        
+        if (minVal >= maxVal) {
+          minPriceSlider.value = maxVal - 10;
+        }
+        
+        if (minPriceValue) minPriceValue.textContent = `$${minPriceSlider.value}`;
+      });
+
+      maxPriceSlider.addEventListener('input', () => {
+        const minVal = parseInt(minPriceSlider.value);
+        const maxVal = parseInt(maxPriceSlider.value);
+        
+        if (maxVal <= minVal) {
+          maxPriceSlider.value = minVal + 10;
+        }
+        
+        if (maxPriceValue) maxPriceValue.textContent = `$${maxPriceSlider.value}`;
+      });
+    }
+
+    // Load brands for brand filter
+    this.loadBrandFilters();
+  }
+
+  async loadBrandFilters() {
+    try {
+      // Get unique brands from products
+      const brandList = document.querySelector('.brand-list');
+      if (brandList) {
+        // Mock brands - replace with actual API call if needed
+        const brands = ['Apple', 'Samsung', 'Nike', 'Adidas', 'Sony'];
+        
+        brandList.innerHTML = brands.map(brand => `
+          <label class="brand-filter">
+            <input type="checkbox" value="${brand}">
+            ${brand}
+          </label>
+        `).join('');
+      }
+    } catch (error) {
+      console.error('Error loading brand filters:', error);
+    }
+  }
+
+  applySmartFilters() {
+    // Collect filter values
+    const filters = {
+      minPrice: document.getElementById('minPrice')?.value || 0,
+      maxPrice: document.getElementById('maxPrice')?.value || 1000,
+      ratings: [],
+      availability: [],
+      brands: []
+    };
+
+    // Collect rating filters
+    document.querySelectorAll('.rating-filters input:checked').forEach(input => {
+      filters.ratings.push(parseInt(input.value));
+    });
+
+    // Collect availability filters
+    document.querySelectorAll('.availability-filters input:checked').forEach(input => {
+      filters.availability.push(input.value);
+    });
+
+    // Collect brand filters
+    document.querySelectorAll('.brand-filters input:checked').forEach(input => {
+      filters.brands.push(input.value);
+    });
+
+    // Apply filters to products (integrate with existing filter system)
+    this.onFiltersChanged(filters);
+  }
+
+  resetSmartFilters() {
+    // Reset all filter inputs
+    document.getElementById('minPrice').value = 0;
+    document.getElementById('maxPrice').value = 1000;
+    document.getElementById('minPriceValue').textContent = '$0';
+    document.getElementById('maxPriceValue').textContent = '$1000';
+    
+    document.querySelectorAll('.smart-filters-widget input[type="checkbox"]').forEach(input => {
+      input.checked = false;
+    });
+
+    // Apply empty filters
+    this.applySmartFilters();
+  }
+
+  onFiltersChanged(filters) {
+    // Emit event or call callback to update product display
+    if (window.updateProductFilters) {
+      window.updateProductFilters(filters);
+    }
+    
+    this.showNotification('Filters applied', 'success');
+  }
+
   createSmartFilterWidget() {
     const filterWidget = document.createElement('div');
     filterWidget.id = 'smartFiltersWidget';

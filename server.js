@@ -1366,11 +1366,11 @@ class QuickLocalServer {
     });
     
     this.app.get('/marketplace', (req, res) => {
-      const marketplacePath = path.join(frontendPath, 'marketplace-enhanced-flipkart.html');
+      const marketplacePath = path.join(frontendPath, 'marketplace.html');
       if (fs.existsSync(marketplacePath)) {
         res.sendFile(marketplacePath);
       } else {
-        console.warn('⚠️ Enhanced marketplace file not found, falling back to index');
+        console.warn('⚠️ Marketplace file not found, falling back to index');
         res.sendFile(path.join(frontendPath, 'index.html'));
       }
     });
@@ -1415,8 +1415,8 @@ class QuickLocalServer {
     
     spaRoutes.forEach(route => {
       this.app.get(route, (req, res) => {
-        // For SPA routes, serve the enhanced marketplace which has routing logic
-        const marketplacePath = path.join(frontendPath, 'marketplace-enhanced-flipkart.html');
+        // For SPA routes, serve the main marketplace which has routing logic
+        const marketplacePath = path.join(frontendPath, 'marketplace.html');
         if (fs.existsSync(marketplacePath)) {
           res.sendFile(marketplacePath);
         } else {
