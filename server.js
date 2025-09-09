@@ -739,58 +739,99 @@ class QuickLocalRouteManager {
   }
 
   async loadSingleRoute(app, { path, module, name, priority }) {
-    // Clear cache in development
-    if (process.env.NODE_ENV === 'development') {
-      try {
-        const resolvedPath = require.resolve(module);
-        delete require.cache[resolvedPath];
-      } catch (e) {
-        // Module doesn't exist yet, which is fine
-      }
-    }
-
-    // Try to load the module
-    let routeModule;
     try {
-      routeModule = require(module);
-    } catch (error) {
-      if (error.code === 'MODULE_NOT_FOUND') {
-        console.warn(`⚠️ Route module not found: ${module} - Skipping`);
-        return; // Skip missing modules instead of failing
+      // Clear cache in development
+      if (process.env.NODE_ENV === 'development') {
+        try {
+          const resolvedPath = require.resolve(module);
+          delete require.cache[resolvedPath];
+        } catch (e) {
+          // Module doesn't exist yet, which is fine
+        }
       }
-      throw error;
-    }
-    
-    if (!this.isValidRouter(routeModule)) {
-      throw new Error(`Invalid router export in ${module}`);
-    }
 
-    // Add API version middleware
-    app.use(path, this.createAPIVersionMiddleware());
-    
-    // Add route-specific rate limiting
-    if (path.includes('/auth')) {
-      app.use(path, EnhancedSecurityManager.createRateLimit(
-        15 * 60 * 1000, 
-        parseInt(process.env.AUTH_RATE_LIMIT_MAX) || 20, 
-        'Too many authentication attempts'
-      ));
-    } else if (path.includes('/orders')) {
-      app.use(path, EnhancedSecurityManager.createRateLimit(
-        60 * 1000, 
-        parseInt(process.env.ORDER_RATE_LIMIT_MAX) || 10, 
-        'Too many order requests'
-      ));
-    }
+      // Try to load the module with detailed error handling
+      let routeModule;
+      try {
+        console.log(`🗒️ Loading route module: ${module}`);
+        routeModule = require(module);
+        console.log(`✅ Successfully loaded: ${module}`);
+      } catch (error) {
+        if (error.code === 'MODULE_NOT_FOUND') {
+          // Try alternative paths
+          const altPaths = [
+            module.replace('./', './routes/'),
+            `./routes/${module.split('/').pop()}`,
+            `${__dirname}/routes/${module.split('/').pop()}`
+          ];
+          
+          let loaded = false;
+          for (const altPath of altPaths) {
+            try {
+              console.log(`🔄 Trying alternative path: ${altPath}`);
+              routeModule = require(altPath);
+              console.log(`✅ Successfully loaded from: ${altPath}`);
+              loaded = true;
+              break;
+            } catch (altError) {
+              // Continue to next alternative
+            }
+          }
+          
+          if (!loaded) {
+            console.warn(`⚠️ Route module not found: ${module} - Skipping`);
+            this.failedRoutes.push({ path, name, error: 'Module not found' });
+            return; // Skip missing modules instead of failing
+          }
+        } else {
+          console.error(`❌ Error loading ${module}:`, error.message);
+          this.failedRoutes.push({ path, name, error: error.message });
+          return;
+        }
+      }
+      
+      if (!this.isValidRouter(routeModule)) {
+        const error = `Invalid router export in ${module}`;
+        console.error(`❌ ${error}`);
+        this.failedRoutes.push({ path, name, error });
+        return;
+      }
 
-    app.use(path, routeModule);
-    
-    this.loadedRoutes.push({ path, name, priority, status: 'loaded' });
-    console.log(`✅ ${name}: ${path} (Priority: ${priority})`);
+      // Add API version middleware
+      app.use(path, this.createAPIVersionMiddleware());
+      
+      // Add route-specific rate limiting
+      try {
+        if (path.includes('/auth')) {
+          app.use(path, EnhancedSecurityManager.createRateLimit(
+            15 * 60 * 1000, 
+            parseInt(process.env.AUTH_RATE_LIMIT_MAX) || 20, 
+            'Too many authentication attempts'
+          ));
+        } else if (path.includes('/orders')) {
+          app.use(path, EnhancedSecurityManager.createRateLimit(
+            60 * 1000, 
+            parseInt(process.env.ORDER_RATE_LIMIT_MAX) || 10, 
+            'Too many order requests'
+          ));
+        }
+      } catch (rateLimitError) {
+        console.warn(`⚠️ Rate limiting setup failed for ${path}:`, rateLimitError.message);
+      }
 
-    // Log endpoints in development
-    if (process.env.DEBUG_MODE === 'true') {
-      this.logRouteEndpoints(routeModule, path, name);
+      app.use(path, routeModule);
+      
+      this.loadedRoutes.push({ path, name, priority, status: 'loaded' });
+      console.log(`✅ ${name}: ${path} (Priority: ${priority})`);
+
+      // Log endpoints in development
+      if (process.env.DEBUG_MODE === 'true') {
+        this.logRouteEndpoints(routeModule, path, name);
+      }
+      
+    } catch (error) {
+      console.error(`❌ Failed to load route ${name} (${path}):`, error.message);
+      this.failedRoutes.push({ path, name, error: error.message });
     }
   }
 
@@ -1343,7 +1384,9 @@ class QuickLocalServer {
 
   setupEndpoints() {
     // Add static file serving for the frontend
-    const frontendPath = path.join(__dirname, '../frontend');
+    const frontendPath = process.env.FRONTEND_PATH ? 
+      path.resolve(process.env.FRONTEND_PATH) : 
+      path.join(__dirname, '../frontend');
     console.log(`📁 Setting up static file serving from: ${frontendPath}`);
     
     // Serve static files with proper caching headers
@@ -1361,17 +1404,44 @@ class QuickLocalServer {
     
     // Enhanced marketplace routing
     this.app.get('/', (req, res) => {
-      // Redirect to enhanced marketplace
+      // For API access, provide server info
+      if (req.accepts('json') && !req.accepts('html')) {
+        return res.json({
+          name: this.config.APP_NAME,
+          version: this.config.APP_VERSION,
+          status: 'operational',
+          api_version: this.config.API_VERSION,
+          docs: '/api/v1/docs',
+          health: '/health'
+        });
+      }
+      // For web access, redirect to marketplace
       res.redirect('/marketplace');
     });
     
     this.app.get('/marketplace', (req, res) => {
       const marketplacePath = path.join(frontendPath, 'marketplace.html');
+      console.log(`📁 Looking for marketplace at: ${marketplacePath}`);
+      
       if (fs.existsSync(marketplacePath)) {
+        console.log('✅ Marketplace file found, serving...');
         res.sendFile(marketplacePath);
       } else {
-        console.warn('⚠️ Marketplace file not found, falling back to index');
-        res.sendFile(path.join(frontendPath, 'index.html'));
+        console.warn(`⚠️ Marketplace file not found at ${marketplacePath}`);
+        
+        // Try index.html as fallback
+        const indexPath = path.join(frontendPath, 'index.html');
+        if (fs.existsSync(indexPath)) {
+          console.log('✅ Serving index.html as fallback');
+          res.sendFile(indexPath);
+        } else {
+          console.error('❌ No frontend files found!');
+          res.status(404).json({ 
+            error: 'Marketplace not found', 
+            searchedPaths: [marketplacePath, indexPath],
+            frontendPath
+          });
+        }
       }
     });
     
@@ -1443,6 +1513,19 @@ class QuickLocalServer {
     console.log('✅ Static file serving and frontend routes configured');
     console.log('🔄 SPA routing enabled for enhanced user experience');
     
+    // CRITICAL: Mount main API routes
+    try {
+      const mainRoutes = require('./routes');
+      this.app.use('/api/v1', mainRoutes);
+      console.log('✅ Main API routes mounted at /api/v1');
+    } catch (error) {
+      console.error('❌ Failed to mount main API routes:', error);
+      
+      // Fallback: Mount essential routes directly
+      console.log('🔄 Attempting fallback route mounting...');
+      this.mountFallbackRoutes();
+    }
+    
     // Add monitoring routes if available
     if (monitoringRoutes) {
       try {
@@ -1512,64 +1595,7 @@ class QuickLocalServer {
       }
     }
     
-    // Enhanced root endpoint with QuickLocal branding
-    this.app.get('/', (req, res) => {
-      res.json({
-        name: this.config.APP_NAME,
-        version: this.config.APP_VERSION,
-        status: 'operational',
-        timestamp: new Date().toISOString(),
-        environment: this.config.NODE_ENV,
-        instance_id: this.config.INSTANCE_ID,
-        api_version: this.config.API_VERSION,
-        timezone: process.env.TIMEZONE || 'UTC',
-        currency: process.env.CURRENCY || 'USD',
-        server: {
-          uptime: Math.floor(process.uptime()),
-          memory: process.memoryUsage(),
-          node_version: process.version,
-          platform: process.platform,
-          cpu_count: os.cpus().length,
-          load_average: os.loadavg()
-        },
-        features: {
-          websockets: !!this.io,
-          clustering: this.config.CLUSTER_MODE,
-          metrics: this.config.ENABLE_METRICS,
-          caching: this.config.ENABLE_CACHING,
-          compression: this.config.COMPRESSION_ENABLED,
-          rate_limiting: this.config.RATE_LIMIT_ENABLED,
-          brute_force_protection: true,
-          reviews: process.env.FEATURE_REVIEWS === 'true',
-          wishlist: process.env.FEATURE_WISHLIST === 'true',
-          live_tracking: process.env.FEATURE_LIVE_TRACKING === 'true',
-          chat: process.env.FEATURE_CHAT === 'true',
-          loyalty_program: process.env.FEATURE_LOYALTY_PROGRAM === 'true',
-          delivery_system: process.env.DELIVERY_ENABLED === 'true'
-        },
-        endpoints: this.loadedRoutes ? this.loadedRoutes.reduce((acc, route) => {
-          acc[route.name.toLowerCase().replace(/\s+/g, '_')] = route.path;
-          return acc;
-        }, {}) : {},
-        marketplace: {
-          min_order_amount: process.env.MIN_ORDER_AMOUNT || 50,
-          max_order_amount: process.env.MAX_ORDER_AMOUNT || 50000,
-          delivery_fee: process.env.BASE_DELIVERY_FEE || 25,
-          free_delivery_threshold: process.env.FREE_DELIVERY_THRESHOLD || 500,
-          platform_commission: process.env.PLATFORM_COMMISSION || 0.025
-        },
-        documentation: {
-          health_check: '/health',
-          metrics: '/metrics',
-          api_docs: '/api/v1/docs',
-          rate_limits: {
-            general: `${this.config.RATE_LIMIT_MAX} requests per ${this.config.RATE_LIMIT_WINDOW / 60000} minutes`,
-            auth: `${this.config.AUTH_RATE_LIMIT_MAX} requests per 15 minutes`,
-            orders: `${this.config.ORDER_RATE_LIMIT_MAX} requests per minute`
-          }
-        }
-      });
-    });
+    // Server info available at /api/v1/info instead of root
 
     // Comprehensive health check
     this.app.get('/health', async (req, res) => {
@@ -1635,6 +1661,65 @@ class QuickLocalServer {
       });
     }
 
+    // Server info endpoint
+    this.app.get('/api/v1/info', (req, res) => {
+      res.json({
+        name: this.config.APP_NAME,
+        version: this.config.APP_VERSION,
+        status: 'operational',
+        timestamp: new Date().toISOString(),
+        environment: this.config.NODE_ENV,
+        instance_id: this.config.INSTANCE_ID,
+        api_version: this.config.API_VERSION,
+        timezone: process.env.TIMEZONE || 'UTC',
+        currency: process.env.CURRENCY || 'USD',
+        server: {
+          uptime: Math.floor(process.uptime()),
+          memory: process.memoryUsage(),
+          node_version: process.version,
+          platform: process.platform,
+          cpu_count: os.cpus().length,
+          load_average: os.loadavg()
+        },
+        features: {
+          websockets: !!this.io,
+          clustering: this.config.CLUSTER_MODE,
+          metrics: this.config.ENABLE_METRICS,
+          caching: this.config.ENABLE_CACHING,
+          compression: this.config.COMPRESSION_ENABLED,
+          rate_limiting: this.config.RATE_LIMIT_ENABLED,
+          brute_force_protection: true,
+          reviews: process.env.FEATURE_REVIEWS === 'true',
+          wishlist: process.env.FEATURE_WISHLIST === 'true',
+          live_tracking: process.env.FEATURE_LIVE_TRACKING === 'true',
+          chat: process.env.FEATURE_CHAT === 'true',
+          loyalty_program: process.env.FEATURE_LOYALTY_PROGRAM === 'true',
+          delivery_system: process.env.DELIVERY_ENABLED === 'true'
+        },
+        endpoints: this.loadedRoutes ? this.loadedRoutes.reduce((acc, route) => {
+          acc[route.name.toLowerCase().replace(/\s+/g, '_')] = route.path;
+          return acc;
+        }, {}) : {},
+        marketplace: {
+          min_order_amount: process.env.MIN_ORDER_AMOUNT || 50,
+          max_order_amount: process.env.MAX_ORDER_AMOUNT || 50000,
+          delivery_fee: process.env.BASE_DELIVERY_FEE || 25,
+          free_delivery_threshold: process.env.FREE_DELIVERY_THRESHOLD || 500,
+          platform_commission: process.env.PLATFORM_COMMISSION || 0.025
+        },
+        documentation: {
+          health_check: '/health',
+          metrics: '/metrics',
+          api_docs: '/api/v1/docs',
+          rate_limits: {
+            general: `${this.config.RATE_LIMIT_MAX} requests per ${this.config.RATE_LIMIT_WINDOW / 60000} minutes`,
+            auth: `${this.config.AUTH_RATE_LIMIT_MAX} requests per 15 minutes`,
+            orders: `${this.config.ORDER_RATE_LIMIT_MAX} requests per minute`
+          }
+        }
+      });
+    });
+    
     // API documentation endpoint
     if (this.config.ENABLE_API_DOCS) {
       this.app.get('/api/v1/docs', (req, res) => {
@@ -2807,6 +2892,48 @@ class QuickLocalDevUtils {
     });
 
     console.log('🧪 Development utilities enabled');
+  }
+
+  // Fallback route mounting when main routes fail
+  mountFallbackRoutes() {
+    const essentialRoutes = [
+      { path: '/api/v1/auth', file: './routes/auth' },
+      { path: '/api/v1/products', file: './routes/products' },
+      { path: '/api/v1/users', file: './routes/users' },
+      { path: '/api/v1/orders', file: './routes/orders' }
+    ];
+    
+    essentialRoutes.forEach(route => {
+      try {
+        const routeHandler = require(route.file);
+        this.app.use(route.path, routeHandler);
+        console.log(`✅ Fallback: Mounted ${route.path}`);
+      } catch (error) {
+        console.error(`❌ Fallback failed for ${route.path}:`, error.message);
+      }
+    });
+  }
+  
+  // Emergency route mounting with basic responses
+  mountEmergencyRoutes() {
+    // Basic auth route
+    this.app.post('/api/v1/auth/login', (req, res) => {
+      res.status(503).json({ 
+        error: 'Service temporarily unavailable', 
+        message: 'Authentication service is being restored' 
+      });
+    });
+    
+    // Basic products route
+    this.app.get('/api/v1/products', (req, res) => {
+      res.status(503).json({ 
+        error: 'Service temporarily unavailable', 
+        message: 'Product service is being restored',
+        products: []
+      });
+    });
+    
+    console.log('🚨 Emergency routes mounted - basic responses active');
   }
 
   static logEnvironmentInfo() {
