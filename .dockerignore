@@ -1,0 +1,64 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+
+# Test coverage
+coverage/
+
+# Test files
+tests/
+__tests__/
+*.test.js
+*.spec.js
+
+# Documentation
+docs/
+README.md
+*.md
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+
+# Uploads (if not needed in container)
+uploads/
+
+# Cache
+.npm/
+.cache/
+
+# Development files
+nodemon.json
+.eslintrc*
+.prettierrc*
+jest.config.*
+
+# Fly.io
+fly.toml
+
+# Docker
+Dockerfile
+.dockerignore
