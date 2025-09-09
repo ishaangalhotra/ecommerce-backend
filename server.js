@@ -2679,6 +2679,48 @@ class QuickLocalServer {
       }
     });
   }
+
+  // Fallback route mounting when main routes fail
+  mountFallbackRoutes() {
+    const essentialRoutes = [
+      { path: '/api/v1/auth', file: './routes/auth' },
+      { path: '/api/v1/products', file: './routes/products' },
+      { path: '/api/v1/users', file: './routes/users' },
+      { path: '/api/v1/orders', file: './routes/orders' }
+    ];
+    
+    essentialRoutes.forEach(route => {
+      try {
+        const routeHandler = require(route.file);
+        this.app.use(route.path, routeHandler);
+        console.log(`✅ Fallback: Mounted ${route.path}`);
+      } catch (error) {
+        console.error(`❌ Fallback failed for ${route.path}:`, error.message);
+      }
+    });
+  }
+  
+  // Emergency route mounting with basic responses
+  mountEmergencyRoutes() {
+    // Basic auth route
+    this.app.post('/api/v1/auth/login', (req, res) => {
+      res.status(503).json({ 
+        error: 'Service temporarily unavailable', 
+        message: 'Authentication service is being restored' 
+      });
+    });
+    
+    // Basic products route
+    this.app.get('/api/v1/products', (req, res) => {
+      res.status(503).json({ 
+        error: 'Service temporarily unavailable', 
+        message: 'Product service is being restored',
+        products: []
+      });
+    });
+    
+    console.log('🚨 Emergency routes mounted - basic responses active');
+  }
 }
 
 // Enhanced Cluster Manager for Production Scaling
@@ -2892,48 +2934,6 @@ class QuickLocalDevUtils {
     });
 
     console.log('🧪 Development utilities enabled');
-  }
-
-  // Fallback route mounting when main routes fail
-  mountFallbackRoutes() {
-    const essentialRoutes = [
-      { path: '/api/v1/auth', file: './routes/auth' },
-      { path: '/api/v1/products', file: './routes/products' },
-      { path: '/api/v1/users', file: './routes/users' },
-      { path: '/api/v1/orders', file: './routes/orders' }
-    ];
-    
-    essentialRoutes.forEach(route => {
-      try {
-        const routeHandler = require(route.file);
-        this.app.use(route.path, routeHandler);
-        console.log(`✅ Fallback: Mounted ${route.path}`);
-      } catch (error) {
-        console.error(`❌ Fallback failed for ${route.path}:`, error.message);
-      }
-    });
-  }
-  
-  // Emergency route mounting with basic responses
-  mountEmergencyRoutes() {
-    // Basic auth route
-    this.app.post('/api/v1/auth/login', (req, res) => {
-      res.status(503).json({ 
-        error: 'Service temporarily unavailable', 
-        message: 'Authentication service is being restored' 
-      });
-    });
-    
-    // Basic products route
-    this.app.get('/api/v1/products', (req, res) => {
-      res.status(503).json({ 
-        error: 'Service temporarily unavailable', 
-        message: 'Product service is being restored',
-        products: []
-      });
-    });
-    
-    console.log('🚨 Emergency routes mounted - basic responses active');
   }
 
   static logEnvironmentInfo() {

@@ -97,10 +97,9 @@ const productSchema = new mongoose.Schema({
   
   slug: { 
     type: String, 
-    unique: true, 
     lowercase: true,
-    sparse: true,
-    index: true
+    sparse: true
+    // Index will be created explicitly below to avoid conflicts
   },
   tags: {
     type: [String],
@@ -323,6 +322,9 @@ productSchema.index({ isFeatured: 1, status: 1 });
 productSchema.index({ isNewArrival: 1, createdAt: -1 });
 productSchema.index({ stock: 1, status: 1 });
 productSchema.index({ 'deliveryConfig.isLocalDeliveryEnabled': 1 });
+
+// Explicit unique slug index to prevent conflicts
+productSchema.index({ slug: 1 }, { unique: true, sparse: true, name: 'products_slug_unique' });
 
 // 📊 Enhanced Virtuals
 productSchema.virtual('finalPrice').get(function () {
