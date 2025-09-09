@@ -269,8 +269,6 @@ require('dotenv').config(); // Load .env variables
 // Ensure NODE_ENV has a fallback:
 process.env.NODE_ENV = process.env.NODE_ENV || 'development';
 
-require('dotenv').config();
-
 const fs = require('fs');
 const path = require('path');
 const cluster = require('cluster');
@@ -360,9 +358,22 @@ try {
   create2FARoutes = twoFASystem.create2FARoutes;
   create2FAMiddleware = twoFASystem.create2FAMiddleware;
   
-  // Inject SMS system into 2FA system
-  if (smsGatewaySystem) {
-    twoFactorSystem.setSMSSystem(smsGatewaySystem);
+  // Inject SMS system into 2FA system with robust error handling
+  if (smsGatewaySystem && twoFactorSystem && typeof twoFactorSystem.setSMSSystem === 'function') {
+    try {
+      twoFactorSystem.setSMSSystem(smsGatewaySystem);
+      console.log('✅ SMS system successfully injected into 2FA system');
+    } catch (error) {
+      console.warn('⚠️ Failed to inject SMS system into 2FA:', error.message);
+    }
+  } else {
+    if (!twoFactorSystem) {
+      console.warn('⚠️ 2FA system not available for SMS injection');
+    } else if (!smsGatewaySystem) {
+      console.warn('⚠️ SMS gateway system not available for 2FA injection');
+    } else {
+      console.warn('⚠️ 2FA system does not support SMS injection (missing setSMSSystem method)');
+    }
   }
 } catch (error) {
   console.warn('⚠️ Two-Factor Authentication system not found, skipping...');
@@ -1053,21 +1064,7 @@ class QuickLocalServer {
       }
     }
 
-    // EARLY CORS HANDLER (must run before any auth/rate-limit middleware)
-    this.app.use((req, res, next) => {
-      const origin = req.headers.origin;
-      if (CORSManager.isValidOrigin(origin)) {
-        res.header('Access-Control-Allow-Origin', origin);
-        res.header('Vary', 'Origin');
-        res.header('Access-Control-Allow-Credentials', 'true');
-        res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS');
-        res.header('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept,Origin,X-Api-Key,X-Correlation-ID');
-      }
-      if (req.method === 'OPTIONS') {
-        return res.sendStatus(200);
-      }
-      return next();
-    });
+    // CORS is handled by the cors library below - no manual handling needed
 
     // Brute force protection
     const bruteForce = EnhancedSecurityManager.createBruteForceProtection();
@@ -1148,30 +1145,7 @@ class QuickLocalServer {
     // which is crucial for complex requests (e.g., with custom headers or methods like PUT/DELETE).
     this.app.options('*', cors(corsOptions));
     
-    // Additional manual preflight handler for extra safety
-    this.app.use((req, res, next) => {
-      const origin = req.headers.origin;
-      
-      if (req.method === 'OPTIONS') {
-        console.log(`[CORS] Preflight request from origin: ${origin}`);
-        
-        // Check if origin is allowed
-        if (CORSManager.isValidOrigin(origin)) {
-          res.header('Access-Control-Allow-Origin', origin);
-          res.header('Access-Control-Allow-Credentials', 'true');
-          res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS');
-          res.header('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept,Origin,X-Api-Key,X-Correlation-ID');
-          res.header('Access-Control-Max-Age', '86400'); // 24 hours
-          
-          console.log(`[CORS] ✅ Preflight response sent for ${origin}`);
-          return res.status(200).end();
-        } else {
-          console.log(`[CORS] ❌ Preflight denied for ${origin}`);
-        }
-      }
-      
-      next();
-    });
+    // cors library handles all preflight requests automatically
     // ==================================================================
     // == END: ROBUST CORS CONFIGURATION
     // ==================================================================
@@ -2566,6 +2540,40 @@ class QuickLocalServer {
         console.log(serverInfo);
         console.log('🚀 QuickLocal API Server started successfully');
         
+        // Now show detailed status since everything is actually connected
+        console.log('Status: Connected');
+        console.log('✅ Server is connected and running');
+        console.log(`🏦 Database: ${mongoose.connection.db?.databaseName || 'Connected'}`); 
+        console.log(`🖥️  Host: ${mongoose.connection.host || this.config.HOST}`);
+        console.log(`
+⚡ Pool Size: ${process.env.DB_POOL_SIZE || 10}
+🛑️  Security Features:
+🔒 Helmet Security: ${process.env.HELMET_ENABLED === 'true' ? '✅' : '❌'}
+🚦 Rate Limiting: ${process.env.RATE_LIMIT_ENABLED === 'true' ? '✅' : '❌'} (${process.env.RATE_LIMIT_MAX || 100}/${(process.env.RATE_LIMIT_WINDOW || 900000) / 60000}min)
+🛑 Brute Force Protection: ✅
+🌐 CORS Origins: ${CORSManager.getOrigins().length} configured
+🔐 Session Management: ✅
+💪 Password Hashing: ${process.env.BCRYPT_SALT_ROUNDS || 12} rounds
+🚀 Performance Features:
+📦 Compression: ${process.env.COMPRESSION_ENABLED === 'true' ? '✅' : '❌'} (Level: ${process.env.COMPRESSION_LEVEL || 6})
+📊 Metrics: ${process.env.ENABLE_METRICS === 'true' ? '✅' : '❌'}
+🔌 Socket.IO: ✅
+⚡ Circuit Breaker: ✅
+🕐 Request Timeout: ${(process.env.REQUEST_TIMEOUT || 30000) / 1000}s
+🎯 Clustering: ${process.env.CLUSTER_MODE === 'true' ? '✅' : '❌'}
+🏦 Marketplace Features:
+💳 Payment Gateways: Multiple enabled
+🚚 Delivery System: ${process.env.DELIVERY_ENABLED === 'true' ? '✅' : '❌'}
+⭐ Reviews & Ratings: ${process.env.FEATURE_REVIEWS === 'true' ? '✅' : '❌'}
+💝 Wishlist: ${process.env.FEATURE_WISHLIST === 'true' ? '✅' : '❌'}
+📍 Live Tracking: ${process.env.FEATURE_LIVE_TRACKING === 'true' ? '✅' : '❌'}
+💬 Chat System: ${process.env.FEATURE_CHAT === 'true' ? '✅' : '❌'}
+🎁 Loyalty Program: ${process.env.FEATURE_LOYALTY_PROGRAM === 'true' ? '✅' : '❌'}
+📚 API Information:
+📖 Documentation: /api/v1/docs
+❤️  Health Check: /health
+`);
+        
         resolve();
       });
 
@@ -2967,37 +2975,4 @@ if (require.main === module) {
   
   // Start server (with or without clustering)
   QuickLocalClusterManager.start();
-  
-  console.log('Status: Connected');
-  console.log('✅ Server is connected and running');
-  console.log(`🏪 Database: ${mongoose.connection.db?.databaseName || 'Not connected yet'}`);
-  console.log(`🖥️  Host: ${mongoose.connection.host || 'Not connected yet'}`);
-  console.log(`
-⚡ Pool Size: ${process.env.DB_POOL_SIZE || 10}
-🛡️  Security Features:
-🔒 Helmet Security: ${process.env.HELMET_ENABLED === 'true' ? '✅' : '❌'}
-🚦 Rate Limiting: ${process.env.RATE_LIMIT_ENABLED === 'true' ? '✅' : '❌'} (${process.env.RATE_LIMIT_MAX || 100}/${(process.env.RATE_LIMIT_WINDOW || 900000) / 60000}min)
-🛑 Brute Force Protection: ✅
-🌐 CORS Origins: ${CORSManager.getOrigins().length} configured
-🔐 Session Management: ✅
-💪 Password Hashing: ${process.env.BCRYPT_SALT_ROUNDS || 12} rounds
-🚀 Performance Features:
-📦 Compression: ${process.env.COMPRESSION_ENABLED === 'true' ? '✅' : '❌'} (Level: ${process.env.COMPRESSION_LEVEL || 6})
-📊 Metrics: ${process.env.ENABLE_METRICS === 'true' ? '✅' : '❌'}
-🔌 Socket.IO: ✅
-⚡ Circuit Breaker: ✅
-🕐 Request Timeout: ${(process.env.REQUEST_TIMEOUT || 30000) / 1000}s
-🎯 Clustering: ${process.env.CLUSTER_MODE === 'true' ? '✅' : '❌'}
-🏪 Marketplace Features:
-💳 Payment Gateways: Multiple enabled
-🚚 Delivery System: ${process.env.DELIVERY_ENABLED === 'true' ? '✅' : '❌'}
-⭐ Reviews & Ratings: ${process.env.FEATURE_REVIEWS === 'true' ? '✅' : '❌'}
-💝 Wishlist: ${process.env.FEATURE_WISHLIST === 'true' ? '✅' : '❌'}
-📍 Live Tracking: ${process.env.FEATURE_LIVE_TRACKING === 'true' ? '✅' : '❌'}
-💬 Chat System: ${process.env.FEATURE_CHAT === 'true' ? '✅' : '❌'}
-🎁 Loyalty Program: ${process.env.FEATURE_LOYALTY_PROGRAM === 'true' ? '✅' : '❌'}
-📚 API Information:
-📖 Documentation: /api/v1/docs
-❤️  Health Check: /health
-`);
 }
