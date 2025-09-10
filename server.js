@@ -56,38 +56,53 @@ class MemoryMonitor {
         external: Math.round(memUsage.external / 1024 / 1024)
       });
 
-      console.log(`💾 Memory: ${heapUsedMB}MB/${heapTotalMB}MB (${usage}%)`);
+      // Use structured logging instead of console.log
+      const logger = require('./utils/logger');
+      
+      logger.info('Memory usage', {
+        memory: {
+          heapUsedMB,
+          heapTotalMB,
+          usagePercent: usage,
+          rssMB: Math.round(memUsage.rss / 1024 / 1024),
+          externalMB: Math.round(memUsage.external / 1024 / 1024)
+        },
+        timestamp
+      });
       
       // Enhanced alerting with trend analysis
       if (usage > 80) {
         this.metrics.highUsageCount++;
         const trend = this.getUsageTrend();
         
-        console.warn(`⚠️ HIGH MEMORY USAGE: ${usage}% (${heapUsedMB}MB/${heapTotalMB}MB)`);
-        console.warn(`📈 Usage trend: ${trend > 0 ? '↗️ Increasing' : trend < 0 ? '↘️ Decreasing' : '➡️ Stable'} (${trend.toFixed(1)}%)`);
-        
-        // Detailed breakdown for high usage
-        this.logMemoryBreakdown(memUsage);
-        
-        // Suggest action if trend is concerning
-        if (trend > 5) {
-          console.warn(`🔍 Memory usage increasing rapidly. Consider investigating memory leaks.`);
-        }
+        logger.warn('High memory usage detected', {
+          memory: {
+            usagePercent: usage,
+            heapUsedMB,
+            heapTotalMB,
+            trend: {
+              direction: trend > 0 ? 'increasing' : trend < 0 ? 'decreasing' : 'stable',
+              changePercent: parseFloat(trend.toFixed(1))
+            },
+            highUsageCount: this.metrics.highUsageCount
+          },
+          breakdown: this.getMemoryBreakdown(memUsage),
+          suggestion: trend > 5 ? 'investigate_memory_leaks' : 'monitor_closely'
+        });
       }
       
       // Critical memory warning
       if (usage > 95) {
         this.metrics.criticalUsageCount++;
-        console.error(`🚨 CRITICAL MEMORY USAGE: ${usage}% - Server may crash soon!`);
-        console.error(`🆘 Critical usage count: ${this.metrics.criticalUsageCount}`);
         
-        // Log recent memory history for debugging
-        this.logMemoryHistory();
-        
-        // Suggest immediate action
-        if (this.metrics.criticalUsageCount >= 3) {
-          console.error(`💥 SUSTAINED CRITICAL USAGE - Consider restarting the service!`);
-        }
+        logger.error('Critical memory usage - server may crash', {
+          memory: {
+            usagePercent: usage,
+            criticalUsageCount: this.metrics.criticalUsageCount,
+            recentHistory: this.getRecentMemoryHistory()
+          },
+          action: this.metrics.criticalUsageCount >= 3 ? 'restart_required' : 'monitor_critical'
+        });
       }
 
       // Reset counters on healthy usage
@@ -126,37 +141,33 @@ class MemoryMonitor {
     return recentAvg - olderAvg;
   }
 
-  logMemoryBreakdown(memUsage) {
-    const breakdown = {
-      rss: Math.round(memUsage.rss / 1024 / 1024) + 'MB',
-      heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024) + 'MB', 
-      heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024) + 'MB',
-      external: Math.round(memUsage.external / 1024 / 1024) + 'MB',
-      arrayBuffers: Math.round((memUsage.arrayBuffers || 0) / 1024 / 1024) + 'MB'
+  getMemoryBreakdown(memUsage) {
+    return {
+      absolute: {
+        rssMB: Math.round(memUsage.rss / 1024 / 1024),
+        heapUsedMB: Math.round(memUsage.heapUsed / 1024 / 1024),
+        heapTotalMB: Math.round(memUsage.heapTotal / 1024 / 1024),
+        externalMB: Math.round(memUsage.external / 1024 / 1024),
+        arrayBuffersMB: Math.round((memUsage.arrayBuffers || 0) / 1024 / 1024)
+      },
+      percentages: {
+        heapUsedPercent: Math.round((memUsage.heapUsed / memUsage.rss) * 100),
+        externalPercent: Math.round((memUsage.external / memUsage.rss) * 100),
+        otherPercent: Math.round(((memUsage.rss - memUsage.heapUsed - memUsage.external) / memUsage.rss) * 100)
+      }
     };
-
-    console.log('📊 Memory breakdown:', breakdown);
-
-    // Calculate percentages
-    const totalMB = memUsage.rss / 1024 / 1024;
-    console.log('📊 Memory distribution:', {
-      'Heap Used': Math.round((memUsage.heapUsed / memUsage.rss) * 100) + '%',
-      'External': Math.round((memUsage.external / memUsage.rss) * 100) + '%',
-      'Stack/Other': Math.round(((memUsage.rss - memUsage.heapUsed - memUsage.external) / memUsage.rss) * 100) + '%'
-    });
   }
 
-  logMemoryHistory() {
-    if (this.metrics.samples.length < 5) return;
-
-    console.log('📜 Recent memory history (last 10 samples):');
-    const recent = this.metrics.samples.slice(-10);
+  getRecentMemoryHistory() {
+    if (this.metrics.samples.length < 5) return [];
     
-    recent.forEach((sample, index) => {
-      const time = new Date(sample.timestamp).toLocaleTimeString();
-      const indicator = sample.usage > 95 ? '🚨' : sample.usage > 80 ? '⚠️' : '✅';
-      console.log(`${indicator} ${time}: ${sample.usage}% (${sample.heapUsed}MB/${sample.heapTotal}MB)`);
-    });
+    return this.metrics.samples.slice(-10).map(sample => ({
+      timestamp: sample.timestamp,
+      usagePercent: sample.usage,
+      heapUsedMB: sample.heapUsed,
+      heapTotalMB: sample.heapTotal,
+      severity: sample.usage > 95 ? 'critical' : sample.usage > 80 ? 'warning' : 'normal'
+    }));
   }
 
   getStats() {

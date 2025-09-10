@@ -153,19 +153,40 @@ const uploadProduct = async (req, res) => {
         }
       }
 
+      const fs = require('fs'); // Import fs for file operations
+      
       try {
         const folder = `products/${sellerId}`;
-        const uploads = allFiles.map((f, idx) =>
-          imagekit.upload({
-            file: f.buffer,
+        const uploads = allFiles.map((f, idx) => {
+          // Create a readable stream from the temporary file path instead of using buffer
+          const fileStream = fs.createReadStream(f.path);
+          
+          const uploadPromise = imagekit.upload({
+            file: fileStream, // Use stream instead of buffer
             fileName: `${Date.now()}_${idx}_${f.originalname}`.replace(/\s+/g, '_'),
             folder,
             useUniqueFileName: true
+          }).then(result => {
+            // Clean up the temporary file after successful upload
+            try {
+              fs.unlinkSync(f.path);
+            } catch (e) {
+              console.warn('Failed to delete temp file:', f.path);
+            }
+            return result;
           }).catch(error => {
+            // Clean up the temporary file even on error
+            try {
+              fs.unlinkSync(f.path);
+            } catch (e) {
+              console.warn('Failed to delete temp file on error:', f.path);
+            }
             console.error('Image upload failed:', error);
             return null;
-          })
-        );
+          });
+          
+          return uploadPromise;
+        });
         
         const results = await Promise.all(uploads);
         images = results
@@ -179,6 +200,14 @@ const uploadProduct = async (req, res) => {
           }));
       } catch (error) {
         console.error('Image upload process failed:', error);
+        // Clean up any remaining temp files on process error
+        allFiles.forEach(file => {
+          try {
+            if (file.path) fs.unlinkSync(file.path);
+          } catch (e) {
+            console.warn('Failed to cleanup temp file:', file.path);
+          }
+        });
         // Continue without images rather than failing the entire request
         images = [];
       }
