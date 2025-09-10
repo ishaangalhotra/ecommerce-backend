@@ -266,21 +266,42 @@ exports.uploadAvatar = asyncHandler(async (req, res, next) => {
       }
     }
 
-    // Upload new avatar with transformations
-    const uploadResult = await uploadImage(req.file.buffer, {
-      folder: `avatars/${req.user.id}`,
-      public_id: `avatar_${Date.now()}`,
-      transformation: [
-        {
-          width: USER_CONFIG.AVATAR_SIZE.width,
-          height: USER_CONFIG.AVATAR_SIZE.height,
-          crop: 'fill',
-          gravity: 'faces',
-          quality: 'auto:best'
-        },
-        { format: 'webp' } // Convert to webp for better performance
-      ]
-    });
+    // Upload new avatar with transformations using file stream
+    const fs = require('fs');
+    let uploadResult;
+    
+    try {
+      // Use file stream instead of buffer to avoid memory leak
+      const fileStream = req.file.path ? fs.createReadStream(req.file.path) : req.file.buffer;
+      
+      uploadResult = await uploadImage(fileStream, {
+        folder: `avatars/${req.user.id}`,
+        public_id: `avatar_${Date.now()}`,
+        transformation: [
+          {
+            width: USER_CONFIG.AVATAR_SIZE.width,
+            height: USER_CONFIG.AVATAR_SIZE.height,
+            crop: 'fill',
+            gravity: 'faces',
+            quality: 'auto:best'
+          },
+          { format: 'webp' } // Convert to webp for better performance
+        ]
+      });
+      
+      // Clean up temp file if it exists
+      if (req.file.path) {
+        fs.unlink(req.file.path, (err) => {
+          if (err) logger.warn('Failed to delete temp avatar file', { path: req.file.path });
+        });
+      }
+    } catch (uploadError) {
+      // Clean up temp file on error
+      if (req.file.path) {
+        fs.unlink(req.file.path, () => {});
+      }
+      throw uploadError;
+    }
 
     // Update user record
     user.avatar = uploadResult.secure_url;
