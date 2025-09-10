@@ -522,4 +522,19 @@ productSchema.statics.findFeatured = function (limit = 10) {
   .populate('category', 'name');
 };
 
+// Static method for text search
+productSchema.statics.searchProducts = function(searchTerm, filters = {}) {
+  const searchQuery = {
+    ...filters,
+    $or: [
+      { name: { $regex: searchTerm, $options: 'i' } },
+      { description: { $regex: searchTerm, $options: 'i' } },
+      { brand: { $regex: searchTerm, $options: 'i' } },
+      { tags: { $in: [new RegExp(searchTerm, 'i')] } }
+    ]
+  };
+  
+  return this.find(searchQuery);
+};
+
 module.exports = mongoose.models.Product || mongoose.model('Product', productSchema);

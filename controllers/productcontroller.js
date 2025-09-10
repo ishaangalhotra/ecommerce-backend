@@ -39,7 +39,7 @@ const advancedResults = (model, populate) => asyncHandler(async (req, res, next)
   const limit = parseInt(req.query.limit, 10) || 25;
   const startIndex = (page - 1) * limit;
   const endIndex = page * limit;
-  const total = await model.countDocuments();
+  const total = await model.countDocuments(JSON.parse(queryStr));
 
   query = query.skip(startIndex).limit(limit);
 
@@ -66,14 +66,14 @@ const advancedResults = (model, populate) => asyncHandler(async (req, res, next)
     };
   }
 
-  res.advancedResults = {
+  // ** THE FIX IS HERE **
+  // Send the response instead of calling next()
+  res.status(200).json({
     success: true,
     count: results.length,
     pagination,
     data: results
-  };
-
-  next();
+  });
 });
 
 // @desc    Get all products
