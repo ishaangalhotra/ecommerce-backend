@@ -705,22 +705,74 @@ router.get('/', async (req, res) => {
         products: products.map(product => ({
           id: product._id,
           name: product.name,
+          description: product.description,
+          shortDescription: product.shortDescription,
           price: product.price,
+          originalPrice: product.originalPrice,
           finalPrice: product.discountPercentage > 0 
-            ? product.price - (product.price * product.discountPercentage / 100)
+            ? Math.round((product.price * (1 - product.discountPercentage / 100)) * 100) / 100
             : product.price,
           discountPercentage: product.discountPercentage,
+          savings: product.originalPrice ? Math.round((product.originalPrice - product.price) * 100) / 100 : 0,
           isOnSale: product.discountPercentage > 0,
-          images: product.images.slice(0, 2), // Now uses real ImageKit URLs
+          images: product.images.slice(0, 3), // Show first 3 images for cards
+          primaryImage: product.primaryImage || product.images[0],
           stock: product.stock,
           isInStock: product.stock > 0,
+          isLowStock: product.stock <= (product.lowStockThreshold || 10),
+          stockStatus: product.stockStatus,
+          unit: product.unit,
+          weight: product.weight,
           averageRating: product.averageRating,
           totalReviews: product.totalReviews,
+          ratingDistribution: product.ratingDistribution,
           category: product.category,
           seller: product.seller,
           slug: product.slug,
           brand: product.brand,
-          deliveryTime: product.deliveryInfo?.preparationTime || 2
+          model: product.model,
+          tags: product.tags?.slice(0, 5), // Limit tags for display
+          
+          // Delivery & Location Info
+          deliveryConfig: {
+            isLocalDeliveryEnabled: product.deliveryConfig?.isLocalDeliveryEnabled,
+            preparationTime: product.deliveryConfig?.preparationTime || 10,
+            deliveryFee: product.deliveryConfig?.deliveryFee || 0,
+            freeDeliveryThreshold: product.deliveryConfig?.freeDeliveryThreshold,
+            expressDeliveryAvailable: product.deliveryConfig?.expressDeliveryAvailable,
+            codAvailable: product.deliveryConfig?.codAvailable
+          },
+          
+          sellerLocation: {
+            city: product.sellerLocation?.city,
+            pincode: product.sellerLocation?.pincode,
+            locality: product.sellerLocation?.locality
+          },
+          
+          // Product Features
+          features: product.features?.slice(0, 3), // Top 3 features for cards
+          specifications: product.specifications ? Object.fromEntries([...product.specifications].slice(0, 5)) : {},
+          colors: product.colors?.slice(0, 4), // Show max 4 color options
+          sizes: product.sizes?.slice(0, 6), // Show max 6 size options
+          
+          // Marketing & Status
+          isFeatured: product.isFeatured,
+          isNewArrival: product.isNewArrival,
+          isBestSeller: product.isBestSeller,
+          promotionalBadges: product.promotionalBadges?.slice(0, 2),
+          
+          // Business Info
+          warrantyPeriod: product.warrantyPeriod,
+          returnPolicy: product.deliveryConfig?.returnPolicy,
+          
+          // Analytics (for display)
+          views: product.views,
+          totalSales: product.totalSales,
+          wishlistCount: product.wishlistCount,
+          
+          // Time info
+          createdAt: product.createdAt,
+          updatedAt: product.updatedAt
         })),
         pagination: {
           currentPage: parseInt(page),

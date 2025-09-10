@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Product Cards Showcase - QuickLocal</title>
+    <link rel="stylesheet" href="/css/product-cards.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .showcase-header {
+            text-align: center;
+            margin-bottom: 40px;
+            background: white;
+            padding: 40px 20px;
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+
+        .showcase-header h1 {
+            color: #2d3748;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .showcase-header p {
+            color: #64748b;
+            font-size: 1.1rem;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .section {
+            margin-bottom: 60px;
+        }
+
+        .section-title {
+            font-size: 1.8rem;
+            color: #2d3748;
+            margin-bottom: 30px;
+            text-align: center;
+            position: relative;
+        }
+
+        .section-title::after {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60px;
+            height: 3px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 2px;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-bottom: 40px;
+        }
+
+        .feature-card {
+            background: white;
+            padding: 30px;
+            border-radius: 16px;
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            transition: transform 0.3s ease;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .feature-icon {
+            font-size: 3rem;
+            margin-bottom: 20px;
+        }
+
+        .feature-title {
+            font-size: 1.3rem;
+            color: #2d3748;
+            margin-bottom: 15px;
+            font-weight: 600;
+        }
+
+        .feature-description {
+            color: #64748b;
+            line-height: 1.6;
+        }
+
+        .controls {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            margin-bottom: 30px;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .control-group label {
+            font-weight: 600;
+            color: #374151;
+        }
+
+        select, input {
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        select:focus, input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #1d4ed8, #1e40af);
+            transform: translateY(-2px);
+        }
+
+        .stats {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 20px;
+        }
+
+        .stat-item {
+            padding: 15px;
+        }
+
+        .stat-number {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #3b82f6;
+            display: block;
+        }
+
+        .stat-label {
+            color: #64748b;
+            font-size: 0.9rem;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="showcase-header">
+            <h1>🛍️ Enhanced Product Cards</h1>
+            <p>Comprehensive product display system with advanced features including ratings, variants, delivery info, wishlist, and more!</p>
+        </div>
+
+        <div class="section">
+            <h2 class="section-title">✨ Key Features</h2>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">🖼️</div>
+                    <div class="feature-title">Rich Product Images</div>
+                    <div class="feature-description">High-quality images with hover effects, fallback handling, and multiple image support.</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">⭐</div>
+                    <div class="feature-title">Smart Ratings</div>
+                    <div class="feature-description">Star ratings with detailed review counts and distribution display.</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">💰</div>
+                    <div class="feature-title">Dynamic Pricing</div>
+                    <div class="feature-description">Original price, discounts, savings calculation, and promotional pricing.</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">📦</div>
+                    <div class="feature-title">Stock Management</div>
+                    <div class="feature-description">Real-time stock status with low stock warnings and availability indicators.</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🚚</div>
+                    <div class="feature-title">Delivery Info</div>
+                    <div class="feature-description">Preparation time, delivery fees, express delivery options, and location-based delivery.</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🎨</div>
+                    <div class="feature-title">Product Variants</div>
+                    <div class="feature-description">Color swatches, size options, and variant selection with availability status.</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🏷️</div>
+                    <div class="feature-title">Smart Badges</div>
+                    <div class="feature-description">Featured, new arrival, bestseller, sale, and custom promotional badges.</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">❤️</div>
+                    <div class="feature-title">Wishlist Integration</div>
+                    <div class="feature-description">Add/remove wishlist with local storage persistence and visual feedback.</div>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">📱</div>
+                    <div class="feature-title">Responsive Design</div>
+                    <div class="feature-description">Mobile-first design that works perfectly on all screen sizes and devices.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2 class="section-title">🎛️ Product Showcase Controls</h2>
+            <div class="controls">
+                <div class="control-group">
+                    <label for="categoryFilter">Category:</label>
+                    <select id="categoryFilter">
+                        <option value="">All Categories</option>
+                        <option value="Electronics">Electronics</option>
+                        <option value="Clothing">Clothing</option>
+                        <option value="Books">Books</option>
+                        <option value="Home">Home & Garden</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="sortBy">Sort By:</label>
+                    <select id="sortBy">
+                        <option value="newest">Newest First</option>
+                        <option value="price-low">Price: Low to High</option>
+                        <option value="price-high">Price: High to Low</option>
+                        <option value="rating">Highest Rated</option>
+                        <option value="popular">Most Popular</option>
+                    </select>
+                </div>
+                <div class="control-group">
+                    <label for="searchInput">Search:</label>
+                    <input type="text" id="searchInput" placeholder="Search products...">
+                </div>
+                <button class="btn btn-primary" onclick="applyFilters()">Apply Filters</button>
+                <button class="btn" onclick="resetFilters()" style="background: #6b7280; color: white;">Reset</button>
+            </div>
+
+            <div class="stats">
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <span class="stat-number" id="totalProducts">0</span>
+                        <span class="stat-label">Total Products</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number" id="inStockProducts">0</span>
+                        <span class="stat-label">In Stock</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number" id="onSaleProducts">0</span>
+                        <span class="stat-label">On Sale</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number" id="avgRating">0.0</span>
+                        <span class="stat-label">Avg Rating</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2 class="section-title">🛍️ Product Showcase</h2>
+            <div id="productsContainer">
+                <div style="text-align: center; padding: 60px 20px; color: #64748b;">
+                    <div style="font-size: 4rem; margin-bottom: 20px;">📦</div>
+                    <h3>Loading Products...</h3>
+                    <p>Fetching the latest products from the QuickLocal marketplace.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/product-card-utils.js"></script>
+    <script>
+        // Sample product data for demonstration
+        const sampleProducts = [
+            {
+                id: 1,
+                name: "iPhone 15 Pro Max",
+                description: "Latest iPhone with A17 Pro chip and advanced camera system",
+                shortDescription: "Premium flagship smartphone with cutting-edge technology",
+                brand: "Apple",
+                price: 134900,
+                originalPrice: 139900,
+                finalPrice: 134900,
+                discountPercentage: 4,
+                savings: 5000,
+                isOnSale: true,
+                images: [
+                    { url: "https://images.unsplash.com/photo-1592899677977-9c10ca588bbd?w=400&h=300&fit=crop" }
+                ],
+                primaryImage: { url: "https://images.unsplash.com/photo-1592899677977-9c10ca588bbd?w=400&h=300&fit=crop" },
+                stock: 25,
+                isInStock: true,
+                isLowStock: false,
+                stockStatus: "in_stock",
+                unit: "piece",
+                averageRating: 4.8,
+                totalReviews: 342,
+                category: { id: 1, name: "Electronics" },
+                seller: { name: "TechWorld Store" },
+                tags: ["smartphone", "iphone", "apple", "5g"],
+                isFeatured: true,
+                isNewArrival: false,
+                isBestSeller: true,
+                promotionalBadges: ["Premium Choice"],
+                features: ["A17 Pro Chip", "48MP Camera", "All-Day Battery"],
+                colors: [
+                    { name: "Titanium Black", code: "#2d3748" },
+                    { name: "Titanium Blue", code: "#3182ce" },
+                    { name: "Titanium White", code: "#f7fafc" }
+                ],
+                sizes: [
+                    { name: "128GB", stock: 10 },
+                    { name: "256GB", stock: 15 },
+                    { name: "512GB", stock: 5 }
+                ],
+                deliveryConfig: {
+                    isLocalDeliveryEnabled: true,
+                    preparationTime: 15,
+                    deliveryFee: 0,
+                    freeDeliveryThreshold: 50000,
+                    expressDeliveryAvailable: true
+                },
+                sellerLocation: {
+                    city: "Mumbai",
+                    locality: "Andheri West"
+                }
+            },
+            {
+                id: 2,
+                name: "MacBook Air M2",
+                description: "Ultra-thin laptop with M2 chip and all-day battery life",
+                shortDescription: "Lightweight powerhouse for professionals",
+                brand: "Apple",
+                price: 114900,
+                originalPrice: 114900,
+                finalPrice: 114900,
+                discountPercentage: 0,
+                isOnSale: false,
+                images: [
+                    { url: "https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=400&h=300&fit=crop" }
+                ],
+                primaryImage: { url: "https://images.unsplash.com/photo-1496181133206-80ce9b88a853?w=400&h=300&fit=crop" },
+                stock: 8,
+                isInStock: true,
+                isLowStock: true,
+                stockStatus: "low_stock",
+                unit: "piece",
+                averageRating: 4.9,
+                totalReviews: 167,
+                category: { id: 1, name: "Electronics" },
+                seller: { name: "Apple Store" },
+                tags: ["laptop", "macbook", "apple", "m2"],
+                isFeatured: false,
+                isNewArrival: true,
+                isBestSeller: false,
+                features: ["Apple M2 Chip", "18 Hours Battery", "Liquid Retina Display"],
+                colors: [
+                    { name: "Silver", code: "#e2e8f0" },
+                    { name: "Space Gray", code: "#4a5568" },
+                    { name: "Gold", code: "#d69e2e" }
+                ],
+                sizes: [
+                    { name: "256GB", stock: 5 },
+                    { name: "512GB", stock: 3 }
+                ],
+                deliveryConfig: {
+                    isLocalDeliveryEnabled: true,
+                    preparationTime: 30,
+                    deliveryFee: 199,
+                    expressDeliveryAvailable: false
+                },
+                sellerLocation: {
+                    city: "Delhi",
+                    locality: "Connaught Place"
+                }
+            },
+            {
+                id: 3,
+                name: "Nike Air Jordan 1 High",
+                description: "Classic basketball sneakers with premium leather construction",
+                shortDescription: "Iconic streetwear sneakers",
+                brand: "Nike",
+                price: 10495,
+                originalPrice: 12995,
+                finalPrice: 10495,
+                discountPercentage: 19,
+                savings: 2500,
+                isOnSale: true,
+                images: [
+                    { url: "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&h=300&fit=crop" }
+                ],
+                primaryImage: { url: "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=400&h=300&fit=crop" },
+                stock: 45,
+                isInStock: true,
+                isLowStock: false,
+                stockStatus: "in_stock",
+                unit: "pair",
+                averageRating: 4.7,
+                totalReviews: 523,
+                category: { id: 2, name: "Clothing" },
+                seller: { name: "SneakerHub" },
+                tags: ["sneakers", "jordan", "nike", "basketball"],
+                isFeatured: false,
+                isNewArrival: false,
+                isBestSeller: true,
+                features: ["Premium Leather", "Air Cushioning", "Classic Design"],
+                colors: [
+                    { name: "Black/Red", code: "#1a202c" },
+                    { name: "White/Black", code: "#f7fafc" },
+                    { name: "Blue/White", code: "#3182ce" }
+                ],
+                sizes: [
+                    { name: "7", stock: 8 },
+                    { name: "8", stock: 12 },
+                    { name: "9", stock: 15 },
+                    { name: "10", stock: 10 }
+                ],
+                deliveryConfig: {
+                    isLocalDeliveryEnabled: true,
+                    preparationTime: 10,
+                    deliveryFee: 0,
+                    freeDeliveryThreshold: 5000,
+                    expressDeliveryAvailable: true
+                },
+                sellerLocation: {
+                    city: "Bangalore",
+                    locality: "Koramangala"
+                }
+            },
+            {
+                id: 4,
+                name: "The Psychology of Money",
+                description: "Timeless lessons on wealth, greed, and happiness by Morgan Housel",
+                shortDescription: "Bestselling book on financial psychology",
+                brand: "Jaico Publishing",
+                price: 479,
+                originalPrice: 599,
+                finalPrice: 479,
+                discountPercentage: 20,
+                savings: 120,
+                isOnSale: true,
+                images: [
+                    { url: "https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=400&h=300&fit=crop" }
+                ],
+                primaryImage: { url: "https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=400&h=300&fit=crop" },
+                stock: 150,
+                isInStock: true,
+                isLowStock: false,
+                stockStatus: "in_stock",
+                unit: "piece",
+                averageRating: 4.6,
+                totalReviews: 1247,
+                category: { id: 3, name: "Books" },
+                seller: { name: "BookWorld" },
+                tags: ["finance", "psychology", "bestseller", "investment"],
+                isFeatured: true,
+                isNewArrival: false,
+                isBestSeller: true,
+                features: ["19 Short Stories", "Financial Psychology", "Easy Language"],
+                deliveryConfig: {
+                    isLocalDeliveryEnabled: true,
+                    preparationTime: 5,
+                    deliveryFee: 0,
+                    freeDeliveryThreshold: 299,
+                    expressDeliveryAvailable: true
+                },
+                sellerLocation: {
+                    city: "Mumbai",
+                    locality: "Dadar"
+                }
+            },
+            {
+                id: 5,
+                name: "Samsung Galaxy S24 Ultra",
+                description: "Premium Android flagship with S Pen and AI features",
+                shortDescription: "Flagship Android with advanced AI capabilities",
+                brand: "Samsung",
+                price: 124999,
+                originalPrice: 129999,
+                finalPrice: 124999,
+                discountPercentage: 4,
+                savings: 5000,
+                isOnSale: true,
+                images: [
+                    { url: "https://images.unsplash.com/photo-1580910051074-3eb694886505?w=400&h=300&fit=crop" }
+                ],
+                primaryImage: { url: "https://images.unsplash.com/photo-1580910051074-3eb694886505?w=400&h=300&fit=crop" },
+                stock: 0,
+                isInStock: false,
+                isLowStock: false,
+                stockStatus: "out_of_stock",
+                unit: "piece",
+                averageRating: 4.5,
+                totalReviews: 189,
+                category: { id: 1, name: "Electronics" },
+                seller: { name: "Samsung Store" },
+                tags: ["smartphone", "android", "samsung", "spen"],
+                isFeatured: false,
+                isNewArrival: true,
+                isBestSeller: false,
+                promotionalBadges: ["Coming Soon"],
+                features: ["S Pen Included", "200MP Camera", "AI Enhancement"],
+                colors: [
+                    { name: "Phantom Black", code: "#1a202c" },
+                    { name: "Phantom Silver", code: "#e2e8f0" },
+                    { name: "Phantom Violet", code: "#805ad5" }
+                ],
+                sizes: [
+                    { name: "256GB", stock: 0 },
+                    { name: "512GB", stock: 0 }
+                ],
+                deliveryConfig: {
+                    isLocalDeliveryEnabled: false,
+                    preparationTime: 0,
+                    deliveryFee: 0
+                },
+                sellerLocation: {
+                    city: "Chennai",
+                    locality: "T Nagar"
+                }
+            }
+        ];
+
+        let allProducts = [...sampleProducts];
+        let filteredProducts = [...sampleProducts];
+
+        // Initialize the showcase
+        document.addEventListener('DOMContentLoaded', function() {
+            renderProducts();
+            updateStats();
+        });
+
+        function renderProducts() {
+            productCardUtils.renderProductsGrid(filteredProducts, 'productsContainer');
+        }
+
+        function updateStats() {
+            const total = filteredProducts.length;
+            const inStock = filteredProducts.filter(p => p.isInStock).length;
+            const onSale = filteredProducts.filter(p => p.isOnSale).length;
+            const avgRating = total > 0 ? (filteredProducts.reduce((sum, p) => sum + (p.averageRating || 0), 0) / total).toFixed(1) : '0.0';
+
+            document.getElementById('totalProducts').textContent = total;
+            document.getElementById('inStockProducts').textContent = inStock;
+            document.getElementById('onSaleProducts').textContent = onSale;
+            document.getElementById('avgRating').textContent = avgRating;
+        }
+
+        function applyFilters() {
+            const category = document.getElementById('categoryFilter').value;
+            const sortBy = document.getElementById('sortBy').value;
+            const search = document.getElementById('searchInput').value.toLowerCase();
+
+            // Filter products
+            filteredProducts = productCardUtils.filterProducts(allProducts, {
+                category: category,
+                search: search
+            });
+
+            // Sort products
+            filteredProducts = productCardUtils.sortProducts(filteredProducts, sortBy);
+
+            renderProducts();
+            updateStats();
+        }
+
+        function resetFilters() {
+            document.getElementById('categoryFilter').value = '';
+            document.getElementById('sortBy').value = 'newest';
+            document.getElementById('searchInput').value = '';
+            
+            filteredProducts = [...allProducts];
+            renderProducts();
+            updateStats();
+        }
+
+        // Override product card utilities for demo
+        window.productCardUtils = productCardUtils;
+        productCardUtils.viewProduct = function(productId) {
+            productCardUtils.showToast(`Viewing product ${productId} - This would open the product details page!`);
+        };
+
+        productCardUtils.quickView = function(productId) {
+            const product = filteredProducts.find(p => p.id == productId);
+            productCardUtils.showToast(`Quick view: ${product?.name || 'Product'} - Modal would open here!`);
+        };
+    </script>
+</body>
+</html>

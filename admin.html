@@ -8,6 +8,7 @@
     <!-- QuickLocal Frontend Configuration -->
     <script src="/config.js"></script>
     
+    <link rel="stylesheet" href="/css/product-cards.css">
     <style>
         * {
             margin: 0;
@@ -17,11 +18,11 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
-            padding: 20px;
         }
-
         .container {
             max-width: 1200px;
             margin: 0 auto;
@@ -455,6 +456,7 @@
         </div>
     </div>
 
+    <script src="/js/product-card-utils.js"></script>
     <script>
         // API URL will be set by QuickLocalConfig
         let API_URL = '';
@@ -679,14 +681,15 @@
             }
         }
 
-        // Load products
+        // Load products with enhanced cards
         async function loadProducts() {
             const productsList = document.getElementById('products-list');
             
             try {
                 const response = await fetch(API_URL);
                 if (response.ok) {
-                    products = await response.json();
+                    const responseData = await response.json();
+                    products = responseData.data?.products || responseData;
                     
                     if (products.length === 0) {
                         productsList.innerHTML = `
@@ -697,31 +700,31 @@
                         return;
                     }
                     
-                    const productsHTML = `
-                        <div class="product-grid">
-                            ${products.map(product => `
-                                <div class="product-card">
-                                    <img src="${product.images?.[0]?.url || 'https://via.placeholder.com/200x200?text=No+Image'}" 
-                                         alt="${product.name}" 
-                                         class="product-image"
-                                         onerror="this.src='https://via.placeholder.com/200x200?text=No+Image'">
-                                    <div class="product-info">
-                                        <div class="product-name">${product.name}</div>
-                                        <div class="product-price">₹${product.finalPrice || product.price}</div>
-                                        <p style="font-size: 0.9em; color: #666; margin: 5px 0;">
-                                            ${product.category} • Stock: ${product.stock}
-                                        </p>
-                                        <button class="btn btn-danger" onclick="deleteProduct('${product._id}')" 
-                                                style="font-size: 12px; padding: 5px 10px; margin-top: 10px;">
-                                            🗑️ Delete
-                                        </button>
-                                    </div>
-                                </div>
-                            `).join('')}
-                        </div>
-                    `;
+                    // Use the enhanced product card utilities
+                    const productsHTML = products.map(product => {
+                        // Add delete button to each card
+                        const enhancedProduct = {
+                            ...product,
+                            id: product._id || product.id
+                        };
+                        
+                        const cardHtml = productCardUtils.generateProductCard(enhancedProduct);
+                        
+                        // Add delete button to the card
+                        return cardHtml.replace(
+                            '<div class="product-actions">',
+                            `<div class="product-actions">
+                                <button class="btn-product btn-danger" onclick="deleteProduct('${enhancedProduct.id}')" 
+                                        style="background: #dc2626; color: white;">
+                                    🗑️ Delete
+                                </button>`
+                        );
+                    }).join('');
                     
-                    productsList.innerHTML = productsHTML;
+                    productsList.innerHTML = `<div class="products-grid">${productsHTML}</div>`;
+                    
+                    // Attach enhanced card event listeners
+                    productCardUtils.attachVariantListeners();
                 } else {
                     throw new Error(`HTTP ${response.status}`);
                 }

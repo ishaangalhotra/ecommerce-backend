@@ -8,6 +8,9 @@
     <!-- QuickLocal Frontend Configuration -->
     <script src="/config.js"></script>
     
+    <!-- Enhanced Product Cards -->
+    <link rel="stylesheet" href="/css/product-cards.css">
+    
     <style>
         * {
             margin: 0;
@@ -561,40 +564,12 @@
                 return;
             }
             
-            const productsHTML = products.map(product => `
-                <div class="product-card">
-                    ${product.images && product.images.length > 0 
-                        ? `<img src="${product.images[0]}" alt="${product.name}" class="product-image">`
-                        : `<div class="product-image">No Image</div>`
-                    }
-                    <div class="product-info">
-                        <h3 class="product-name">${product.name}</h3>
-                        ${product.brand ? `<p class="product-brand">${product.brand}</p>` : ''}
-                        <div class="product-price">$${product.price}</div>
-                        ${product.averageRating > 0 ? `
-                            <div class="product-rating">
-                                <span class="stars">${'★'.repeat(Math.floor(product.averageRating))}${'☆'.repeat(5-Math.floor(product.averageRating))}</span>
-                                <span>(${product.averageRating.toFixed(1)})</span>
-                            </div>
-                        ` : ''}
-                        <div class="stock-status ${product.stock > 0 ? 'in-stock' : 'out-of-stock'}">
-                            ${product.stock > 0 ? `In Stock (${product.stock})` : 'Out of Stock'}
-                        </div>
-                        <div class="product-actions">
-                            <button class="btn-small btn-primary-small" onclick="viewProduct('${product._id}')">
-                                View Details
-                            </button>
-                            ${product.stock > 0 ? `
-                                <button class="btn-small btn-secondary-small" onclick="addToCart('${product._id}')">
-                                    Add to Cart
-                                </button>
-                            ` : ''}
-                        </div>
-                    </div>
-                </div>
-            `).join('');
-            
-            container.innerHTML = `<div class="products-grid">${productsHTML}</div>`;
+            // Use enhanced product cards
+            productCardUtils.renderProductsGrid(products.map(product => ({
+                ...product,
+                id: product._id || product.id,
+                finalPrice: product.finalPrice || product.price
+            })), 'productsContainer');
         }
         
         function updateResultsCount(total, query) {
@@ -666,5 +641,9 @@
             alert('Product added to cart! (This would be implemented with your cart system)');
         }
     </script>
+    
+    <!-- Enhanced Product Card Utilities -->
+    <script src="/js/product-card-utils.js"></script>
+    
 </body>
 </html>
