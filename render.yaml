@@ -13,7 +13,7 @@ services:
       - key: MAX_WORKERS
         value: 1
       - key: NODE_OPTIONS
-        value: "--max-old-space-size=256 --expose-gc"
+        value: "--max-old-space-size=450 --expose-gc"
       - key: DB_POOL_SIZE
         value: 1
       - key: MEMORY_WARNING_THRESHOLD
@@ -37,6 +37,17 @@ services:
         generateValue: true
       - key: SESSION_SECRET
         generateValue: true
+      # Supabase Hybrid Authentication
+      - key: SUPABASE_URL
+        value: "https://pmvhsjezhuokwygvhhqk.supabase.co"
+      - key: SUPABASE_ANON_KEY
+        value: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBtdmhzamV6aHVva3d5Z3ZoaHFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc2NTU3MDUsImV4cCI6MjA3MzIzMTcwNX0.ZrVjuqB28Qer7F7zSdG_rJIs_ZQZhX1PNyrmpK-Qojg"
+      - key: SUPABASE_SERVICE_KEY
+        sync: false  # Set this in Render dashboard manually
+      - key: HYBRID_AUTH_ENABLED
+        value: "true"
+      - key: SUPABASE_REALTIME_ENABLED
+        value: "true"
     scaling:
       minInstances: 1
       maxInstances: 1

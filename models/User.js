@@ -125,8 +125,13 @@ const UserSchema = new mongoose.Schema({
   },
   authProvider: {
     type: String,
-    enum: ['local', 'google', 'facebook'],
+    enum: ['local', 'google', 'facebook', 'supabase'],
     default: 'local'
+  },
+  supabaseId: {
+    type: String,
+    sparse: true,
+    index: true
   },
   profilePicture: {
     type: String

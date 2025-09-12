@@ -1,0 +1,2 @@
+[2025-09-11T10:35:58.592Z] SYSTEM_INFO: {"timestamp":"2025-09-11T10:35:58.591Z","platform":"win32","arch":"x64","totalMemory":8107,"freeMemory":1212,"nodeVersion":"v22.17.0","pid":16820}
+[2025-09-11T10:35:58.594Z] MEMORY_CHECK: {"timestamp":"2025-09-11T10:35:58.593Z","snapshot":{"timestamp":"2025-09-11T10:35:58.593Z","uptime":0,"memory":{"heap":{"used":4,"total":6},"external":1,"rss":46,"arrayBuffers":0},"system":{"total":8107,"free":1212,"used":6895},"usage":{"heapUsagePercent":78,"systemUsagePercent":85}},"trend":null,"alerts":[],"recommendations":[]}

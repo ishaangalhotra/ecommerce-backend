@@ -1,0 +1,52 @@
+{
+  "generatedAt": "2025-09-11T10:35:58.596Z",
+  "uptime": 0,
+  "totalSnapshots": 1,
+  "currentSnapshot": {
+    "timestamp": "2025-09-11T10:35:58.597Z",
+    "uptime": 0,
+    "memory": {
+      "heap": {
+        "used": 4,
+        "total": 6
+      },
+      "external": 1,
+      "rss": 46,
+      "arrayBuffers": 0
+    },
+    "system": {
+      "total": 8107,
+      "free": 1212,
+      "used": 6895
+    },
+    "usage": {
+      "heapUsagePercent": 80,
+      "systemUsagePercent": 85
+    }
+  },
+  "trend": {
+    "timespan": 0,
+    "growth": {
+      "heap": 0,
+      "external": 0,
+      "rss": 0
+    },
+    "trend": {
+      "heap": "STABLE",
+      "external": "STABLE",
+      "rss": "STABLE"
+    }
+  },
+  "summary": {
+    "heap": {
+      "min": 4,
+      "max": 4,
+      "avg": 4
+    },
+    "external": {
+      "min": 1,
+      "max": 1,
+      "avg": 1
+    }
+  }
+}

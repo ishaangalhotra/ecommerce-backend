@@ -6,7 +6,7 @@ CLUSTER_MODE=false
 MAX_WORKERS=1
 
 # CORRECTED: Valid Node.js options only (removed invalid --optimize-for-size)
-NODE_OPTIONS=--max-old-space-size=256 --expose-gc
+NODE_OPTIONS=--max-old-space-size=450 --expose-gc
 
 # Database optimization (CRITICAL for memory)
 DB_POOL_SIZE=1

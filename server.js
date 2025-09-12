@@ -273,6 +273,21 @@ const gracefulShutdownHandler = (signal) => {
 process.on('SIGTERM', () => gracefulShutdownHandler('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdownHandler('SIGINT'));
 
+// Supabase Hybrid Architecture Imports
+let realtimeService, hybridAuthRoutes;
+try {
+  const { realtimeService: supabaseRealtime } = require('./services/supabaseRealtime');
+  realtimeService = supabaseRealtime;
+} catch (error) {
+  console.warn('⚠️ Supabase real-time service not found, skipping...');
+}
+
+try {
+  hybridAuthRoutes = require('./routes/hybridAuth');
+} catch (error) {
+  console.warn('⚠️ Hybrid auth routes not found, skipping...');
+}
+
 // server.js - QuickLocal Production-Ready Server with Complete Integration
 // Version: 2.0.0 - Integrated with Environment Configuration
 require('dotenv').config(); // Load .env variables
@@ -709,7 +724,8 @@ class EnhancedSecurityManager {
 class QuickLocalRouteManager {
   constructor() {
     this.routes = [
-      { path: '/api/v1/auth', module: './routes/auth', name: 'Authentication', priority: 1 },
+      // Legacy auth disabled in favor of hybrid auth
+      // { path: '/api/v1/auth', module: './routes/auth', name: 'Authentication', priority: 1 },
       { path: '/api/v1/users', module: './routes/users', name: 'User Management', priority: 2 },
       { path: '/api/v1/products', module: './routes/products', name: 'Product Catalog', priority: 3 },
       { path: '/api/v1/categories', module: './routes/categories', name: 'Categories', priority: 3 },
@@ -1081,10 +1097,10 @@ class QuickLocalServer {
 
     // CORS is handled by the cors library below - no manual handling needed
 
-    // Brute force protection
+    // Brute force protection for hybrid auth endpoints
     const bruteForce = EnhancedSecurityManager.createBruteForceProtection();
-    this.app.use('/api/v1/auth/login', bruteForce.prevent);
-    this.app.use('/api/v1/auth/forgot-password', bruteForce.prevent);
+    this.app.use('/api/hybrid-auth/login', bruteForce.prevent);
+    this.app.use('/api/hybrid-auth/forgot-password', bruteForce.prevent);
 
     // Rate limiting
     this.app.use('/api/', EnhancedSecurityManager.createRateLimit(
@@ -1194,6 +1210,31 @@ class QuickLocalServer {
         level: this.config.COMPRESSION_LEVEL,
         memLevel: 8
       }));
+    }
+
+    
+    // ========================================
+    // Supabase Hybrid Architecture Integration
+    // ========================================
+    
+    // Add hybrid authentication routes
+    if (hybridAuthRoutes) {
+      try {
+        this.app.use('/api/hybrid-auth', hybridAuthRoutes);
+        console.log('✅ Hybrid authentication routes loaded');
+      } catch (error) {
+        console.warn('⚠️ Failed to load hybrid auth routes:', error.message);
+      }
+    }
+    
+    // Initialize Supabase real-time service (memory efficient)
+    if (process.env.SUPABASE_REALTIME_ENABLED === 'true' && realtimeService) {
+      try {
+        await realtimeService.initialize();
+        console.log('✅ Supabase real-time service initialized');
+      } catch (error) {
+        console.warn('⚠️ Failed to initialize Supabase real-time:', error.message);
+      }
     }
 
     // Request logging
@@ -2373,7 +2414,7 @@ class QuickLocalServer {
         errorResponse.authentication = {
           required: true,
           header: 'Authorization: Bearer <token>',
-          refresh_endpoint: '/api/v1/auth/refresh'
+        refresh_endpoint: '/api/hybrid-auth/refresh-token'
         };
       } else if (statusCode === 403) {
         errorResponse.authorization = {
@@ -2634,10 +2675,12 @@ class QuickLocalServer {
   // Fallback route mounting when main routes fail
   mountFallbackRoutes() {
     const essentialRoutes = [
-      { path: '/api/v1/auth', file: './routes/auth' },
+      // Legacy auth disabled - using hybrid auth as primary
+      // { path: '/api/v1/auth', file: './routes/auth' },
       { path: '/api/v1/products', file: './routes/products' },
       { path: '/api/v1/users', file: './routes/users' },
-      { path: '/api/v1/orders', file: './routes/orders' }
+      { path: '/api/v1/orders', file: './routes/orders' },
+      { path: '/api/hybrid-auth', file: './routes/hybridAuth' }
     ];
     
     essentialRoutes.forEach(route => {
@@ -2653,8 +2696,8 @@ class QuickLocalServer {
   
   // Emergency route mounting with basic responses
   mountEmergencyRoutes() {
-    // Basic auth route
-    this.app.post('/api/v1/auth/login', (req, res) => {
+    // Basic hybrid auth route
+    this.app.post('/api/hybrid-auth/login', (req, res) => {
       res.status(503).json({ 
         error: 'Service temporarily unavailable', 
         message: 'Authentication service is being restored' 
