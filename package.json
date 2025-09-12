@@ -83,7 +83,7 @@
     "hybrid:setup-test": "node -e \"require('./config/supabase'); console.log('✅ Supabase config loaded successfully')\""
   },
   "dependencies": {
-    "@sentry/node": "^7.77.0",
+    "@sentry/node": "^7.120.4",
     "@sentry/tracing": "^7.77.0",
     "@supabase/supabase-js": "^2.57.4",
     "agenda": "^5.0.0",
