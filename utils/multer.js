@@ -2,11 +2,18 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 
-// Centralized, low-memory upload config
+// DEPRECATION NOTICE: Consider using ImageKit direct upload for better memory efficiency
+// This multer config is kept for legacy endpoints but ImageKit is recommended for new implementations
+// Use /api/v1/imagekit/sign for direct client uploads to avoid server memory usage
+
 const UPLOAD_DIR = path.join(__dirname, '..', 'tmp', 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
+
+// Log usage warning for monitoring
+console.warn('⚠️ MEMORY WARNING: Multer file upload in use. Consider ImageKit direct upload for better memory efficiency.');
+console.log('💡 TIP: Use /api/v1/imagekit/sign endpoint for direct uploads that bypass server memory');
 
 // Use diskStorage to avoid holding entire files in RAM
 const storage = multer.diskStorage({

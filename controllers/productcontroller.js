@@ -17,14 +17,20 @@ const advancedResults = (model, populate) => asyncHandler(async (req, res, next)
   let queryStr = JSON.stringify(reqQuery);
   queryStr = queryStr.replace(/\b(gt|gte|lt|lte|in)\b/g, match => `$${match}`);
 
-  // Finding resource
+  // MEMORY OPTIMIZATION: Finding resource with lean() and limited fields
   query = model.find(JSON.parse(queryStr));
 
-  // Select fields
+  // Select fields - DEFAULT to essential fields only to reduce memory
   if (req.query.select) {
     const fields = req.query.select.split(',').join(' ');
     query = query.select(fields);
+  } else {
+    // DEFAULT: Only return essential fields to reduce memory usage
+    query = query.select('name price images description sellerId stock isPublished createdAt category');
   }
+  
+  // MEMORY EFFICIENCY: Use lean() for faster, plain object queries (less memory)
+  query = query.lean();
 
   // Sort
   if (req.query.sort) {
@@ -39,7 +45,8 @@ const advancedResults = (model, populate) => asyncHandler(async (req, res, next)
   const limit = parseInt(req.query.limit, 10) || 25;
   const startIndex = (page - 1) * limit;
   const endIndex = page * limit;
-  const total = await model.countDocuments(JSON.parse(queryStr));
+  // MEMORY OPTIMIZATION: Use the same filter for count to ensure consistency
+  const total = await model.countDocuments(JSON.parse(queryStr)).lean();
 
   query = query.skip(startIndex).limit(limit);
 
@@ -88,9 +95,12 @@ exports.getProducts = advancedResults(Product, {
 // @route   GET /api/products/:id
 // @access  Public
 exports.getProduct = asyncHandler(async (req, res, next) => {
+  // MEMORY OPTIMIZATION: Use lean() and limit populated fields
   const product = await Product.findById(req.params.id)
-    .populate('seller', 'name email')
-    .populate('reviews.user', 'name');
+    .select('-__v') // Exclude version field
+    .populate('seller', 'name email -_id') // Limit seller fields
+    .populate('reviews.user', 'name -_id') // Limit review user fields
+    .lean(); // Convert to plain object for less memory usage
 
   if (!product) {
     return next(new ErrorResponse(`Product not found with ID ${req.params.id}`, 404));

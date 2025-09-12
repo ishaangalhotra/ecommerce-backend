@@ -1073,13 +1073,26 @@ class QuickLocalServer {
     this.app.set('trust proxy', parseInt(process.env.TRUST_PROXY) || 1);
     this.app.set('x-powered-by', false);
 
-    // Request timeout
+    // MEMORY SAFETY: Request timeout and cleanup
     this.app.use((req, res, next) => {
       res.setTimeout(this.config.REQUEST_TIMEOUT, () => {
+        console.warn(`⏱️ Request timeout: ${req.method} ${req.originalUrl} (${this.config.REQUEST_TIMEOUT}ms)`);
+        
+        // Cleanup any temp files on timeout
+        if (req.files) {
+          const cleanupFiles = Array.isArray(req.files) ? req.files : Object.values(req.files).flat();
+          cleanupFiles.forEach(file => {
+            if (file.path) {
+              require('fs').unlink(file.path, () => {}); // Silent cleanup
+            }
+          });
+        }
+        
         res.status(408).json({
           error: 'Request timeout',
           message: `Request exceeded ${this.config.REQUEST_TIMEOUT}ms timeout`,
-          correlation_id: req.correlationId
+          correlation_id: req.correlationId,
+          recommendation: 'Use ImageKit direct upload for large files'
         });
       });
       next();
@@ -1181,9 +1194,10 @@ class QuickLocalServer {
     // == END: ROBUST CORS CONFIGURATION
     // ==================================================================
     
-    // Body parsing
+    // MEMORY OPTIMIZATION: Strict body parsing limits to prevent memory spikes
+    // Using smaller limits by default, larger limits only on specific endpoints
     this.app.use(express.json({
-      limit: this.config.MAX_REQUEST_SIZE,
+      limit: '100kb', // REDUCED from MAX_REQUEST_SIZE for memory efficiency
       verify: (req, res, buf) => {
         req.rawBody = buf;
       },
@@ -1192,9 +1206,34 @@ class QuickLocalServer {
     
     this.app.use(express.urlencoded({ 
       extended: true, 
-      limit: this.config.MAX_REQUEST_SIZE,
-      parameterLimit: 1000
+      limit: '100kb', // REDUCED for memory efficiency
+      parameterLimit: 100 // REDUCED from 1000
     }));
+    
+    // MEMORY SAFETY: Pre-flight content-length check to prevent buffering large requests
+    this.app.use((req, res, next) => {
+      const contentLength = parseInt(req.headers['content-length'] || '0', 10);
+      const MAX_SAFE_SIZE = 1024 * 1024; // 1MB safety limit
+      
+      // Allow larger payloads only for specific endpoints
+      const allowLargePayloads = [
+        '/api/v1/products', // Product creation might need larger JSON
+        '/api/v1/seller/products', // Seller product uploads
+        '/webhook' // Webhooks might be larger
+      ].some(path => req.originalUrl.includes(path));
+      
+      if (!allowLargePayloads && contentLength > MAX_SAFE_SIZE) {
+        console.warn(`🚫 Large request blocked: ${req.method} ${req.originalUrl} (${contentLength} bytes)`);
+        return res.status(413).json({
+          error: 'Request too large',
+          message: 'Request exceeds maximum allowed size for this endpoint',
+          maxSize: '1MB',
+          currentSize: `${Math.round(contentLength / 1024)}KB`
+        });
+      }
+      
+      next();
+    });
 
     this.app.use(cookieParser(this.config.COOKIE_SECRET));
 
@@ -1602,19 +1641,68 @@ class QuickLocalServer {
       res.status(statusCode).json(healthData);
     });
 
-    // Metrics endpoint
+    // MEMORY MONITORING: Critical for Render free tier
+    this.app.get('/health/memory', (req, res) => {
+      const mem = process.memoryUsage();
+      const memoryMB = {
+        rss: Math.round(mem.rss / 1024 / 1024),
+        heapTotal: Math.round(mem.heapTotal / 1024 / 1024),
+        heapUsed: Math.round(mem.heapUsed / 1024 / 1024),
+        external: Math.round(mem.external / 1024 / 1024),
+        arrayBuffers: Math.round((mem.arrayBuffers || 0) / 1024 / 1024)
+      };
+      
+      // Memory health indicators
+      const heapUsagePercent = Math.round((mem.heapUsed / mem.heapTotal) * 100);
+      const isHealthy = memoryMB.rss < 400 && heapUsagePercent < 80; // Render free tier ~512MB
+      const alertLevel = memoryMB.rss > 450 ? 'critical' : memoryMB.rss > 350 ? 'warning' : 'normal';
+      
+      res.json({
+        timestamp: new Date().toISOString(),
+        memoryMB,
+        heapUsagePercent,
+        isHealthy,
+        alertLevel,
+        uptime: Math.floor(process.uptime()),
+        // Additional context
+        nodeVersion: process.version,
+        platform: process.platform,
+        pid: process.pid,
+        // Render-specific info
+        renderMemoryLimit: '512MB (free tier)',
+        recommendations: isHealthy ? [] : this.getMemoryRecommendations(memoryMB, heapUsagePercent)
+      });
+    });
+    
+    // Metrics endpoint (enhanced with memory focus)
     if (this.config.ENABLE_METRICS) {
       this.app.get('/metrics', (req, res) => {
+        const mem = process.memoryUsage();
         res.set('Content-Type', 'text/plain');
-        res.send('# Basic metrics placeholder\nserver_uptime ' + Math.floor(process.uptime()));
+        res.send(`# HELP process_memory_rss_bytes Resident set size in bytes
+# TYPE process_memory_rss_bytes gauge
+process_memory_rss_bytes ${mem.rss}
+# HELP process_memory_heap_used_bytes Heap used in bytes
+# TYPE process_memory_heap_used_bytes gauge
+process_memory_heap_used_bytes ${mem.heapUsed}
+# HELP server_uptime_seconds Server uptime in seconds
+# TYPE server_uptime_seconds counter
+server_uptime_seconds ${Math.floor(process.uptime())}`);
       });
 
       this.app.get('/metrics/summary', (req, res) => {
+        const mem = process.memoryUsage();
         res.json({
           uptime: Math.floor(process.uptime()),
-          memory: process.memoryUsage(),
+          memory: {
+            rss: Math.round(mem.rss / 1024 / 1024) + 'MB',
+            heapUsed: Math.round(mem.heapUsed / 1024 / 1024) + 'MB',
+            heapTotal: Math.round(mem.heapTotal / 1024 / 1024) + 'MB',
+            external: Math.round(mem.external / 1024 / 1024) + 'MB'
+          },
           cpu: process.cpuUsage(),
-          platform: process.platform
+          platform: process.platform,
+          nodeVersion: process.version
         });
       });
     }
@@ -2447,6 +2535,29 @@ class QuickLocalServer {
     });
   }
 
+  // Memory optimization helper
+  getMemoryRecommendations(memoryMB, heapUsagePercent) {
+    const recommendations = [];
+    
+    if (memoryMB.rss > 450) {
+      recommendations.push('CRITICAL: RSS memory over 450MB - restart recommended');
+      recommendations.push('Check for memory leaks in recent deployments');
+    } else if (memoryMB.rss > 350) {
+      recommendations.push('WARNING: High memory usage - monitor closely');
+    }
+    
+    if (heapUsagePercent > 80) {
+      recommendations.push('High heap usage - consider garbage collection');
+      recommendations.push('Review recent code changes for memory inefficiencies');
+    }
+    
+    if (memoryMB.external > 50) {
+      recommendations.push('High external memory - check file processing operations');
+    }
+    
+    return recommendations;
+  }
+
   calculateSimilarity(str1, str2) {
     const longer = str1.length > str2.length ? str1 : str2;
     const shorter = str1.length > str2.length ? str2 : str1;
@@ -2675,8 +2786,7 @@ class QuickLocalServer {
   // Fallback route mounting when main routes fail
   mountFallbackRoutes() {
     const essentialRoutes = [
-      // Legacy auth disabled - using hybrid auth as primary
-      // { path: '/api/v1/auth', file: './routes/auth' },
+      // ✅ Using hybrid auth only - legacy auth permanently disabled
       { path: '/api/v1/products', file: './routes/products' },
       { path: '/api/v1/users', file: './routes/users' },
       { path: '/api/v1/orders', file: './routes/orders' },
