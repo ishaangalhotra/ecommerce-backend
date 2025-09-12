@@ -44,7 +44,11 @@ router.post(
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return res.status(400).json({ success: false, errors: errors.array() });
+        return res.status(400).json({ 
+          success: false, 
+          message: errors.array()[0].msg,
+          errors: errors.array() 
+        });
       }
 
       const { name, email, password, phone, role = 'customer' } = req.body;
@@ -59,9 +63,9 @@ router.post(
       const existingUser = await User.findOne(existingUserQuery);
       if (existingUser) {
         const conflict = existingUser.email === email.toLowerCase() ? 'email' : 'phone number';
-        return res.status(400).json({
+        return res.status(409).json({
           success: false,
-          message: `User already exists with this ${conflict}`
+          message: `An account already exists with this ${conflict}.`
         });
       }
 
@@ -80,7 +84,7 @@ router.post(
         logger.error('Supabase user creation failed', authError);
         return res.status(400).json({
           success: false,
-          message: 'Registration failed: ' + authError.message
+          message: authError.message || 'Registration failed due to authentication service error'
         });
       }
 
@@ -128,7 +132,7 @@ router.post(
       logger.error('Hybrid registration error', err);
       res.status(500).json({
         success: false,
-        message: 'Registration failed'
+        message: 'An internal server error occurred during registration.'
       });
     }
   }
@@ -268,7 +272,11 @@ router.post(
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return res.status(400).json({ success: false, errors: errors.array() });
+        return res.status(400).json({ 
+          success: false, 
+          message: errors.array()[0].msg,
+          errors: errors.array() 
+        });
       }
 
       const { identifier, password } = req.body;
@@ -283,12 +291,12 @@ router.post(
       const user = await User.findOne({ 
         ...searchQuery,
         isActive: true 
-      });
+      }).lean(); // Use .lean() for faster, plain object read
 
-      if (!user) {
+      if (!user || !user.supabaseId) {
         return res.status(401).json({
           success: false,
-          message: 'Invalid credentials'
+          message: 'Invalid credentials or account not found.'
         });
       }
 
@@ -306,7 +314,7 @@ router.post(
           logger.warn('Supabase login failed', { identifier, error: error.message });
           return res.status(401).json({
             success: false,
-            message: 'Invalid credentials'
+            message: 'Invalid credentials. Please check and try again.'
           });
         }
 
@@ -373,10 +381,10 @@ router.post(
           id: user._id,
           name: user.name,
           email: user.email,
+          phone: user.phone,
           role: user.role,
           isVerified: user.isVerified,
-          walletBalance: user.walletBalance,
-          supabaseId: user.supabaseId
+          walletBalance: user.walletBalance
         }
       });
 
@@ -384,7 +392,7 @@ router.post(
       logger.error('Hybrid login error', err);
       res.status(500).json({
         success: false,
-        message: 'Login failed'
+        message: 'An internal server error occurred during login.'
       });
     }
   }
