@@ -1110,7 +1110,13 @@ class QuickLocalServer {
 
     // Static file serving for authentication client
     const path = require('path');
-    this.app.use('/hybrid-auth-client.js', express.static(path.join(__dirname, 'public', 'hybrid-auth-client.js')));
+    this.app.get('/hybrid-auth-client.js', (req, res) => {
+      res.setHeader('Content-Type', 'application/javascript');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      res.sendFile(path.join(__dirname, 'public', 'hybrid-auth-client.js'));
+    });
     console.log('✅ Hybrid auth client static file route configured');
 
     // CORS is handled by the cors library below - no manual handling needed
