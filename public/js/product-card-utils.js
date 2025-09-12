@@ -277,7 +277,7 @@ class ProductCardUtils {
      */
     generateProductCard(product) {
         const imageUrl = product.primaryImage?.url || product.images?.[0]?.url || 
-                        'https://via.placeholder.com/320x240?text=No+Image';
+                        'https://placehold.co/320x240?text=No+Image';
         
         const isWishlisted = this.isInWishlist(product.id);
 
@@ -287,7 +287,7 @@ class ProductCardUtils {
                     <img src="${imageUrl}" 
                          alt="${product.name}" 
                          class="product-image"
-                         onerror="this.src='https://via.placeholder.com/320x240?text=No+Image'">
+                         onerror="this.src='https://placehold.co/320x240?text=No+Image'">
                     
                     ${this.generateBadges(product)}
                     

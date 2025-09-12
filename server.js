@@ -1111,10 +1111,8 @@ class QuickLocalServer {
     // Static file serving for authentication client
     const path = require('path');
     this.app.get('/hybrid-auth-client.js', (req, res) => {
-      res.setHeader('Content-Type', 'application/javascript');
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      res.type('application/javascript'); // This is the correct way to set MIME type
+      res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 1 day
       res.sendFile(path.join(__dirname, 'public', 'hybrid-auth-client.js'));
     });
     console.log('✅ Hybrid auth client static file route configured');
