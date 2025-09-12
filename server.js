@@ -1261,15 +1261,8 @@ class QuickLocalServer {
     // Supabase Hybrid Architecture Integration
     // ========================================
     
-    // Add hybrid authentication routes
-    if (hybridAuthRoutes) {
-      try {
-        this.app.use('/api/hybrid-auth', hybridAuthRoutes);
-        console.log('✅ Hybrid authentication routes loaded');
-      } catch (error) {
-        console.warn('⚠️ Failed to load hybrid auth routes:', error.message);
-      }
-    }
+    // Hybrid authentication routes will be mounted under /api/v1/auth in setupEndpoints
+    // This ensures consistent CORS handling and middleware application
     
     // Initialize Supabase real-time service (memory efficient)
     if (process.env.SUPABASE_REALTIME_ENABLED === 'true' && realtimeService) {
@@ -1518,6 +1511,17 @@ class QuickLocalServer {
     // CRITICAL: Mount main API routes
     try {
       const mainRoutes = require('./routes');
+      
+      // Add hybrid authentication routes to main router
+      if (hybridAuthRoutes) {
+        try {
+          mainRoutes.use('/auth', hybridAuthRoutes);
+          console.log('✅ Hybrid authentication routes mounted at /api/v1/auth');
+        } catch (error) {
+          console.warn('⚠️ Failed to mount hybrid auth routes:', error.message);
+        }
+      }
+      
       this.app.use('/api/v1', mainRoutes);
       console.log('✅ Main API routes mounted at /api/v1');
     } catch (error) {

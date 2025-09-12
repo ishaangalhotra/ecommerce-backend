@@ -54,7 +54,7 @@ class HybridAuthClient {
       this.authMethod = 'supabase';
       
       // Get user details from your backend
-      const response = await fetch(`${this.backendUrl}/api/hybrid-auth/me`, {
+      const response = await fetch(`${this.backendUrl}/api/v1/auth/me`, {
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json'
@@ -104,7 +104,7 @@ class HybridAuthClient {
    */
   async register(email, password, name, role = 'customer') {
     try {
-      const response = await fetch(`${this.backendUrl}/api/hybrid-auth/register`, {
+      const response = await fetch(`${this.backendUrl}/api/v1/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -137,7 +137,7 @@ class HybridAuthClient {
    */
   async login(email, password) {
     try {
-      const response = await fetch(`${this.backendUrl}/api/hybrid-auth/login`, {
+      const response = await fetch(`${this.backendUrl}/api/v1/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -186,7 +186,7 @@ class HybridAuthClient {
   async logout() {
     try {
       // Call backend logout
-      await fetch(`${this.backendUrl}/api/hybrid-auth/logout`, {
+      await fetch(`${this.backendUrl}/api/v1/auth/logout`, {
         method: 'POST',
         headers: {
           'Authorization': this.getAuthHeader(),
