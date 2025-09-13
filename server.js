@@ -1124,7 +1124,6 @@ class QuickLocalServer {
     
     // Handle OPTIONS preflight requests for hybrid-auth-client.js
     this.app.options('/hybrid-auth-client.js', (req, res) => {
-      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
