@@ -1113,9 +1113,25 @@ class QuickLocalServer {
     this.app.get('/hybrid-auth-client.js', (req, res) => {
       res.type('application/javascript'); // This is the correct way to set MIME type
       res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 1 day
+      
+      // Fix CORS headers for cross-origin loading from Vercel frontend
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+      
       res.sendFile(path.join(__dirname, 'public', 'hybrid-auth-client.js'));
     });
-    console.log('✅ Hybrid auth client static file route configured');
+    
+    // Handle OPTIONS preflight requests for hybrid-auth-client.js
+    this.app.options('/hybrid-auth-client.js', (req, res) => {
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+      res.status(204).end();
+    });
+    
+    console.log('✅ Hybrid auth client static file route configured with CORS support');
 
     // CORS is handled by the cors library below - no manual handling needed
 
