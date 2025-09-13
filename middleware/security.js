@@ -22,8 +22,13 @@ const generalLimiter = rateLimit({
 const applySecurity = (app) => {
   logger.info('🔐 Applying global security middleware');
 
-  // HTTP headers hardening
-  app.use(helmet());
+  // HTTP headers hardening (configured to not interfere with CORS)
+  app.use(helmet({
+    // Disable crossOriginEmbedderPolicy to avoid CORS conflicts
+    crossOriginEmbedderPolicy: false,
+    // Configure crossOriginResourcePolicy to allow cross-origin requests
+    crossOriginResourcePolicy: { policy: 'cross-origin' }
+  }));
 
   // Prevent HTTP parameter pollution
   app.use(hpp());

@@ -1098,75 +1098,8 @@ class QuickLocalServer {
       next();
     });
 
-    // Security headers with Helmet
-    if (this.config.HELMET_ENABLED) {
-      try {
-        applySecurity(this.app);
-      } catch (error) {
-        console.warn('⚠️ Security middleware not found, using basic security');
-        this.app.use(helmet());
-      }
-    }
-
-    // General static file serving from public directory
-    const path = require('path');
-    this.app.use(express.static(path.join(__dirname, 'public'), {
-      setHeaders: (res, filePath, stat) => {
-        // Set correct Content-Type for JavaScript files
-        if (path.extname(filePath) === '.js') {
-          res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-          res.setHeader('Access-Control-Allow-Origin', '*');
-        }
-      }
-    }));
-    console.log('✅ Static file serving configured for public directory');
-    
-    // Specific route for authentication client with enhanced CORS headers
-    this.app.get('/hybrid-auth-client.js', (req, res) => {
-      res.type('application/javascript'); // This is the correct way to set MIME type
-      res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 1 day
-      
-      // Fix CORS headers for cross-origin loading from Vercel frontend
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-      
-      res.sendFile(path.join(__dirname, 'public', 'hybrid-auth-client.js'));
-    });
-    
-    // Handle OPTIONS preflight requests for hybrid-auth-client.js
-    this.app.options('/hybrid-auth-client.js', (req, res) => {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-      res.status(204).end();
-    });
-    
-    console.log('✅ Hybrid auth client static file route configured with CORS support');
-
-    // CORS is handled by the cors library below - no manual handling needed
-
-    // Brute force protection for hybrid auth endpoints
-    const bruteForce = EnhancedSecurityManager.createBruteForceProtection();
-    this.app.use('/api/hybrid-auth/login', bruteForce.prevent);
-    this.app.use('/api/hybrid-auth/forgot-password', bruteForce.prevent);
-
-    // Rate limiting
-    this.app.use('/api/', EnhancedSecurityManager.createRateLimit(
-      this.config.RATE_LIMIT_WINDOW,
-      this.config.RATE_LIMIT_MAX,
-      'Too many requests from this IP'
-    ));
-
-    // Slow down for resource-intensive endpoints
-    this.app.use('/api/v1/search', EnhancedSecurityManager.createSlowDown(
-      15 * 60 * 1000,
-      100,
-      500
-    ));
-
     // ==================================================================
-    // == START: ROBUST CORS CONFIGURATION WITH DEBUGGING
+    // == CRITICAL: APPLY CORS FIRST BEFORE SECURITY MIDDLEWARE
     // ==================================================================
     const corsOptions = {
       /**
@@ -1225,10 +1158,76 @@ class QuickLocalServer {
     // which is crucial for complex requests (e.g., with custom headers or methods like PUT/DELETE).
     this.app.options('*', cors(corsOptions));
     
-    // cors library handles all preflight requests automatically
-    // ==================================================================
-    // == END: ROBUST CORS CONFIGURATION
-    // ==================================================================
+    console.log('✅ CORS middleware applied BEFORE security middleware');
+
+    // Security headers with Helmet (applied AFTER CORS to avoid conflicts)
+    if (this.config.HELMET_ENABLED) {
+      try {
+        applySecurity(this.app);
+      } catch (error) {
+        console.warn('⚠️ Security middleware not found, using basic security');
+        this.app.use(helmet());
+      }
+    }
+
+    // General static file serving from public directory
+    const path = require('path');
+    this.app.use(express.static(path.join(__dirname, 'public'), {
+      setHeaders: (res, filePath, stat) => {
+        // Set correct Content-Type for JavaScript files
+        if (path.extname(filePath) === '.js') {
+          res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+          res.setHeader('Access-Control-Allow-Origin', '*');
+        }
+      }
+    }));
+    console.log('✅ Static file serving configured for public directory');
+    
+    // Specific route for authentication client with enhanced CORS headers
+    this.app.get('/hybrid-auth-client.js', (req, res) => {
+      res.type('application/javascript'); // This is the correct way to set MIME type
+      res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 1 day
+      
+      // Fix CORS headers for cross-origin loading from Vercel frontend
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+      
+      res.sendFile(path.join(__dirname, 'public', 'hybrid-auth-client.js'));
+    });
+    
+    // Handle OPTIONS preflight requests for hybrid-auth-client.js
+    this.app.options('/hybrid-auth-client.js', (req, res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+      res.status(204).end();
+    });
+    
+    console.log('✅ Hybrid auth client static file route configured with CORS support');
+
+    // CORS is handled by the cors library above - applied before security middleware
+
+    // Brute force protection for hybrid auth endpoints
+    const bruteForce = EnhancedSecurityManager.createBruteForceProtection();
+    this.app.use('/api/hybrid-auth/login', bruteForce.prevent);
+    this.app.use('/api/hybrid-auth/forgot-password', bruteForce.prevent);
+
+    // Rate limiting
+    this.app.use('/api/', EnhancedSecurityManager.createRateLimit(
+      this.config.RATE_LIMIT_WINDOW,
+      this.config.RATE_LIMIT_MAX,
+      'Too many requests from this IP'
+    ));
+
+    // Slow down for resource-intensive endpoints
+    this.app.use('/api/v1/search', EnhancedSecurityManager.createSlowDown(
+      15 * 60 * 1000,
+      100,
+      500
+    ));
+
+    // CORS configuration moved to the beginning of middleware setup to avoid conflicts
     
     // MEMORY OPTIMIZATION: Strict body parsing limits to prevent memory spikes
     // Using smaller limits by default, larger limits only on specific endpoints
