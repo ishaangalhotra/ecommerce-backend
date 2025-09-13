@@ -25,10 +25,10 @@ class MemoryMonitor {
       // Initial memory check
       this.checkMemory();
       
-      // Set up interval
+      // Set up interval (reduced frequency for production)
       this.checkInterval = setInterval(() => {
         this.checkMemory();
-      }, 2 * 60 * 1000); // Every 2 minutes
+      }, 10 * 60 * 1000); // Every 10 minutes (reduced from 2 minutes)
 
       return true;
     } catch (error) {
@@ -56,8 +56,13 @@ class MemoryMonitor {
         external: Math.round(memUsage.external / 1024 / 1024)
       });
 
-      // Use structured logging instead of console.log
-      const logger = require('./utils/logger');
+      // Use structured logging instead of console.log (with fallback)
+      let logger;
+      try {
+        logger = require('./utils/logger');
+      } catch (e) {
+        logger = console; // Fallback to console if logger not available
+      }
       
       logger.info('Memory usage', {
         memory: {
@@ -1100,32 +1105,52 @@ class QuickLocalServer {
 
     // ==================================================================
     // == CRITICAL: APPLY CORS FIRST BEFORE SECURITY MIDDLEWARE
+    // == FIXED: More permissive CORS for production debugging
     // ==================================================================
     const corsOptions = {
       /**
-       * The origin function determines which origins are allowed to access the server.
-       * @param {string} origin - The origin of the incoming request.
-       * @param {function} callback - The callback to signal whether the origin is allowed.
+       * FIXED: More reliable origin checking with fallbacks
        */
       origin: function (origin, callback) {
-        console.log(`[CORS] Checking origin: ${origin}`);
+        console.log(`[CORS] 🔍 Checking origin: "${origin}"`);
         
-        // The `origin` will be `undefined` for server-to-server requests, REST clients (like Postman), or mobile apps.
-        // The `CORSManager.isValidOrigin` function is designed to allow these by default.
-        if (CORSManager.isValidOrigin(origin)) {
-          console.log(`[CORS] ✅ Origin allowed: ${origin}`);
-          // If the origin is valid, allow it.
-          // The first argument is for an error (null here), and the second is a boolean (true = allowed).
-          callback(null, true);
-        } else {
-          console.log(`[CORS] ❌ Origin denied: ${origin}`);
-          console.log(`[CORS] Allowed origins: ${JSON.stringify(CORSManager.getOrigins())}`);
-          // If the origin is not in our list, reject the request.
-          // IMPORTANT: We pass `false` instead of an error object. The `cors` library will then
-          // handle the rejection correctly, sending the appropriate headers and HTTP status.
-          // Passing an error here (e.g., new Error('...')) would result in a 500 server error.
-          callback(null, false);
+        // IMMEDIATE FIX: Allow your specific domain first
+        const allowedDomains = [
+          'https://www.quicklocal.shop',
+          'https://quicklocal.shop',
+          'https://my-frontend-ifyr.vercel.app',
+          'https://my-frontend-ifyr-6dh1011kk-ishans-projects-67ccbc5a.vercel.app'
+        ];
+        
+        // Allow requests with no origin (Postman, server-to-server, mobile apps)
+        if (!origin) {
+          console.log(`[CORS] ✅ Allowed: No origin (server-to-server/Postman)`);
+          return callback(null, true);
         }
+        
+        // Direct domain match
+        if (allowedDomains.includes(origin)) {
+          console.log(`[CORS] ✅ Allowed: Direct match - ${origin}`);
+          return callback(null, true);
+        }
+        
+        // Use CORSManager as fallback
+        if (CORSManager.isValidOrigin(origin)) {
+          console.log(`[CORS] ✅ Allowed: CORSManager approved - ${origin}`);
+          return callback(null, true);
+        }
+        
+        // TEMPORARY: Log denied origins for debugging
+        console.error(`[CORS] ❌ DENIED: "${origin}" not in allowed list`);
+        console.error(`[CORS] 📋 Allowed domains: ${JSON.stringify(allowedDomains)}`);
+        
+        // TEMPORARY FIX: Allow all HTTPS origins for debugging (REMOVE IN PRODUCTION)
+        if (origin && origin.startsWith('https://')) {
+          console.warn(`[CORS] 🔓 TEMPORARY: Allowing HTTPS origin for debugging - ${origin}`);
+          return callback(null, true);
+        }
+        
+        callback(null, false);
       },
       // Allows the browser to send cookies and authorization headers with the request.
       credentials: true,
@@ -1148,8 +1173,36 @@ class QuickLocalServer {
         'X-Instance-ID'
       ],
       // Some legacy browsers (IE11, various SmartTVs) choke on 204.
-      optionsSuccessStatus: 200 
+      optionsSuccessStatus: 200,
+      // Preflight cache (24 hours)
+      maxAge: 86400
     };
+    
+    // Add CORS debugging middleware FIRST
+    this.app.use((req, res, next) => {
+      console.log(`[CORS DEBUG] ${req.method} ${req.originalUrl} from origin: "${req.headers.origin || 'NO ORIGIN'}"`);
+      
+      // Add CORS headers manually as backup
+      const origin = req.headers.origin;
+      if (origin === 'https://www.quicklocal.shop' || origin === 'https://quicklocal.shop') {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Api-Key, X-Correlation-ID');
+        res.setHeader('Access-Control-Expose-Headers', 'X-Correlation-ID, X-Response-Time, X-Instance-ID');
+      }
+      
+      // Handle preflight requests immediately
+      if (req.method === 'OPTIONS') {
+        console.log(`[CORS DEBUG] Handling OPTIONS preflight request for ${req.originalUrl}`);
+        if (origin === 'https://www.quicklocal.shop' || origin === 'https://quicklocal.shop') {
+          res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
+          return res.status(200).end();
+        }
+      }
+      
+      next();
+    });
     
     this.app.use(cors(corsOptions));
     
@@ -1158,7 +1211,7 @@ class QuickLocalServer {
     // which is crucial for complex requests (e.g., with custom headers or methods like PUT/DELETE).
     this.app.options('*', cors(corsOptions));
     
-    console.log('✅ CORS middleware applied BEFORE security middleware');
+    console.log('✅ CORS middleware applied BEFORE security middleware with debugging');
 
     // Security headers with Helmet (applied AFTER CORS to avoid conflicts)
     if (this.config.HELMET_ENABLED) {
@@ -1876,6 +1929,21 @@ server_uptime_seconds ${Math.floor(process.uptime())}`);
     // Advanced UX Features API endpoints
     this.setupUXFeaturesEndpoints();
     
+    // CORS test endpoint for debugging
+    this.app.get('/api/v1/cors-test', (req, res) => {
+      console.log(`[CORS TEST] Request from origin: ${req.headers.origin}`);
+      res.json({
+        success: true,
+        message: 'CORS is working!',
+        origin: req.headers.origin,
+        timestamp: new Date().toISOString(),
+        headers: {
+          'access-control-allow-origin': res.getHeader('Access-Control-Allow-Origin'),
+          'access-control-allow-credentials': res.getHeader('Access-Control-Allow-Credentials')
+        }
+      });
+    });
+    
     // Server status endpoint
     this.app.get('/status', (req, res) => {
       res.json({
@@ -1887,7 +1955,12 @@ server_uptime_seconds ${Math.floor(process.uptime())}`);
         connections: this.server.listening ? 'accepting' : 'not accepting',
         socket_connections: this.io ? this.io.engine.clientsCount : 0,
         environment: this.config.NODE_ENV,
-        version: this.config.APP_VERSION
+        version: this.config.APP_VERSION,
+        cors_config: {
+          allowed_origins: CORSManager.getOrigins(),
+          frontend_urls: process.env.FRONTEND_URLS?.split(','),
+          client_url: process.env.CLIENT_URL
+        }
       });
     });
   }

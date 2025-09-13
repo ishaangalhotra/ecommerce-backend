@@ -53,7 +53,7 @@ class DatabaseManager {
       return;
     }
 
-    const uri = process.env.MONGO_URI;
+    const uri = process.env.MONGODB_URI || process.env.MONGO_URI;
     const dbName = process.env.MONGO_DB_NAME;
 
     if (!uri || !dbName) {

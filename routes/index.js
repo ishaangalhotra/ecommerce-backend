@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 // Import all route modules
-const authRoutes = require('./auth');
+const authRoutes = require('./hybridAuth'); // Fixed: Use hybridAuth instead of missing auth.js
 const testAuthRoutes = require('./testAuth');
 const authBypassRoutes = require('./authBypass');
 const userRoutes = require('./users');
