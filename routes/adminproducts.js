@@ -2,7 +2,8 @@ const express = require('express');
 const { query, body, param, validationResult } = require('express-validator');
 const Product = require('../models/Product');
 const Category = require('../models/Category');
-const { protect, restrictTo } = require('../middleware/authMiddleware');
+const { hybridProtect, requireRole } = require('../middleware/hybridAuth');
+const { restrictTo } = require('../middleware/authMiddleware'); // Keep for backward compatibility
 const asyncHandler = require('../middleware/asyncHandler');
 const logger = require('../utils/logger');
 const rateLimit = require('express-rate-limit');
@@ -19,7 +20,7 @@ const DEFAULT_PAGE_SIZE = 10;
 const MAX_PAGE_SIZE = 100;
 
 // 🔐 Secure all admin product routes
-router.use(protect);
+router.use(hybridProtect);
 router.use(restrictTo('admin'));
 
 // Redis-backed rate limiter for admin product routes

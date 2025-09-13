@@ -2,7 +2,8 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const { body, param, query, validationResult } = require('express-validator');
 const LocalDeliveryController = require('../controllers/LocalDeliveryController');
-const { protect, authorize } = require('../middleware/authMiddleware');
+const { hybridProtect, requireRole } = require('../middleware/hybridAuth');
+const { authorize } = require('../middleware/authMiddleware'); // Keep for backward compatibility
 const logger = require('../utils/logger');
 const redis = require('../utils/redis');
 const { validateDeliveryParameters, validateLocation } = require('../validations/deliveryvalidation');
@@ -187,7 +188,7 @@ router.get('/nearby-products',
  *               $ref: '#/components/schemas/DeliveryCheckResponse'
  */
 router.post('/check/:productId',
-  protect,
+  hybridProtect,
   generalDeliveryLimiter,
   validateRequest([
     ...mongoIdValidation('productId'),
@@ -231,7 +232,7 @@ router.post('/check/:productId',
  *               $ref: '#/components/schemas/DeliverySlotsResponse'
  */
 router.get('/slots/:productId',
-  protect,
+  hybridProtect,
   generalDeliveryLimiter,
   validateRequest([
     ...mongoIdValidation('productId'),
@@ -279,7 +280,7 @@ router.get('/slots/:productId',
  *               $ref: '#/components/schemas/CartEstimateResponse'
  */
 router.post('/estimate-cart',
-  protect,
+  hybridProtect,
   estimateLimiter,
   validateRequest([
     body('items')
@@ -358,7 +359,7 @@ router.get('/zones/:pincode',
  *               $ref: '#/components/schemas/LiveTrackingResponse'
  */
 router.get('/live-tracking/:orderId',
-  protect,
+  hybridProtect,
   trackingLimiter,
   validateRequest(mongoIdValidation('orderId')),
   requestLogger('live_tracking'),
@@ -385,8 +386,8 @@ router.get('/live-tracking/:orderId',
  *         description: Location updated successfully
  */
 router.post('/agent/location',
-  protect,
-  authorize('delivery_agent'),
+  hybridProtect,
+  requireRole('delivery_agent'),
   generalDeliveryLimiter,
   validateRequest([
     body('latitude')

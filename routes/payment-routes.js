@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const PaymentService = require('../services/paymentservice');
-const { protect } = require('../middleware/authMiddleware'); // ← Changed this line
+const { hybridProtect } = require('../middleware/hybridAuth'); // ← Changed this line
 const { validateOrder } = require('../middleware/validation');
 
 // ============================================================================
@@ -13,7 +13,7 @@ const { validateOrder } = require('../middleware/validation');
  * @desc    Create Razorpay payment order
  * @access  Private
  */
-router.post('/razorpay/create-order', protect, validateOrder, async (req, res) => { // ← Changed authenticateToken to protect
+router.post('/razorpay/create-order', hybridProtect, validateOrder, async (req, res) => { // ← Changed authenticateToken to hybridProtect
   try {
     const { orderId, amount, customerName, customerEmail } = req.body;
     const userId = req.user.id;
@@ -49,7 +49,7 @@ router.post('/razorpay/create-order', protect, validateOrder, async (req, res) =
  * @desc    Verify Razorpay payment
  * @access  Private
  */
-router.post('/razorpay/verify', protect, async (req, res) => { // ← Changed authenticateToken to protect
+router.post('/razorpay/verify', hybridProtect, async (req, res) => { // ← Changed authenticateToken to hybridProtect
   try {
     const {
       razorpay_order_id,
@@ -98,7 +98,7 @@ router.post('/razorpay/verify', protect, async (req, res) => { // ← Changed au
  * @desc    Create Stripe payment intent
  * @access  Private
  */
-router.post('/stripe/create-intent', protect, validateOrder, async (req, res) => { // ← Changed authenticateToken to protect
+router.post('/stripe/create-intent', hybridProtect, validateOrder, async (req, res) => { // ← Changed authenticateToken to hybridProtect
   try {
     if (process.env.STRIPE_ENABLED !== 'true') {
       return res.status(400).json({
@@ -140,7 +140,7 @@ router.post('/stripe/create-intent', protect, validateOrder, async (req, res) =>
  * @desc    Confirm Stripe payment
  * @access  Private
  */
-router.post('/stripe/confirm', protect, async (req, res) => { // ← Changed authenticateToken to protect
+router.post('/stripe/confirm', hybridProtect, async (req, res) => { // ← Changed authenticateToken to hybridProtect
   try {
     const { paymentIntentId, orderId } = req.body;
 
@@ -177,7 +177,7 @@ router.post('/stripe/confirm', protect, async (req, res) => { // ← Changed aut
  * @desc    Process Razorpay refund
  * @access  Private (Admin/Seller)
  */
-router.post('/refund/razorpay', protect, async (req, res) => { // ← Changed authenticateToken to protect
+router.post('/refund/razorpay', hybridProtect, async (req, res) => { // ← Changed authenticateToken to hybridProtect
   try {
     const { paymentId, amount, orderId, reason } = req.body;
 
@@ -210,7 +210,7 @@ router.post('/refund/razorpay', protect, async (req, res) => { // ← Changed au
  * @desc    Process Stripe refund
  * @access  Private (Admin/Seller)
  */
-router.post('/refund/stripe', protect, async (req, res) => { // ← Changed authenticateToken to protect
+router.post('/refund/stripe', hybridProtect, async (req, res) => { // ← Changed authenticateToken to hybridProtect
   try {
     const { paymentIntentId, amount, orderId, reason } = req.body;
 
@@ -247,7 +247,7 @@ router.post('/refund/stripe', protect, async (req, res) => { // ← Changed auth
  * @desc    Get payment analytics
  * @access  Private (Admin/Seller)
  */
-router.get('/analytics', protect, async (req, res) => { // ← Changed authenticateToken to protect
+router.get('/analytics', hybridProtect, async (req, res) => { // ← Changed authenticateToken to hybridProtect
   try {
     const { startDate, endDate } = req.query;
 
@@ -287,7 +287,7 @@ router.get('/analytics', protect, async (req, res) => { // ← Changed authentic
  * @desc    Get payment status for an order
  * @access  Private
  */
-router.get('/status/:orderId', protect, async (req, res) => { // ← Changed authenticateToken to protect
+router.get('/status/:orderId', hybridProtect, async (req, res) => { // ← Changed authenticateToken to hybridProtect
   try {
     const { orderId } = req.params;
 

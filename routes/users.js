@@ -29,7 +29,8 @@ const User = require('../models/User');
 const Address = require('../models/Address');
 const Order = require('../models/Order');
 
-const { protect, authorize, checkPermission } = require('../middleware/authMiddleware');
+const { hybridProtect, requireRole } = require('../middleware/hybridAuth');
+const { checkPermission } = require('../middleware/authMiddleware'); // Keep this for permission checking
 const upload = require('../utils/multer'); // disk storage multer instance expected
 const { uploadToCloudinary, deleteFromCloudinary } = require('../utils/cloudinary');
 const { sendEmail } = require('../utils/email');
@@ -246,7 +247,7 @@ async function getCachedAdminStats() {
 /* ---------------------------
    Route: Get current profile
    --------------------------- */
-router.get('/profile', protect, checkPermission(Permissions.PROFILE_VIEW_OWN), userLimiter, asyncHandler(async (req, res) => {
+router.get('/profile', hybridProtect, checkPermission(Permissions.PROFILE_VIEW_OWN), userLimiter, asyncHandler(async (req, res) => {
   const timer = metrics?.startTimer?.('users_profile_get') || null;
   try {
     // Load user with addresses (lean for performance)
@@ -289,7 +290,7 @@ router.get('/profile', protect, checkPermission(Permissions.PROFILE_VIEW_OWN), u
    - Email change triggers verify email flow
    --------------------------- */
 router.patch('/profile',
-  protect,
+  hybridProtect,
   checkPermission(Permissions.PROFILE_UPDATE_OWN),
   profileUpdateLimiter,
   validateUserUpdate,
@@ -357,7 +358,7 @@ router.patch('/profile',
    - Safe temp file removal on success & error
    --------------------------- */
 router.post('/avatar',
-  protect,
+  hybridProtect,
   checkPermission(Permissions.PROFILE_UPDATE_OWN),
   profileUpdateLimiter,
   upload.single('avatar'),
@@ -427,7 +428,7 @@ router.post('/avatar',
    --------------------------- */
 
 router.get('/addresses',
-  protect,
+  hybridProtect,
   checkPermission(Permissions.ADDRESS_MANAGE_OWN),
   userLimiter,
   asyncHandler(async (req, res) => {
@@ -442,7 +443,7 @@ router.get('/addresses',
 );
 
 router.post('/addresses',
-  protect,
+  hybridProtect,
   checkPermission(Permissions.ADDRESS_MANAGE_OWN),
   profileUpdateLimiter,
   validateAddress,
@@ -471,7 +472,7 @@ router.post('/addresses',
 );
 
 router.patch('/addresses/:id',
-  protect,
+  hybridProtect,
   checkPermission(Permissions.ADDRESS_MANAGE_OWN),
   profileUpdateLimiter,
   validateAddress,
@@ -497,7 +498,7 @@ router.patch('/addresses/:id',
 );
 
 router.delete('/addresses/:id',
-  protect,
+  hybridProtect,
   checkPermission(Permissions.ADDRESS_MANAGE_OWN),
   userLimiter,
   asyncHandler(async (req, res) => {
@@ -527,8 +528,8 @@ router.delete('/addresses/:id',
    - admin only, supports pagination, search, filters
    --------------------------- */
 router.get('/',
-  protect,
-  authorize(UserRoles.ADMIN, UserRoles.SUPER_ADMIN),
+  hybridProtect,
+  requireRole(UserRoles.ADMIN, UserRoles.SUPER_ADMIN),
   checkPermission(Permissions.USER_VIEW_ALL),
   userLimiter,
   [
@@ -597,8 +598,8 @@ router.get('/',
    Admin: change user role
    --------------------------- */
 router.patch('/:id/role',
-  protect,
-  authorize(UserRoles.ADMIN, UserRoles.SUPER_ADMIN),
+  hybridProtect,
+  requireRole(UserRoles.ADMIN, UserRoles.SUPER_ADMIN),
   checkPermission(Permissions.USER_MANAGE_ROLES),
   body('role').isIn(Object.values(UserRoles)),
   asyncHandler(async (req, res) => {

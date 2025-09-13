@@ -1,6 +1,7 @@
 const express = require('express');
 const { body, param, query, validationResult } = require('express-validator');
-const { protect, authorize } = require('../middleware/authMiddleware');
+const { hybridProtect, requireRole } = require('../middleware/hybridAuth');
+const { authorize } = require('../middleware/authMiddleware'); // Keep for backward compatibility
 const { cache: cacheMiddleware, invalidateCache: clearCache } = require('../middleware/cache');
 const rateLimit = require('express-rate-limit');
 const Order = require('../models/Order');
@@ -79,8 +80,8 @@ const requestLogger = (action) => (req, res, next) => {
 };
 
 // 🔐 Secure all admin routes
-router.use(protect);
-router.use(authorize('admin'));
+router.use(hybridProtect);
+router.use(requireRole('admin'));
 router.use(adminLimiter);
 
 /**

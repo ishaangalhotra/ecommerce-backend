@@ -5,15 +5,15 @@ const router = express.Router();
 const Category = require('../models/Category'); // Added Category model import
 
 // ===== Auth middleware (fail-secure) =====
-let protect, authorize;
+let hybridProtect, authorize;
 let authModuleLoaded = false;
 
 try {
   const auth = require('../middleware/authMiddleware');
-  protect = auth.protect;
+  hybridProtect = auth.hybridProtect;
   authorize = auth.authorize;
 
-  if (typeof protect !== 'function' || typeof authorize !== 'function') {
+  if (typeof hybridProtect !== 'function' || typeof authorize !== 'function') {
     throw new Error('Auth middleware functions are not properly exported');
   }
 
@@ -22,7 +22,7 @@ try {
 } catch (error) {
   console.error('🔐 CRITICAL SECURITY ERROR: Auth middleware failed to load:', error.message);
 
-  protect = () => (req, res) => {
+  hybridProtect = () => (req, res) => {
     console.error('🚨 SECURITY BREACH ATTEMPT: Auth middleware unavailable, blocking request');
     res.status(503).json({
       error: 'Service temporarily unavailable due to security module failure',
@@ -203,8 +203,8 @@ router.use(rateLimiter);
 // Create product - using spread operator for validateProduct array
 const createProductMiddleware = [
   systemHealthCheck,
-  protect(),
-  authorize(['seller', 'admin']),
+  hybridProtect(),
+  requireRole(['seller', 'admin']),
   upload.fields([{ name: 'images', maxCount: 8 }]),
   validateFileUpload,
   ...(sellerCtrl.validateProduct || []), // Spread the array or empty array
@@ -218,8 +218,8 @@ router.post('/products', ...createProductMiddleware);
 router.get(
   '/products',
   systemHealthCheck,
-  protect(),
-  authorize(['seller', 'admin']),
+  hybridProtect(),
+  requireRole(['seller', 'admin']),
   logRequest('Product retrieval'),
   asyncHandler(sellerCtrl.getMyProducts)
 );
@@ -228,8 +228,8 @@ router.get(
 router.get(
   '/products/export',
   systemHealthCheck,
-  protect(),
-  authorize(['seller', 'admin']),
+  hybridProtect(),
+  requireRole(['seller', 'admin']),
   validateExportFormat,
   logRequest('Export products'),
   asyncHandler(sellerCtrl.exportProducts)
@@ -239,8 +239,8 @@ router.get(
 router.patch(
   '/products/bulk',
   systemHealthCheck,
-  protect(),
-  authorize(['seller', 'admin']),
+  hybridProtect(),
+  requireRole(['seller', 'admin']),
   validateBulkOperation,
   logRequest('Bulk product update'),
   asyncHandler(sellerCtrl.bulkUpdateProducts)
@@ -250,8 +250,8 @@ router.patch(
 router.get(
   '/categories',
   systemHealthCheck,
-  protect(),
-  authorize(['seller', 'admin']),
+  hybridProtect(),
+  requireRole(['seller', 'admin']),
   asyncHandler(async (req, res) => {
     try {
       const categories = await Category.find({ status: 'active' })
@@ -275,8 +275,8 @@ router.get(
 // Update product middleware stack
 const updateProductMiddleware = [
   systemHealthCheck,
-  protect(),
-  authorize(['seller', 'admin']),
+  hybridProtect(),
+  requireRole(['seller', 'admin']),
   validateObjectId('productId'),
   upload.fields([{ name: 'images', maxCount: 8 }]),
   validateFileUpload,
@@ -292,8 +292,8 @@ router.patch('/products/:productId', ...updateProductMiddleware, asyncHandler(se
 router.delete(
   '/products/:productId',
   systemHealthCheck,
-  protect(),
-  authorize(['seller', 'admin']),
+  hybridProtect(),
+  requireRole(['seller', 'admin']),
   validateObjectId('productId'),
   logRequest('Product deletion'),
   asyncHandler(sellerCtrl.deleteProduct)
@@ -303,8 +303,8 @@ router.delete(
 router.get(
   '/dashboard',
   systemHealthCheck,
-  protect(),
-  authorize(['seller', 'admin']),
+  hybridProtect(),
+  requireRole(['seller', 'admin']),
   logRequest('Dashboard access'),
   asyncHandler(sellerCtrl.getSellerDashboard)
 );
@@ -313,8 +313,8 @@ router.get(
 router.get(
   '/products/:productId/analytics',
   systemHealthCheck,
-  protect(),
-  authorize(['seller', 'admin']),
+  hybridProtect(),
+  requireRole(['seller', 'admin']),
   validateObjectId('productId'),
   logRequest('Product analytics'),
   asyncHandler(sellerCtrl.getProductAnalytics)
@@ -324,8 +324,8 @@ router.get(
 router.get(
   '/orders',
   systemHealthCheck,
-  protect(),
-  authorize(['seller', 'admin']),
+  hybridProtect(),
+  requireRole(['seller', 'admin']),
   logRequest('Seller orders'),
   asyncHandler(sellerOrders.listSellerOrders)
 );
@@ -333,8 +333,8 @@ router.get(
 router.patch(
   '/orders/:id/status',
   systemHealthCheck,
-  protect(),
-  authorize(['seller', 'admin']),
+  hybridProtect(),
+  requireRole(['seller', 'admin']),
   validateObjectId('id'),
   logRequest('Update order status'),
   asyncHandler(sellerOrders.updateOrderStatusForSeller)
@@ -343,8 +343,8 @@ router.patch(
 router.get(
   '/customers',
   systemHealthCheck,
-  protect(),
-  authorize(['seller', 'admin']),
+  hybridProtect(),
+  requireRole(['seller', 'admin']),
   logRequest('Seller customers'),
   asyncHandler(sellerOrders.listSellerCustomers)
 );

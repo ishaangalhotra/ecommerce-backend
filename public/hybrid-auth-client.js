@@ -54,7 +54,7 @@ class HybridAuthClient {
       this.authMethod = 'supabase';
       
       // Get user details from your backend
-      const response = await fetch(`${this.backendUrl}/api/v1/auth/me`, {
+      const response = await fetch(`${this.backendUrl}/api/hybrid-auth/me`, {
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json'
@@ -64,7 +64,7 @@ class HybridAuthClient {
       if (response.ok) {
         const data = await response.json();
         this.currentUser = data.user;
-        this.onAuthStateChange?.(this.currentUser);
+        this.authStateCallback?.(this.currentUser);
       }
     } catch (error) {
       console.error('Supabase auth error:', error);
@@ -78,7 +78,7 @@ class HybridAuthClient {
     try {
       this.authMethod = 'jwt';
       
-      const response = await fetch(`${this.backendUrl}/api/auth/me`, {
+      const response = await fetch(`${this.backendUrl}/api/hybrid-auth/me`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -88,7 +88,7 @@ class HybridAuthClient {
       if (response.ok) {
         const data = await response.json();
         this.currentUser = data.user;
-        this.onAuthStateChange?.(this.currentUser);
+        this.authStateCallback?.(this.currentUser);
       } else {
         // Token might be expired, clear it
         localStorage.removeItem('token');
@@ -104,7 +104,7 @@ class HybridAuthClient {
    */
   async register(email, password, name, role = 'customer') {
     try {
-      const response = await fetch(`${this.backendUrl}/api/v1/auth/register`, {
+      const response = await fetch(`${this.backendUrl}/api/hybrid-auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -137,12 +137,12 @@ class HybridAuthClient {
    */
   async login(email, password) {
     try {
-      const response = await fetch(`${this.backendUrl}/api/v1/auth/login`, {
+      const response = await fetch(`${this.backendUrl}/api/hybrid-auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ identifier: email, password })
       });
 
       const data = await response.json();
@@ -161,7 +161,7 @@ class HybridAuthClient {
         }
 
         this.currentUser = data.user;
-        this.onAuthStateChange?.(this.currentUser);
+        this.authStateCallback?.(this.currentUser);
 
         return {
           success: true,
@@ -186,7 +186,7 @@ class HybridAuthClient {
   async logout() {
     try {
       // Call backend logout
-      await fetch(`${this.backendUrl}/api/v1/auth/logout`, {
+      await fetch(`${this.backendUrl}/api/hybrid-auth/logout`, {
         method: 'POST',
         headers: {
           'Authorization': this.getAuthHeader(),
@@ -207,7 +207,7 @@ class HybridAuthClient {
 
       this.currentUser = null;
       this.authMethod = null;
-      this.onAuthStateChange?.(null);
+      this.authStateCallback?.(null);
 
       return { success: true };
     } catch (error) {
@@ -356,7 +356,7 @@ class HybridAuthClient {
    * Set auth state change callback
    */
   onAuthStateChange(callback) {
-    this.onAuthStateChange = callback;
+    this.authStateCallback = callback;
   }
 
   /**
@@ -417,10 +417,24 @@ const channel = authClient.subscribeToRealtime(user.supabaseId, {
 });
 */
 
+// Auto-instantiate for immediate use
+const hybridAuthClient = new HybridAuthClient(
+  'https://pmvhsjezhuokwygvhhqk.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBtdmhzamV6aHVva3d5Z3ZoaHFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc2NTU3MDUsImV4cCI6MjA3MzIzMTcwNX0.ZrVjuqB28Qer7F7zSdG_rJIs_ZQZhX1PNyrmpK-Qojg',
+  'https://quicklocal-backend.onrender.com'
+);
+
 // Export for use in modules
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = HybridAuthClient;
+  module.exports = {
+    HybridAuthClient,
+    hybridAuthClient
+  };
 } else {
-  window.HybridAuthClient = HybridAuthClient;
+  // Make both class and instance available globally
+  window.HybridAuthClient = hybridAuthClient; // Instance for immediate use
+  window.HybridAuthClientClass = HybridAuthClient; // Class for manual instantiation
+  
   console.log('✅ HybridAuthClient loaded and available globally');
+  console.log('🔧 Auto-instantiated client ready for use');
 }

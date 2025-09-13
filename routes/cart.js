@@ -7,7 +7,7 @@ const Cart = require('../models/cart');
 const Product = require('../models/Product');
 const User = require('../models/User');
 const Coupon = require('../models/Coupon');
-const { protect } = require('../middleware/authMiddleware');
+const { hybridProtect } = require('../middleware/hybridAuth');
 const { calculateDeliveryFee, estimateDeliveryTime } = require('../utils/delivery');
 const { calculateTax } = require('../utils/tax');
 const logger = require('../utils/logger');
@@ -120,7 +120,7 @@ const validateCoupon = [
  *         description: Cart details with pricing breakdown
  */
 router.get('/',
-  protect,
+  hybridProtect,
   cartLimiter,
   async (req, res) => {
     try {
@@ -310,7 +310,7 @@ router.get('/',
  *         description: Item added to cart successfully
  */
 router.post('/add',
-  protect,
+  hybridProtect,
   addItemLimiter,
   validateCartItem,
   async (req, res) => {
@@ -509,7 +509,7 @@ router.post('/add',
  *         description: Cart item updated successfully
  */
 router.patch('/update',
-  protect,
+  hybridProtect,
   cartLimiter,
   [
     body('productId').isMongoId().withMessage('Valid product ID required'),
@@ -649,7 +649,7 @@ router.patch('/update',
  *         description: Item removed from cart successfully
  */
 router.delete('/remove/:productId',
-  protect,
+  hybridProtect,
   cartLimiter,
   async (req, res) => {
     try {
@@ -743,7 +743,7 @@ router.delete('/remove/:productId',
  *         description: Cart cleared successfully
  */
 router.delete('/clear',
-  protect,
+  hybridProtect,
   cartLimiter,
   async (req, res) => {
     try {
@@ -837,7 +837,7 @@ router.delete('/clear',
  *         description: Items added to cart successfully
  */
 router.post('/bulk/add',
-  protect,
+  hybridProtect,
   cartLimiter,
   validateBulkOperation,
   async (req, res) => {
@@ -1008,7 +1008,7 @@ router.post('/bulk/add',
  *         description: Coupon applied successfully
  */
 router.post('/coupon/apply',
-  protect,
+  hybridProtect,
   cartLimiter,
   validateCoupon,
   async (req, res) => {
@@ -1138,7 +1138,7 @@ router.post('/coupon/apply',
  *         description: Coupon removed successfully
  */
 router.delete('/coupon/remove',
-  protect,
+  hybridProtect,
   cartLimiter,
   validateCoupon,
   async (req, res) => {
@@ -1234,7 +1234,7 @@ router.delete('/coupon/remove',
  *         description: Cart analysis with recommendations
  */
 router.get('/analysis',
-  protect,
+  hybridProtect,
   cartLimiter,
   async (req, res) => {
     try {

@@ -3,11 +3,12 @@ const mongoose = require('mongoose');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const User = require('../models/User');
-const { protect, authorize } = require('../middleware/authMiddleware');
+const { hybridProtect, requireRole } = require('../middleware/hybridAuth');
+const { authorize } = require('../middleware/authMiddleware'); // Keep for backward compatibility
 const router = express.Router();
 
 // ==================== GET DASHBOARD ANALYTICS ====================
-router.get('/dashboard', [protect, authorize('admin', 'seller')], async (req, res) => {
+router.get('/dashboard', [hybridProtect, requireRole('admin', 'seller')], async (req, res) => {
   try {
     const { period = '30d', sellerId } = req.query;
     const userId = req.user.id;
@@ -217,7 +218,7 @@ router.get('/dashboard', [protect, authorize('admin', 'seller')], async (req, re
 });
 
 // ==================== GET SALES ANALYTICS ====================
-router.get('/sales', [protect, authorize('admin', 'seller')], async (req, res) => {
+router.get('/sales', [hybridProtect, requireRole('admin', 'seller')], async (req, res) => {
   try {
     const { 
       period = '30d', 
@@ -394,7 +395,7 @@ router.get('/sales', [protect, authorize('admin', 'seller')], async (req, res) =
 });
 
 // ==================== GET PRODUCT ANALYTICS ====================
-router.get('/products', [protect, authorize('admin', 'seller')], async (req, res) => {
+router.get('/products', [hybridProtect, requireRole('admin', 'seller')], async (req, res) => {
   try {
     const { sellerId } = req.query;
     const userId = req.user.id;
@@ -503,7 +504,7 @@ router.get('/products', [protect, authorize('admin', 'seller')], async (req, res
 });
 
 // ==================== GET CUSTOMER ANALYTICS ====================
-router.get('/customers', [protect, authorize('admin')], async (req, res) => {
+router.get('/customers', [hybridProtect, requireRole('admin')], async (req, res) => {
   try {
     const { period = '30d' } = req.query;
 
@@ -621,7 +622,7 @@ router.get('/customers', [protect, authorize('admin')], async (req, res) => {
 });
 
 // ==================== EXPORT ANALYTICS REPORT ====================
-router.get('/export', [protect, authorize('admin')], async (req, res) => {
+router.get('/export', [hybridProtect, requireRole('admin')], async (req, res) => {
   try {
     const { type = 'sales', format = 'json', period = '30d' } = req.query;
 

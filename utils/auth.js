@@ -1,3 +1,9 @@
+// ⚠️ DEPRECATED: This file is deprecated in favor of hybridAuth system
+// Please use Supabase authentication for new development
+// This file is kept for backward compatibility only
+
+console.warn('⚠️  WARNING: Using deprecated auth utils. Please migrate to Supabase/hybridAuth system');
+
 const jwt = require('jsonwebtoken');
 const { promisify } = require('util');
 const crypto = require('crypto');

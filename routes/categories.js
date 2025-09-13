@@ -3,7 +3,8 @@ const express = require('express');
 const mongoose = require('mongoose');
 const Category = require('../models/Category');
 const Product = require('../models/Product');
-const { protect, authorize } = require('../middleware/authMiddleware');
+const { hybridProtect, requireRole } = require('../middleware/hybridAuth');
+const { authorize } = require('../middleware/authMiddleware'); // Keep for backward compatibility
 const { body, validationResult } = require('express-validator');
 const router = express.Router();
 
@@ -266,8 +267,8 @@ router.get('/:id', async (req, res) => {
 
 // ==================== CREATE CATEGORY (ADMIN ONLY) ====================
 router.post('/', [
-  protect,
-  authorize('admin'),
+  hybridProtect,
+  requireRole('admin'),
   body('name').trim().isLength({ min: 2, max: 100 }).withMessage('Category name must be 2-100 characters'),
   body('description').optional().trim().isLength({ max: 500 }).withMessage('Description cannot exceed 500 characters'),
   body('slug').optional().trim().matches(/^[a-z0-9-]+$/).withMessage('Slug must contain only lowercase letters, numbers, and hyphens'),
@@ -354,8 +355,8 @@ router.post('/', [
 
 // ==================== UPDATE CATEGORY (ADMIN ONLY) ====================
 router.put('/:id', [
-  protect,
-  authorize('admin'),
+  hybridProtect,
+  requireRole('admin'),
   body('name').optional().trim().isLength({ min: 2, max: 100 }).withMessage('Category name must be 2-100 characters'),
   body('description').optional().trim().isLength({ max: 500 }).withMessage('Description cannot exceed 500 characters'),
   body('slug').optional().trim().matches(/^[a-z0-9-]+$/).withMessage('Slug must contain only lowercase letters, numbers, and hyphens'),
@@ -431,7 +432,7 @@ router.put('/:id', [
 });
 
 // ==================== DELETE CATEGORY (ADMIN ONLY) ====================
-router.delete('/:id', [protect, authorize('admin')], async (req, res) => {
+router.delete('/:id', [hybridProtect, requireRole('admin')], async (req, res) => {
   try {
     const { id } = req.params;
 

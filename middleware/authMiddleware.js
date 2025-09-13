@@ -1,3 +1,9 @@
+// ⚠️ DEPRECATED: This file is deprecated in favor of hybridAuth.js
+// Please migrate to hybridAuth middleware for new development
+// This file is kept for backward compatibility only
+
+console.warn('⚠️  WARNING: Using deprecated authMiddleware. Please migrate to hybridAuth.js');
+
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const { ErrorResponse } = require('../utils/error');

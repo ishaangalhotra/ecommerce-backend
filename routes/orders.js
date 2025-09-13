@@ -22,7 +22,8 @@ const Order = require('../models/Order');
 const Product = require('../models/Product');
 const User = require('../models/User');
 const Cart = require('../models/cart');
-const { protect, authorize } = require('../middleware/authMiddleware');
+const { hybridProtect, requireRole } = require('../middleware/hybridAuth');
+const { authorize } = require('../middleware/authMiddleware'); // Keep for backward compatibility
 const { sendEmail } = require('../utils/email');
 const { sendSMS } = require('../utils/sms');
 const { processPayment, createRefund } = require('../utils/payment');
@@ -224,7 +225,7 @@ const searchValidation = [
  *               $ref: '#/components/schemas/OrderResponse'
  */
 router.post('/',
-  protect,
+  hybridProtect,
   checkoutLimiter,
   validateOrder,
   async (req, res) => {
@@ -420,7 +421,7 @@ function formatOrderResponse(order, paymentResult) {
  *               $ref: '#/components/schemas/OrderListResponse'
  */
 router.get('/',
-  protect,
+  hybridProtect,
   orderLimiter,
   searchValidation,
   async (req, res) => {
@@ -598,7 +599,7 @@ async function calculateOrderStats(userId) {
  *               $ref: '#/components/schemas/OrderDetailsResponse'
  */
 router.get('/:id',
-  protect,
+  hybridProtect,
   orderLimiter,
   async (req, res) => {
     try {
@@ -675,7 +676,7 @@ async function getOrderDetails(orderId, userId) {
  *               $ref: '#/components/schemas/OrderTrackingResponse'
  */
 router.get('/:id/track',
-  protect,
+  hybridProtect,
   orderLimiter,
   async (req, res) => {
     try {
@@ -766,7 +767,7 @@ async function getOrderTracking(orderId, userId) {
  *               $ref: '#/components/schemas/OrderCancellationResponse'
  */
 router.patch('/:id/cancel',
-  protect,
+  hybridProtect,
   [
     body('reason')
       .trim()
@@ -918,7 +919,7 @@ async function cancelOrder(orderId, userId, reason, session) {
  *               $ref: '#/components/schemas/ReorderResponse'
  */
 router.post('/:id/reorder',
-  protect,
+  hybridProtect,
   orderLimiter,
   async (req, res) => {
     try {
@@ -1048,8 +1049,8 @@ async function processReorder(orderId, userId) {
  *               $ref: '#/components/schemas/SellerOrderResponse'
  */
 router.get('/seller/orders',
-  protect,
-  authorize('seller', 'admin'),
+  hybridProtect,
+  requireRole('seller', 'admin'),
   orderLimiter,
   searchValidation,
   async (req, res) => {
@@ -1231,8 +1232,8 @@ async function getSellerAnalytics(sellerId) {
  *               $ref: '#/components/schemas/OrderStatusResponse'
  */
 router.patch('/:id/status',
-  protect,
-  authorize('seller', 'admin'),
+  hybridProtect,
+  requireRole('seller', 'admin'),
   validateOrderUpdate,
   async (req, res) => {
     try {
@@ -1378,8 +1379,8 @@ async function updateOrderStatus(orderId, user, updateData) {
  *               $ref: '#/components/schemas/AdminOrderResponse'
  */
 router.get('/admin/all',
-  protect,
-  authorize('admin'),
+  hybridProtect,
+  requireRole('admin'),
   orderLimiter,
   searchValidation,
   async (req, res) => {

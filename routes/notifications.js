@@ -2,12 +2,13 @@ const express = require('express');
 const mongoose = require('mongoose');
 const Notification = require('../models/Notification');
 const User = require('../models/User');
-const { protect, authorize } = require('../middleware/authMiddleware');
+const { hybridProtect, requireRole } = require('../middleware/hybridAuth');
+const { authorize } = require('../middleware/authMiddleware'); // Keep for backward compatibility
 const { body, validationResult } = require('express-validator');
 const router = express.Router();
 
 // ==================== GET USER NOTIFICATIONS ====================
-router.get('/', protect, async (req, res) => {
+router.get('/', hybridProtect, async (req, res) => {
   try {
     const { 
       page = 1, 
@@ -82,7 +83,7 @@ router.get('/', protect, async (req, res) => {
 });
 
 // ==================== MARK NOTIFICATION AS READ ====================
-router.patch('/:id/read', protect, async (req, res) => {
+router.patch('/:id/read', hybridProtect, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -123,7 +124,7 @@ router.patch('/:id/read', protect, async (req, res) => {
 });
 
 // ==================== MARK ALL NOTIFICATIONS AS READ ====================
-router.patch('/read-all', protect, async (req, res) => {
+router.patch('/read-all', hybridProtect, async (req, res) => {
   try {
     const result = await Notification.updateMany(
       { user: req.user.id, isRead: false },
@@ -152,7 +153,7 @@ router.patch('/read-all', protect, async (req, res) => {
 });
 
 // ==================== DELETE NOTIFICATION ====================
-router.delete('/:id', protect, async (req, res) => {
+router.delete('/:id', hybridProtect, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -184,7 +185,7 @@ router.delete('/:id', protect, async (req, res) => {
 });
 
 // ==================== DELETE ALL NOTIFICATIONS ====================
-router.delete('/clear-all', protect, async (req, res) => {
+router.delete('/clear-all', hybridProtect, async (req, res) => {
   try {
     const { read = 'all' } = req.query;
 
@@ -217,7 +218,7 @@ router.delete('/clear-all', protect, async (req, res) => {
 });
 
 // ==================== GET NOTIFICATION SETTINGS ====================
-router.get('/settings', protect, async (req, res) => {
+router.get('/settings', hybridProtect, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select('notificationSettings');
 
@@ -260,7 +261,7 @@ router.get('/settings', protect, async (req, res) => {
 
 // ==================== UPDATE NOTIFICATION SETTINGS ====================
 router.put('/settings', [
-  protect,
+  hybridProtect,
   body('email.orders').optional().isBoolean(),
   body('email.promotions').optional().isBoolean(),
   body('email.updates').optional().isBoolean(),
@@ -317,8 +318,8 @@ router.put('/settings', [
 
 // ==================== CREATE NOTIFICATION (ADMIN/SYSTEM) ====================
 router.post('/', [
-  protect,
-  authorize('admin'),
+  hybridProtect,
+  requireRole('admin'),
   body('user').isMongoId().withMessage('Valid user ID is required'),
   body('title').trim().isLength({ min: 1, max: 200 }).withMessage('Title is required (1-200 chars)'),
   body('message').trim().isLength({ min: 1, max: 1000 }).withMessage('Message is required (1-1000 chars)'),
@@ -416,8 +417,8 @@ router.post('/', [
 
 // ==================== CREATE BULK NOTIFICATIONS ====================
 router.post('/bulk', [
-  protect,
-  authorize('admin'),
+  hybridProtect,
+  requireRole('admin'),
   body('users').isArray({ min: 1 }).withMessage('At least one user ID is required'),
   body('users.*').isMongoId().withMessage('Invalid user ID in array'),
   body('title').trim().isLength({ min: 1, max: 200 }).withMessage('Title is required (1-200 chars)'),
@@ -523,7 +524,7 @@ router.post('/bulk', [
 });
 
 // ==================== GET NOTIFICATION STATISTICS ====================
-router.get('/stats', [protect, authorize('admin')], async (req, res) => {
+router.get('/stats', [hybridProtect, requireRole('admin')], async (req, res) => {
   try {
     const { period = '30d' } = req.query;
 

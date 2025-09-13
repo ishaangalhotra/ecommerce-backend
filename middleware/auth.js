@@ -1,3 +1,9 @@
+// ⚠️ DEPRECATED: This file is deprecated in favor of hybridAuth.js
+// Please migrate to hybridAuth middleware for new development
+// This file is kept for backward compatibility only
+
+console.warn('⚠️  WARNING: Using deprecated auth middleware. Please migrate to hybridAuth.js');
+
 // Re-export from authMiddleware.js and add missing functions
 const authMiddleware = require('./authMiddleware');
 
