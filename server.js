@@ -1108,8 +1108,20 @@ class QuickLocalServer {
       }
     }
 
-    // Static file serving for authentication client
+    // General static file serving from public directory
     const path = require('path');
+    this.app.use(express.static(path.join(__dirname, 'public'), {
+      setHeaders: (res, filePath, stat) => {
+        // Set correct Content-Type for JavaScript files
+        if (path.extname(filePath) === '.js') {
+          res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+          res.setHeader('Access-Control-Allow-Origin', '*');
+        }
+      }
+    }));
+    console.log('✅ Static file serving configured for public directory');
+    
+    // Specific route for authentication client with enhanced CORS headers
     this.app.get('/hybrid-auth-client.js', (req, res) => {
       res.type('application/javascript'); // This is the correct way to set MIME type
       res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 1 day

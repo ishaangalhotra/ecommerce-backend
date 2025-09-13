@@ -422,4 +422,5 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = HybridAuthClient;
 } else {
   window.HybridAuthClient = HybridAuthClient;
+  console.log('✅ HybridAuthClient loaded and available globally');
 }
