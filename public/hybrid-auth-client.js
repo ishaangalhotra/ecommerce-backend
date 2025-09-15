@@ -102,14 +102,15 @@ class HybridAuthClient {
   /**
    * Register new user (uses Supabase)
    */
-  async register(email, password, name, role = 'customer') {
+   async register(userData) { // Changed to accept a single userData object
     try {
+      // The backend expects name, email, password, and optionally phone/role
       const response = await fetch(`${this.backendUrl}/api/hybrid-auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ email, password, name, role })
+        body: JSON.stringify(userData) // Send the entire object
       });
 
       const data = await response.json();
@@ -118,10 +119,12 @@ class HybridAuthClient {
         return {
           success: true,
           message: data.message,
-          requiresVerification: data.requiresVerification
+          requiresVerification: data.requiresVerification,
+          userId: data.userId // Pass along the user ID
         };
       } else {
-        throw new Error(data.message);
+        // Use the specific error message from the backend
+        throw new Error(data.message || 'Registration failed');
       }
     } catch (error) {
       console.error('Registration error:', error);
