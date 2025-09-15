@@ -77,7 +77,8 @@ router.post(
           name,
           role
         },
-        email_confirm: role === 'seller' // Auto-confirm sellers, require verification for customers
+        // THIS IS THE CHANGE
+        email_confirm: true // Auto-confirm all new users
       });
 
       if (authError) {
@@ -94,7 +95,7 @@ router.post(
         email: email.toLowerCase(),
         supabaseId: authData.user.id,
         role,
-        isVerified: role === 'seller', // Sellers auto-verified
+        isVerified: true, // Mark as verified in our database as well
         authProvider: 'supabase',
         walletBalance: role === 'customer' ? 50 : 0, // Welcome bonus for customers
         // No password needed in MongoDB for Supabase users
@@ -121,11 +122,9 @@ router.post(
 
       res.status(201).json({
         success: true,
-        message: role === 'seller' 
-          ? 'Registration successful! You can login immediately.'
-          : 'Registration successful! Please check your email to verify your account.',
+        message: 'Registration successful! You can now log in.',
         userId: user._id,
-        requiresVerification: role === 'customer'
+        requiresVerification: false // No longer requires verification
       });
 
     } catch (err) {
