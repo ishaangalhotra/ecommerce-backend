@@ -1595,18 +1595,9 @@ class QuickLocalServer {
     try {
       const mainRoutes = require('./routes');
       
-      // Add hybrid authentication routes to main router
-      if (hybridAuthRoutes) {
-        try {
-          mainRoutes.use('/auth', hybridAuthRoutes);
-          console.log('✅ Hybrid authentication routes mounted at /api/v1/auth');
-        } catch (error) {
-          console.warn('⚠️ Failed to mount hybrid auth routes:', error.message);
-        }
-      }
-      
+      // Main routes already include auth routes via routes/index.js
       this.app.use('/api/v1', mainRoutes);
-      console.log('✅ Main API routes mounted at /api/v1');
+      console.log('✅ Main API routes mounted at /api/v1 (includes auth routes)');
     } catch (error) {
       console.error('❌ Failed to mount main API routes:', error);
       
@@ -2902,7 +2893,7 @@ server_uptime_seconds ${Math.floor(process.uptime())}`);
       { path: '/api/v1/products', file: './routes/products' },
       { path: '/api/v1/users', file: './routes/users' },
       { path: '/api/v1/orders', file: './routes/orders' },
-      { path: '/api/hybrid-auth', file: './routes/hybridAuth' }
+      { path: '/api/v1/auth', file: './routes/hybridAuth' }
     ];
     
     essentialRoutes.forEach(route => {
@@ -2919,7 +2910,7 @@ server_uptime_seconds ${Math.floor(process.uptime())}`);
   // Emergency route mounting with basic responses
   mountEmergencyRoutes() {
     // Basic hybrid auth route
-    this.app.post('/api/hybrid-auth/login', (req, res) => {
+    this.app.post('/api/v1/auth/login', (req, res) => {
       res.status(503).json({ 
         error: 'Service temporarily unavailable', 
         message: 'Authentication service is being restored' 

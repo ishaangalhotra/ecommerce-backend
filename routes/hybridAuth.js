@@ -1,428 +1,304 @@
-const express = require('express');
-const { body, validationResult } = require('express-validator');
-const { rateLimit } = require('express-rate-limit');
-const crypto = require('crypto');
-const validator = require('validator');
-
-const router = express.Router();
-
-// Import utilities
-const User = require('../models/User');
-const logger = require('../utils/logger');
-const { sendEmail } = require('../utils/email');
-const { hybridProtect, requireRole } = require('../middleware/hybridAuth');
-const { supabase, supabaseAdmin, SupabaseHelpers } = require('../config/supabase');
-
-// Rate limiting for auth endpoints
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // limit each IP to 10 requests per windowMs
-  message: {
-    success: false,
-    message: 'Too many authentication attempts, please try again later.'
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
 /**
- * HYBRID REGISTER - Uses Supabase Auth + MongoDB for user data
- * Reduces memory usage by offloading auth to Supabase
- * Supports email as primary identifier (Supabase requirement)
+ * Supabase Authentication Client for Frontend
+ * Place this in your Vercel frontend project
  */
-router.post(
-  '/register',
-  authLimiter,
-  [
-    body('name').trim().isLength({ min: 2, max: 50 }).withMessage('Name must be 2-50 characters'),
-    body('email').isEmail().normalizeEmail().withMessage('Valid email required'),
-    body('password').isLength({ min: 6, max: 128 }).withMessage('Password must be at least 6 characters'),
-    body('phone').optional().isMobilePhone('en-IN').withMessage('Valid Indian phone number required'),
-    body('role').optional().isIn(['customer', 'seller']).withMessage('Role must be customer or seller')
-  ],
-  async (req, res) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ 
-          success: false, 
-          message: errors.array()[0].msg,
-          errors: errors.array() 
-        });
-      }
 
-      const { name, email, password, phone, role = 'customer' } = req.body;
+// Import Supabase (add this to your package.json: npm install @supabase/supabase-js)
+// import { createClient } from '@supabase/supabase-js'
 
-      // Check if user already exists in MongoDB (email or phone)
-      const existingUserQuery = { 
-        $or: [
-          { email: email.toLowerCase() },
-          ...(phone ? [{ phone }] : [])
-        ]
-      };
-      const existingUser = await User.findOne(existingUserQuery);
-      if (existingUser) {
-        const conflict = existingUser.email === email.toLowerCase() ? 'email' : 'phone number';
-        return res.status(409).json({
-          success: false,
-          message: `An account already exists with this ${conflict}.`
-        });
-      }
+class QuickLocalAuthClient {
+  constructor() {
+    // Your Supabase configuration
+    this.supabaseUrl = 'https://pmvhsjezhuokwygvhhqk.supabase.co';
+    this.supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBtdmhzamV6aHVva3d5Z3ZoaHFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc2NTU3MDUsImV4cCI6MjA3MzIzMTcwNX0.ZrVjuqB28Qer7F7zSdG_rJIs_ZQZhX1PNyrmpK-Qojg';
+    this.backendUrl = 'https://quicklocal-backend.onrender.com';
 
-      // Create user in Supabase Auth (handles password hashing, email verification)
-      const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
-        email: email.toLowerCase(),
-        password,
-        user_metadata: {
-          name,
-          role
-        },
-        // THIS IS THE CHANGE
-        email_confirm: true // Auto-confirm all new users
-      });
+    this.supabase = null;
+    this.currentUser = null;
+    this.listeners = [];
 
-      if (authError) {
-        logger.error('Supabase user creation failed', authError);
-        return res.status(400).json({
-          success: false,
-          message: authError.message || 'Registration failed due to authentication service error'
-        });
-      }
+    this.initializeSupabase();
+    this.initialize();
+  }
 
-      // Create user in MongoDB with Supabase ID
-      const userData = {
-        name: name.trim(),
-        email: email.toLowerCase(),
-        supabaseId: authData.user.id,
-        role,
-        isVerified: true, // Mark as verified in our database as well
-        authProvider: 'supabase',
-        walletBalance: role === 'customer' ? 50 : 0, // Welcome bonus for customers
-        // No password needed in MongoDB for Supabase users
-        password: crypto.randomBytes(32).toString('hex'),
-        ...(phone && { phone })
-      };
-
-      const user = new User(userData);
-      await user.save();
-
-      // Log analytics event to Supabase (memory-efficient logging)
-      await SupabaseHelpers.logAnalyticsEvent('user_registered', {
-        role,
-        email: email.toLowerCase(),
-        method: 'supabase_hybrid'
-      }, authData.user.id);
-
-      logger.info(`Hybrid user registered: ${email}`, {
-        userId: user._id,
-        supabaseId: authData.user.id,
-        role,
-        method: 'supabase_hybrid'
-      });
-
-      res.status(201).json({
-        success: true,
-        message: 'Registration successful! You can now log in.',
-        userId: user._id,
-        requiresVerification: false // No longer requires verification
-      });
-
-    } catch (err) {
-      logger.error('Hybrid registration error', err);
-      res.status(500).json({
-        success: false,
-        message: 'An internal server error occurred during registration.'
-      });
+  initializeSupabase() {
+    // Initialize Supabase client (CDN version)
+    if (typeof window !== 'undefined' && window.supabase) {
+      this.supabase = window.supabase.createClient(this.supabaseUrl, this.supabaseAnonKey);
     }
   }
-);
 
-
-/**
- * HYBRID LOGIN - Supports both Supabase and legacy JWT users
- * Supports email OR phone as identifier (like frontend expects)
- */
-router.post(
-  '/login',
-  authLimiter,
-  [
-    body('identifier')
-      .notEmpty()
-      .withMessage('Email or phone number required')
-      .custom((value) => {
-        // Check if it's a valid email or phone number
-        if (validator.isEmail(value) || validator.isMobilePhone(value, 'en-IN')) {
-          return true;
-        }
-        throw new Error('Please provide a valid email address or Indian phone number');
-      }),
-    body('password').notEmpty().withMessage('Password required')
-  ],
-  async (req, res) => {
+  async initialize() {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ 
-          success: false, 
-          message: errors.array()[0].msg,
-          errors: errors.array() 
-        });
-      }
+      console.log('🔧 Initializing QuickLocal Auth...');
 
-      const { identifier, password } = req.body;
+      // Check for existing Supabase session
+      if (this.supabase) {
+        const { data: { session } } = await this.supabase.auth.getSession();
+        if (session) {
+          console.log('📱 Found Supabase session');
+          this.currentUser = session.user;
+          this.notifyListeners(this.currentUser);
+        } else {
+          console.log('👤 No existing session found');
+        }
+      } else {
+        console.error('❌ Supabase client not initialized.');
+      }
+    } catch (error) {
+      console.error('❌ Failed to initialize auth:', error);
+    }
+  }
+
+  /**
+   * Register new user with Supabase
+   */
+  async register(email, password, name, role = 'customer') {
+    try {
+      console.log(`📝 Registering new ${role}:`, email);
       
-      // Determine if identifier is email or phone
-      const isEmail = validator.isEmail(identifier);
-      const searchQuery = isEmail 
-        ? { email: identifier.toLowerCase() }
-        : { phone: identifier };
-
-      // Find user in MongoDB
-      const user = await User.findOne({ 
-        ...searchQuery,
-        isActive: true 
-      }).lean(); // Use .lean() for faster, plain object read
-
-      if (!user || !user.supabaseId) {
-        return res.status(401).json({
-          success: false,
-          message: 'Invalid credentials or account not found.'
-        });
-      }
-
-      let authData = null;
-
-      // If user has Supabase ID, authenticate via Supabase
-      if (user.supabaseId) {
-        // Supabase only supports email login, so use user's email
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: user.email.toLowerCase(),
-          password
-        });
-
-        if (error) {
-          logger.warn('Supabase login failed', { identifier, error: error.message });
-          return res.status(401).json({
-            success: false,
-            message: 'Invalid credentials. Please check and try again.'
-          });
-        }
-
-        authData = data;
-      } else {
-        // Legacy JWT authentication for existing users
-        const legacyUser = await User.findOne(searchQuery)
-          .select('+password');
-
-        if (!legacyUser || !(await legacyUser.correctPassword(password))) {
-          return res.status(401).json({
-            success: false,
-            message: 'Invalid email or password'
-          });
-        }
-
-        // Migrate legacy user to Supabase in background
-        setImmediate(async () => {
-          try {
-            await SupabaseHelpers.syncUserToSupabase(legacyUser);
-            logger.info('Legacy user synced to Supabase', { userId: legacyUser._id });
-          } catch (syncError) {
-            logger.error('Failed to sync legacy user to Supabase', syncError);
-          }
-        });
-
-        // Create JWT token for legacy users
-        const token = legacyUser.getSignedJwtToken();
-        return res.json({
-          success: true,
-          message: 'Login successful (legacy mode)',
-          token,
-          user: {
-            id: legacyUser._id,
-            name: legacyUser.name,
-            email: legacyUser.email,
-            role: legacyUser.role,
-            isVerified: legacyUser.isVerified
-          }
-        });
-      }
-
-      // For Supabase users, return the session token
-      await SupabaseHelpers.logAnalyticsEvent('user_login', {
-        identifier,
-        email: user.email,
-        method: 'supabase_hybrid',
-        loginType: isEmail ? 'email' : 'phone',
-        ip: req.ip
-      }, user.supabaseId);
-
-      logger.info(`Hybrid login successful: ${identifier}`, {
-        userId: user._id,
-        supabaseId: user.supabaseId,
-        method: 'supabase_hybrid'
+      const { data, error } = await this.supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name,
+            role,
+          },
+        },
       });
 
-      res.json({
+      if (error) {
+        console.error('❌ Registration failed:', error.message);
+        return { success: false, message: error.message };
+      }
+
+      console.log('✅ Registration successful');
+      
+      // Update local state if a session is returned (e.g., if auto-login is enabled)
+      if (data.session) {
+        this.currentUser = data.user;
+        this.notifyListeners(this.currentUser);
+      }
+
+      return {
         success: true,
-        message: 'Login successful',
-        accessToken: authData.session.access_token,
-        refreshToken: authData.session.refresh_token,
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          phone: user.phone,
-          role: user.role,
-          isVerified: user.isVerified,
-          walletBalance: user.walletBalance
-        }
-      });
-
-    } catch (err) {
-      logger.error('Hybrid login error', err);
-      res.status(500).json({
-        success: false,
-        message: 'An internal server error occurred during login.'
-      });
+        message: 'Registration successful! Please check your email for a verification link.',
+        requiresVerification: true,
+      };
+    } catch (error) {
+      console.error('❌ Registration error:', error);
+      return { success: false, message: error.message };
     }
   }
-);
 
-/**
- * HYBRID LOGOUT - Works with both auth methods
- */
-router.post('/logout', hybridProtect, async (req, res) => {
-  try {
-    // If using Supabase auth, sign out from Supabase
-    if (req.authMethod === 'supabase') {
-      await supabase.auth.signOut();
-    }
-
-    logger.info('Hybrid logout successful', {
-      userId: req.user._id,
-      authMethod: req.authMethod
-    });
-
-    res.json({
-      success: true,
-      message: 'Logged out successfully'
-    });
-
-  } catch (err) {
-    logger.error('Hybrid logout error', err);
-    res.status(500).json({
-      success: false,
-      message: 'Logout failed'
-    });
-  }
-});
-
-/**
- * GET USER PROFILE - Works with hybrid auth
- */
-router.get('/me', hybridProtect, async (req, res) => {
-  try {
-    // Get fresh user data from MongoDB
-    const user = await User.findById(req.user._id || req.user.id)
-      .select('-password -refreshToken')
-      .populate('addresses', 'street city state pincode isDefault')
-      .lean();
-
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
-
-    res.json({
-      success: true,
-      user: {
-        ...user,
-        authMethod: req.authMethod
-      }
-    });
-
-  } catch (err) {
-    logger.error('Get profile error', err);
-    res.status(500).json({ success: false, message: 'Failed to get profile' });
-  }
-});
-
-/**
- * REFRESH TOKEN - Supabase handles this automatically
- */
-router.post('/refresh-token', async (req, res) => {
-  try {
-    const { refresh_token } = req.body;
-
-    if (!refresh_token) {
-      return res.status(401).json({
-        success: false,
-        message: 'Refresh token required'
-      });
-    }
-
-    const { data, error } = await supabase.auth.refreshSession({
-      refresh_token
-    });
-
-    if (error) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid refresh token'
-      });
-    }
-
-    res.json({
-      success: true,
-      accessToken: data.session.access_token,
-      refreshToken: data.session.refresh_token
-    });
-
-  } catch (err) {
-    logger.error('Token refresh error', err);
-    res.status(500).json({
-      success: false,
-      message: 'Token refresh failed'
-    });
-  }
-});
-
-/**
- * PASSWORD RESET - Uses Supabase for memory efficiency
- */
-router.post('/forgot-password', 
-  authLimiter,
-  [body('email').isEmail().normalizeEmail().withMessage('Valid email required')],
-  async (req, res) => {
+  /**
+   * Login user with Supabase
+   */
+  async login(email, password) {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({ success: false, errors: errors.array() });
-      }
+      console.log('🔐 Attempting login for:', email);
 
-      const { email } = req.body;
-
-      // Use Supabase reset password (more memory efficient)
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${process.env.CLIENT_URL}/reset-password`
+      const { data, error } = await this.supabase.auth.signInWithPassword({
+        email,
+        password,
       });
 
-      // Always return success for security (don't reveal if email exists)
-      res.json({
-        success: true,
-        message: 'If an account with that email exists, a password reset link has been sent.'
-      });
-
-      if (!error) {
-        logger.info('Password reset requested', { email });
-      } else {
-        logger.error('Password reset failed', { email, error });
+      if (error) {
+        console.error('❌ Login failed:', error.message);
+        return { success: false, message: error.message };
       }
 
-    } catch (err) {
-      logger.error('Forgot password error', err);
-      res.status(500).json({ success: false, message: 'Password reset request failed' });
+      this.currentUser = data.user;
+      this.notifyListeners(this.currentUser);
+
+      console.log('✅ Login successful with Supabase');
+      return { success: true, user: data.user, message: 'Login successful' };
+    } catch (error) {
+      console.error('❌ Login error:', error);
+      return { success: false, message: error.message };
     }
   }
-);
 
-module.exports = router;
+  /**
+   * Logout user
+   */
+  async logout() {
+    try {
+      console.log('👋 Logging out...');
+      await this.supabase.auth.signOut();
+      this.currentUser = null;
+      this.notifyListeners(null);
+      console.log('✅ Logout successful');
+      return { success: true };
+    } catch (error) {
+      console.error('❌ Logout error:', error);
+      return { success: false, message: error.message };
+    }
+  }
+
+  /**
+   * Get Supabase authorization header for API calls
+   */
+  async getAuthHeader() {
+    if (this.supabase) {
+      const { data: { session } } = await this.supabase.auth.getSession();
+      if (session) {
+        return `Bearer ${session.access_token}`;
+      }
+    }
+    return '';
+  }
+
+  /**
+   * Make authenticated API calls to your backend
+   */
+  async apiCall(endpoint, options = {}) {
+    const defaultHeaders = {
+      'Content-Type': 'application/json',
+      'Authorization': await this.getAuthHeader()
+    };
+
+    const response = await fetch(`${this.backendUrl}${endpoint}`, {
+      ...options,
+      headers: { ...defaultHeaders, ...options.headers }
+    });
+
+    return response;
+  }
+
+  /**
+   * Subscribe to authentication state changes
+   */
+  onAuthStateChange(callback) {
+    this.listeners.push(callback);
+    if (this.currentUser !== undefined) {
+      callback(this.currentUser);
+    }
+
+    // Supabase built-in auth state listener
+    this.supabase.auth.onAuthStateChange((event, session) => {
+      if (session) {
+        this.currentUser = session.user;
+        this.notifyListeners(this.currentUser);
+      } else {
+        this.currentUser = null;
+        this.notifyListeners(null);
+      }
+    });
+  }
+
+  /**
+   * Notify all listeners of auth state changes
+   */
+  notifyListeners(user) {
+    this.listeners.forEach(callback => {
+      try {
+        callback(user);
+      } catch (error) {
+        console.error('❌ Auth listener error:', error);
+      }
+    });
+  }
+
+  /**
+   * Get current authenticated user
+   */
+  getCurrentUser() {
+    return this.currentUser;
+  }
+
+  /**
+   * Check if user is authenticated
+   */
+  isAuthenticated() {
+    return !!this.currentUser;
+  }
+
+  /**
+   * Get user role
+   */
+  getUserRole() {
+    return this.currentUser?.user_metadata?.role || 'guest';
+  }
+
+  /**
+   * Check if user has specific role
+   */
+  hasRole(role) {
+    return this.currentUser?.user_metadata?.role === role;
+  }
+
+  /**
+   * Utility functions for common API calls
+   */
+
+  // Load products with authentication context
+  async loadProducts(filters = {}) {
+    try {
+      const queryParams = new URLSearchParams(filters).toString();
+      const response = await this.apiCall(`/api/v1/products${queryParams ? '?' + queryParams : ''}`);
+
+      if (response.ok) {
+        const data = await response.json();
+        return { success: true, products: data.products };
+      } else {
+        return { success: false, message: 'Failed to load products' };
+      }
+    } catch (error) {
+      console.error('❌ Failed to load products:', error);
+      return { success: false, message: error.message };
+    }
+  }
+
+  // Get user profile
+  async getUserProfile() {
+    try {
+      const response = await this.apiCall('/api/v1/users/profile');
+
+      if (response.ok) {
+        const data = await response.json();
+        return { success: true, profile: data.user };
+      } else {
+        return { success: false, message: 'Failed to load profile' };
+      }
+    } catch (error) {
+      console.error('❌ Failed to load profile:', error);
+      return { success: false, message: error.message };
+    }
+  }
+
+  // Add to cart
+  async addToCart(productId, quantity = 1) {
+    try {
+      const response = await this.apiCall('/api/v1/cart/add', {
+        method: 'POST',
+        body: JSON.stringify({ productId, quantity })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        return { success: true, cart: data.cart };
+      } else {
+        const data = await response.json();
+        return { success: false, message: data.message };
+      }
+    } catch (error) {
+      console.error('❌ Failed to add to cart:', error);
+      return { success: false, message: error.message };
+    }
+  }
+}
+
+// Create global instance
+window.quickLocalAuth = new QuickLocalAuthClient();
+
+// Export for module systems
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = QuickLocalAuthClient;
+}
+
+// Log initialization
+console.log('🚀 QuickLocal Supabase Auth Client loaded successfully');
+console.log('🔗 Backend URL:', 'https://quicklocal-backend.onrender.com');
+console.log('🗃️ Supabase URL:', 'https://pmvhsjezhuokwygvhhqk.supabase.co');

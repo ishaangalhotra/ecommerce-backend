@@ -5,25 +5,42 @@ const router = express.Router();
 const Category = require('../models/Category'); // Added Category model import
 
 // ===== Auth middleware (fail-secure) =====
-let hybridProtect, authorize;
+let hybridProtect, requireRole, authorize;
 let authModuleLoaded = false;
 
 try {
-  const auth = require('../middleware/authMiddleware');
-  hybridProtect = auth.hybridProtect;
-  authorize = auth.authorize;
+  const hybridAuth = require('../middleware/hybridAuth');
+  hybridProtect = hybridAuth.hybridProtect;
+  requireRole = hybridAuth.requireRole;
+  
+  // Keep backward compatibility with old auth middleware
+  try {
+    const auth = require('../middleware/authMiddleware');
+    authorize = auth.authorize;
+  } catch {
+    // If old auth not available, use hybrid for all
+    authorize = hybridAuth.requireRole;
+  }
 
-  if (typeof hybridProtect !== 'function' || typeof authorize !== 'function') {
+  if (typeof hybridProtect !== 'function' || typeof requireRole !== 'function') {
     throw new Error('Auth middleware functions are not properly exported');
   }
 
   authModuleLoaded = true;
-  console.log('✅ Authentication middleware loaded successfully');
+  console.log('✅ Hybrid authentication middleware loaded successfully');
 } catch (error) {
   console.error('🔐 CRITICAL SECURITY ERROR: Auth middleware failed to load:', error.message);
 
   hybridProtect = () => (req, res) => {
     console.error('🚨 SECURITY BREACH ATTEMPT: Auth middleware unavailable, blocking request');
+    res.status(503).json({
+      error: 'Service temporarily unavailable due to security module failure',
+      code: 'AUTH_MODULE_UNAVAILABLE'
+    });
+  };
+
+  requireRole = () => (req, res) => {
+    console.error('🚨 SECURITY BREACH ATTEMPT: Role authorization unavailable, blocking request');
     res.status(503).json({
       error: 'Service temporarily unavailable due to security module failure',
       code: 'AUTH_MODULE_UNAVAILABLE'

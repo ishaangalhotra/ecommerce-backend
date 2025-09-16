@@ -14,6 +14,7 @@ class PerformanceMonitoringSystem {
       dbConnections: 80 // percentage of pool
     };
     this.startTime = Date.now();
+    this.lastHighMemoryAlert = 0; // Track last memory alert time
     this.initialize();
   }
 
@@ -416,13 +417,24 @@ class PerformanceMonitoringSystem {
   checkSystemAlerts(metrics) {
     const alerts = [];
     
-    // Memory usage alert
-    if (metrics.memory.heapUtilization > this.alertThresholds.memoryUsage * 100) {
+    // Memory usage alert - Only alert on critical levels to reduce spam
+    if (metrics.memory.heapUtilization > 95) {
+      alerts.push({
+        type: 'memory',
+        severity: 'critical',
+        message: `Critical memory usage: ${metrics.memory.heapUtilization.toFixed(2)}%`,
+        threshold: 95,
+        actual: metrics.memory.heapUtilization,
+        timestamp: new Date()
+      });
+    } else if (metrics.memory.heapUtilization > 85 && this.lastHighMemoryAlert + 300000 < Date.now()) {
+      // Only alert every 5 minutes for high memory usage
+      this.lastHighMemoryAlert = Date.now();
       alerts.push({
         type: 'memory',
         severity: 'warning',
         message: `High memory usage: ${metrics.memory.heapUtilization.toFixed(2)}%`,
-        threshold: this.alertThresholds.memoryUsage * 100,
+        threshold: 85,
         actual: metrics.memory.heapUtilization,
         timestamp: new Date()
       });
