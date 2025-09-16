@@ -325,7 +325,7 @@ const logger = require('./utils/logger');
 const { connectDB } = require('./config/database');
 const applySecurity = require('./middleware/security');
 const ValidationMiddleware = require('./middleware/validation');
-// AuthenticationMiddleware removed - now using hybridAuth.js
+const AuthenticationMiddleware = require('./middleware/authMiddleware');
 const MetricsCollector = require('./utils/metrics');
 const CircuitBreaker = require('./utils/circuitBreaker');
 
