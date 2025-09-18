@@ -1046,7 +1046,9 @@ function getUploadedFiles(req) {
 async function cleanupFiles(files = [], options = {}) {
     const { force = false, retries = 3 } = options;
     
-    if (!Array.isArray(files) return;
+    if (!Array.isArray(files)) {
+  return;
+}
 
     const results = await Promise.allSettled(
         files.map(async (file) => {

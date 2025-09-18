@@ -1,9 +1,8 @@
-// routes/seller.js - FIXED VERSION
 const express = require('express');
 const mongoose = require('mongoose');
 const router = express.Router();
-const Category = require('../models/Category'); // Added Category model import
-const upload = require('../middleware/uploadMiddleware'); // Assuming this is needed for product uploads
+const Category = require('../models/Category');
+const upload = require('../middleware/uploadMiddleware');
 const {
   validateProductId,
   validateProductData,
@@ -55,7 +54,6 @@ try {
   console.error('🔐 CRITICAL SECURITY ERROR: Auth middleware failed to load:', error.message);
 
   // Corrected fallback middleware
-  // This function is now a proper Express middleware (req, res, next)
   hybridProtect = (req, res, next) => {
     console.error('🚨 SECURITY BREACH ATTEMPT: Auth middleware unavailable, blocking request');
     res.status(503).json({
@@ -64,13 +62,12 @@ try {
     });
   };
 
-  // Corrected fallback for requireRole to ensure it works as expected
+  // Corrected fallback for requireRole
   requireRole = () => (req, res, next) => {
     hybridProtect(req, res, next);
   };
 
   authModuleLoaded = false;
-  controllerModuleLoaded = false;
 }
 
 // ===== Controller/Service module (fail-secure) =====
@@ -219,7 +216,6 @@ if (authModuleLoaded && controllerModuleLoaded) {
   router.get('/customers', asyncHandler(sellerController.getSellerCustomers));
 
   console.log('✅ Seller routes initialized successfully');
-
 } else {
   console.error('❌ Seller routes are disabled due to failed dependencies');
   // Fallback routes if dependencies failed to load
