@@ -10,14 +10,16 @@
 class HybridAuthClient {
   constructor(supabaseUrl, supabaseAnonKey, backendUrl) {
     // Initialize Supabase client
-    this.supabase = window.supabase?.createClient ? 
+    this.supabase = window.supabase?.createClient ?
       window.supabase.createClient(supabaseUrl, supabaseAnonKey) :
       null;
-    
+
     this.backendUrl = backendUrl;
+    // Define the API base path
+    this.apiBasePath = '/api/v1';
     this.currentUser = null;
     this.authMethod = null;
-    
+
     // Initialize auth state
     this.initializeAuth();
   }
@@ -52,9 +54,10 @@ class HybridAuthClient {
   async handleSupabaseAuth(session) {
     try {
       this.authMethod = 'supabase';
-      
+
       // Get user details from your backend
-      const response = await fetch(`${this.backendUrl}/api/hybrid-auth/me`, {
+      // FIXED: Added this.apiBasePath
+      const response = await fetch(`${this.backendUrl}${this.apiBasePath}/hybrid-auth/me`, {
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json'
@@ -77,8 +80,9 @@ class HybridAuthClient {
   async handleLegacyAuth(token) {
     try {
       this.authMethod = 'jwt';
-      
-      const response = await fetch(`${this.backendUrl}/api/hybrid-auth/me`, {
+
+      // FIXED: Added this.apiBasePath
+      const response = await fetch(`${this.backendUrl}${this.apiBasePath}/hybrid-auth/me`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -105,7 +109,8 @@ class HybridAuthClient {
    async register(userData) { // Changed to accept a single userData object
     try {
       // The backend expects name, email, password, and optionally phone/role
-      const response = await fetch(`${this.backendUrl}/api/hybrid-auth/register`, {
+      // FIXED: Added this.apiBasePath
+      const response = await fetch(`${this.backendUrl}${this.apiBasePath}/hybrid-auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -114,7 +119,7 @@ class HybridAuthClient {
       });
 
       const data = await response.json();
-      
+
       if (response.ok) {
         return {
           success: true,
@@ -140,7 +145,8 @@ class HybridAuthClient {
    */
   async login(email, password) {
     try {
-      const response = await fetch(`${this.backendUrl}/api/hybrid-auth/login`, {
+      // FIXED: Added this.apiBasePath
+      const response = await fetch(`${this.backendUrl}${this.apiBasePath}/hybrid-auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -149,14 +155,14 @@ class HybridAuthClient {
       });
 
       const data = await response.json();
-      
+
       if (response.ok) {
         // Handle Supabase tokens
         if (data.accessToken && data.refreshToken) {
           localStorage.setItem('supabase_access_token', data.accessToken);
           localStorage.setItem('supabase_refresh_token', data.refreshToken);
           this.authMethod = 'supabase';
-        } 
+        }
         // Handle legacy JWT
         else if (data.token) {
           localStorage.setItem('token', data.token);
@@ -172,7 +178,8 @@ class HybridAuthClient {
           message: data.message
         };
       } else {
-        throw new Error(data.message);
+        // This is where the original error was thrown from
+        throw new Error(data.message || `Request failed with status ${response.status}`);
       }
     } catch (error) {
       console.error('Login error:', error);
@@ -189,7 +196,8 @@ class HybridAuthClient {
   async logout() {
     try {
       // Call backend logout
-      await fetch(`${this.backendUrl}/api/hybrid-auth/logout`, {
+      // FIXED: Added this.apiBasePath
+      await fetch(`${this.backendUrl}${this.apiBasePath}/hybrid-auth/logout`, {
         method: 'POST',
         headers: {
           'Authorization': this.getAuthHeader(),
@@ -241,8 +249,10 @@ class HybridAuthClient {
       'Content-Type': 'application/json',
       'Authorization': this.getAuthHeader()
     };
+    // Ensure endpoint starts with the base path
+    const fullEndpoint = endpoint.startsWith(this.apiBasePath) ? endpoint : `${this.apiBasePath}${endpoint}`;
 
-    const response = await fetch(`${this.backendUrl}${endpoint}`, {
+    const response = await fetch(`${this.backendUrl}${fullEndpoint}`, {
       ...options,
       headers: {
         ...defaultHeaders,
@@ -255,7 +265,7 @@ class HybridAuthClient {
       const refreshed = await this.refreshToken();
       if (refreshed) {
         // Retry the request with new token
-        return fetch(`${this.backendUrl}${endpoint}`, {
+        return fetch(`${this.backendUrl}${fullEndpoint}`, {
           ...options,
           headers: {
             ...defaultHeaders,
@@ -277,7 +287,8 @@ class HybridAuthClient {
       const refreshToken = localStorage.getItem('supabase_refresh_token');
       if (!refreshToken) return false;
 
-      const response = await fetch(`${this.backendUrl}/api/hybrid-auth/refresh-token`, {
+      // FIXED: Added this.apiBasePath
+      const response = await fetch(`${this.backendUrl}${this.apiBasePath}/hybrid-auth/refresh-token`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -297,6 +308,7 @@ class HybridAuthClient {
     return false;
   }
 
+  // ... (rest of the file remains the same)
   /**
    * Subscribe to real-time updates via Supabase
    */
@@ -337,7 +349,7 @@ class HybridAuthClient {
   async getNotifications() {
     if (!this.currentUser) return [];
 
-    const response = await this.apiCall('/api/notifications');
+    const response = await this.apiCall('/notifications');
     if (response.ok) {
       const data = await response.json();
       return data.notifications;
@@ -349,7 +361,7 @@ class HybridAuthClient {
    * Mark notification as read
    */
   async markNotificationRead(notificationId) {
-    const response = await this.apiCall(`/api/notifications/${notificationId}/read`, {
+    const response = await this.apiCall(`/notifications/${notificationId}/read`, {
       method: 'PATCH'
     });
     return response.ok;
@@ -437,7 +449,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // Make both class and instance available globally
   window.HybridAuthClient = hybridAuthClient; // Instance for immediate use
   window.HybridAuthClientClass = HybridAuthClient; // Class for manual instantiation
-  
+
   console.log('✅ HybridAuthClient loaded and available globally');
   console.log('🔧 Auto-instantiated client ready for use');
 }
