@@ -93,6 +93,37 @@ let controllerModuleLoaded = false;
 
 try {
   sellerController = require('../controllers/sellerController');
+  
+  // FIX: Check if the controller methods exist and provide fallbacks if they don't
+  if (!sellerController.uploadProduct) {
+    console.warn('⚠️ uploadProduct method not found in sellerController');
+    sellerController.uploadProduct = (req, res) => {
+      res.status(503).json({
+        error: 'Seller service is currently unavailable. Please try again later.',
+        code: 'SERVICE_UNAVAILABLE'
+      });
+    };
+  }
+  
+  // Ensure all required methods exist with proper fallbacks
+  const requiredMethods = [
+    'getSellerProducts', 'exportProducts', 'updateProduct', 'deleteProduct',
+    'getSellerDashboard', 'getProductAnalytics', 'bulkUpdateProducts',
+    'getSellerOrders', 'updateOrderStatus', 'getSellerCustomers'
+  ];
+  
+  requiredMethods.forEach(method => {
+    if (!sellerController[method]) {
+      console.warn(`⚠️ ${method} method not found in sellerController`);
+      sellerController[method] = (req, res) => {
+        res.status(503).json({
+          error: 'Seller service is currently unavailable. Please try again later.',
+          code: 'SERVICE_UNAVAILABLE'
+        });
+      };
+    }
+  });
+  
   controllerModuleLoaded = true;
   console.log('✅ Seller controller loaded successfully');
 } catch (error) {
@@ -108,7 +139,6 @@ try {
 
   sellerController = {
     // All controller methods point to the same unavailable handler
-    createProduct: handleUnavailable,
     uploadProduct: handleUnavailable,
     getSellerProducts: handleUnavailable,
     getMyProducts: handleUnavailable,
@@ -145,7 +175,7 @@ if (authModuleLoaded && controllerModuleLoaded) {
     // --- FIXED: Call the 'multipleImages' function with proper fallback ---
     multipleImages('images', 5),
     validateProductData,
-    asyncHandler(sellerController.createProduct)
+    asyncHandler(sellerController.uploadProduct) // FIX: Changed from createProduct to uploadProduct
   );
 
   /**
