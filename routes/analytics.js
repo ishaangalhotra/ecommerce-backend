@@ -4,7 +4,7 @@ const Order = require('../models/Order');
 const Product = require('../models/Product');
 const User = require('../models/User');
 const { hybridProtect, requireRole } = require('../middleware/hybridAuth');
-const { authorize } = require('../middleware/authMiddleware'); // Keep for backward compatibility
+// Old authMiddleware replaced with hybridAuth
 const router = express.Router();
 
 // ==================== GET DASHBOARD ANALYTICS ====================
