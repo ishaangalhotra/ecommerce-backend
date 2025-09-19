@@ -975,8 +975,322 @@ const exportProducts = async (req, res) => {
   }
 };
 
+// Get Seller Orders - NEW IMPLEMENTATION
+const getSellerOrders = async (req, res) => {
+  try {
+    const sellerId = new mongoose.Types.ObjectId(req.user.id);
+    const {
+      status = 'all',
+      page = 1,
+      limit = 20,
+      sortBy = 'createdAt',
+      sortOrder = 'desc'
+    } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
+
+    // Build match conditions for seller's products
+    const matchConditions = { 'prod.seller': sellerId };
+    if (status !== 'all') {
+      matchConditions['items.status'] = status;
+    }
+
+    const sort = {};
+    sort[sortBy === 'createdAt' ? 'createdAt' : '_id'] = sortOrder === 'desc' ? -1 : 1;
+
+    const [ordersData, totalCount] = await Promise.all([
+      Order.aggregate([
+        { $unwind: '$items' },
+        {
+          $lookup: {
+            from: 'products',
+            localField: 'items.product',
+            foreignField: '_id',
+            as: 'prod'
+          }
+        },
+        { $unwind: '$prod' },
+        { $match: matchConditions },
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'user',
+            foreignField: '_id',
+            as: 'customer'
+          }
+        },
+        { $unwind: { path: '$customer', preserveNullAndEmptyArrays: true } },
+        {
+          $group: {
+            _id: '$_id',
+            orderNumber: { $first: '$orderNumber' },
+            customer: { $first: '$customer' },
+            totalAmount: { $first: '$totalAmount' },
+            orderStatus: { $first: '$status' },
+            createdAt: { $first: '$createdAt' },
+            items: {
+              $push: {
+                _id: '$items._id',
+                product: '$prod',
+                quantity: '$items.quantity',
+                price: '$items.price',
+                status: '$items.status'
+              }
+            }
+          }
+        },
+        { $sort: sort },
+        { $skip: (pageNum - 1) * limitNum },
+        { $limit: limitNum }
+      ]),
+      Order.aggregate([
+        { $unwind: '$items' },
+        {
+          $lookup: {
+            from: 'products',
+            localField: 'items.product',
+            foreignField: '_id',
+            as: 'prod'
+          }
+        },
+        { $unwind: '$prod' },
+        { $match: matchConditions },
+        { $group: { _id: '$_id' } },
+        { $count: 'total' }
+      ])
+    ]);
+
+    const totalOrders = totalCount[0]?.total || 0;
+    const totalPages = Math.ceil(totalOrders / limitNum);
+
+    res.json({
+      success: true,
+      message: 'Seller orders retrieved successfully',
+      data: {
+        orders: ordersData,
+        pagination: {
+          currentPage: pageNum,
+          totalPages,
+          totalOrders,
+          hasNextPage: pageNum < totalPages,
+          hasPrevPage: pageNum > 1,
+          limit: limitNum
+        }
+      }
+    });
+
+  } catch (error) {
+    logger.error('Get seller orders error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching seller orders',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+};
+
+// Update Order Status - NEW IMPLEMENTATION
+const updateOrderStatus = async (req, res) => {
+  try {
+    const { id: orderId } = req.params;
+    const { status, itemId } = req.body;
+    const sellerId = new mongoose.Types.ObjectId(req.user.id);
+
+    if (!mongoose.Types.ObjectId.isValid(orderId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid order ID'
+      });
+    }
+
+    const validStatuses = ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid status. Must be one of: ' + validStatuses.join(', ')
+      });
+    }
+
+    // Find the order and verify seller owns the product
+    const order = await Order.findById(orderId).populate('items.product');
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found'
+      });
+    }
+
+    // Check if seller owns any items in this order
+    const sellerItems = order.items.filter(item => 
+      item.product && item.product.seller.toString() === sellerId.toString()
+    );
+
+    if (sellerItems.length === 0) {
+      return res.status(403).json({
+        success: false,
+        message: 'You do not have permission to update this order'
+      });
+    }
+
+    // Update specific item or all seller's items
+    if (itemId) {
+      const itemIndex = order.items.findIndex(item => 
+        item._id.toString() === itemId && 
+        item.product.seller.toString() === sellerId.toString()
+      );
+      
+      if (itemIndex === -1) {
+        return res.status(404).json({
+          success: false,
+          message: 'Item not found or you do not have permission to update it'
+        });
+      }
+      
+      order.items[itemIndex].status = status;
+    } else {
+      // Update all items belonging to this seller
+      order.items.forEach(item => {
+        if (item.product && item.product.seller.toString() === sellerId.toString()) {
+          item.status = status;
+        }
+      });
+    }
+
+    await order.save();
+
+    logger.info('Order status updated', {
+      orderId,
+      sellerId,
+      status,
+      itemId
+    });
+
+    res.json({
+      success: true,
+      message: 'Order status updated successfully',
+      data: {
+        orderId,
+        status,
+        updatedAt: new Date()
+      }
+    });
+
+  } catch (error) {
+    logger.error('Update order status error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error updating order status',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+};
+
+// Get Seller Customers - NEW IMPLEMENTATION
+const getSellerCustomers = async (req, res) => {
+  try {
+    const sellerId = new mongoose.Types.ObjectId(req.user.id);
+    const { page = 1, limit = 20 } = req.query;
+
+    const pageNum = Math.max(1, parseInt(page));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
+
+    const [customersData, totalCount] = await Promise.all([
+      Order.aggregate([
+        { $unwind: '$items' },
+        {
+          $lookup: {
+            from: 'products',
+            localField: 'items.product',
+            foreignField: '_id',
+            as: 'prod'
+          }
+        },
+        { $unwind: '$prod' },
+        { $match: { 'prod.seller': sellerId } },
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'user',
+            foreignField: '_id',
+            as: 'customer'
+          }
+        },
+        { $unwind: '$customer' },
+        {
+          $group: {
+            _id: '$customer._id',
+            customerInfo: { $first: '$customer' },
+            totalOrders: { $addToSet: '$_id' },
+            totalSpent: { $sum: { $multiply: ['$items.price', '$items.quantity'] } },
+            lastOrderDate: { $max: '$createdAt' },
+            firstOrderDate: { $min: '$createdAt' }
+          }
+        },
+        {
+          $project: {
+            _id: 1,
+            name: '$customerInfo.name',
+            email: '$customerInfo.email',
+            phone: '$customerInfo.phone',
+            totalOrders: { $size: '$totalOrders' },
+            totalSpent: 1,
+            lastOrderDate: 1,
+            firstOrderDate: 1
+          }
+        },
+        { $sort: { lastOrderDate: -1 } },
+        { $skip: (pageNum - 1) * limitNum },
+        { $limit: limitNum }
+      ]),
+      Order.aggregate([
+        { $unwind: '$items' },
+        {
+          $lookup: {
+            from: 'products',
+            localField: 'items.product',
+            foreignField: '_id',
+            as: 'prod'
+          }
+        },
+        { $unwind: '$prod' },
+        { $match: { 'prod.seller': sellerId } },
+        { $group: { _id: '$user' } },
+        { $count: 'total' }
+      ])
+    ]);
+
+    const totalCustomers = totalCount[0]?.total || 0;
+    const totalPages = Math.ceil(totalCustomers / limitNum);
+
+    res.json({
+      success: true,
+      message: 'Seller customers retrieved successfully',
+      data: {
+        customers: customersData,
+        pagination: {
+          currentPage: pageNum,
+          totalPages,
+          totalCustomers,
+          hasNextPage: pageNum < totalPages,
+          hasPrevPage: pageNum > 1,
+          limit: limitNum
+        }
+      }
+    });
+
+  } catch (error) {
+    logger.error('Get seller customers error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching seller customers',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+};
+
 module.exports = {
-  validateProduct,       // array of validators
+  validateProduct,
   uploadProduct,
   getMyProducts,
   updateProduct,
@@ -984,5 +1298,12 @@ module.exports = {
   getSellerDashboard,
   getProductAnalytics,
   bulkUpdateProducts,
-  exportProducts
+  exportProducts,
+  getSellerOrders,
+  updateOrderStatus,
+  getSellerCustomers,
+  
+  // Aliases for backward compatibility with routes
+  createProduct: uploadProduct,
+  getSellerProducts: getMyProducts
 };

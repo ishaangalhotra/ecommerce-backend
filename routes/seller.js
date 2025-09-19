@@ -68,9 +68,9 @@ try {
   authModuleLoaded = true;
   console.log('✅ Hybrid authentication middleware loaded successfully');
 } catch (error) {
-  console.error('🔐 CRITICAL SECURITY ERROR: Auth middleware failed to load:', error.message);
+  console.error('🔒 CRITICAL SECURITY ERROR: Auth middleware failed to load:', error.message);
 
-  // Corrected fallback middleware
+  // Fixed fallback middleware
   hybridProtect = (req, res, next) => {
     console.error('🚨 SECURITY BREACH ATTEMPT: Auth middleware unavailable, blocking request');
     res.status(503).json({
@@ -79,7 +79,7 @@ try {
     });
   };
 
-  // Corrected fallback for requireRole
+  // Fixed fallback for requireRole
   requireRole = () => (req, res, next) => {
     hybridProtect(req, res, next);
   };
@@ -97,27 +97,33 @@ try {
   console.log('✅ Seller controller loaded successfully');
 } catch (error) {
   console.error('❌ Failed to load seller controller:', error.message);
-  sellerController = {
-    // A placeholder that handles requests when the controller is unavailable
-    handleUnavailable: (req, res) => {
-      res.status(503).json({
-        error: 'Seller service is currently unavailable. Please try again later.',
-        code: 'SERVICE_UNAVAILABLE'
-      });
-    },
-    // Map each expected controller function to the placeholder
-    createProduct: (req, res) => this.handleUnavailable(req, res),
-    getSellerProducts: (req, res) => this.handleUnavailable(req, res),
-    exportProducts: (req, res) => this.handleUnavailable(req, res),
-    updateProduct: (req, res) => this.handleUnavailable(req, res),
-    deleteProduct: (req, res) => this.handleUnavailable(req, res),
-    bulkUpdateProducts: (req, res) => this.handleUnavailable(req, res),
-    getSellerDashboard: (req, res) => this.handleUnavailable(req, res),
-    getProductAnalytics: (req, res) => this.handleUnavailable(req, res),
-    getSellerOrders: (req, res) => this.handleUnavailable(req, res),
-    updateOrderStatus: (req, res) => this.handleUnavailable(req, res),
-    getSellerCustomers: (req, res) => this.handleUnavailable(req, res),
+  
+  // FIXED: Proper fallback controller without 'this' issues
+  const handleUnavailable = (req, res) => {
+    res.status(503).json({
+      error: 'Seller service is currently unavailable. Please try again later.',
+      code: 'SERVICE_UNAVAILABLE'
+    });
   };
+
+  sellerController = {
+    // All controller methods point to the same unavailable handler
+    createProduct: handleUnavailable,
+    uploadProduct: handleUnavailable,
+    getSellerProducts: handleUnavailable,
+    getMyProducts: handleUnavailable,
+    exportProducts: handleUnavailable,
+    updateProduct: handleUnavailable,
+    deleteProduct: handleUnavailable,
+    bulkUpdateProducts: handleUnavailable,
+    getSellerDashboard: handleUnavailable,
+    getProductAnalytics: handleUnavailable,
+    getSellerOrders: handleUnavailable,
+    updateOrderStatus: handleUnavailable,
+    getSellerCustomers: handleUnavailable,
+  };
+  
+  controllerModuleLoaded = false;
 }
 
 /**
