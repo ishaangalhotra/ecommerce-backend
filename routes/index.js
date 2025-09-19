@@ -15,6 +15,7 @@ const adminRoutes = require('./admin');
 const wishlistRoutes = require('./wishlist');
 const categoryRoutes = require('./categories');
 const analyticsRoutes = require('./analytics');
+const imagekitRoutes = require('./imagekit'); // <-- Added this line
 
 // Mount routes
 router.use('/auth', authRoutes);
@@ -30,5 +31,6 @@ router.use('/admin', adminRoutes);
 router.use('/wishlist', wishlistRoutes);
 router.use('/categories', categoryRoutes);
 router.use('/analytics', analyticsRoutes);
+router.use('/imagekit', imagekitRoutes); // <-- Added this line
 
 module.exports = router;

@@ -83,6 +83,7 @@
     "hybrid:setup-test": "node -e \"require('./config/supabase'); console.log('✅ Supabase config loaded successfully')\""
   },
   "dependencies": {
+    "@google-cloud/storage": "^7.17.1",
     "@sentry/node": "^7.77.0",
     "@sentry/tracing": "^7.77.0",
     "@supabase/supabase-js": "^2.57.4",
