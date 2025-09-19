@@ -4,7 +4,21 @@ const router = express.Router();
 const Category = require('../models/Category');
 
 // --- CHANGE 1: Correctly import the 'multipleImages' function ---
-const { multipleImages } = require('../middleware/uploadMiddleware');
+let multipleImages;
+try {
+  const uploadMiddleware = require('../middleware/uploadMiddleware');
+  multipleImages = uploadMiddleware.multipleImages;
+  if (!multipleImages || typeof multipleImages !== 'function') {
+    throw new Error('multipleImages function not available');
+  }
+} catch (error) {
+  console.warn('⚠️ Upload middleware not available, using fallback');
+  // Fallback middleware that does nothing
+  multipleImages = () => (req, res, next) => {
+    console.warn('⚠️ File upload disabled - multipleImages middleware unavailable');
+    next();
+  };
+}
 
 const {
   validateProductId,

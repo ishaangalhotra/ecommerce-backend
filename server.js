@@ -266,6 +266,19 @@ process.on('warning', (warning) => {
 // Start memory monitoring
 memoryMonitor.start();
 
+// Suppress AWS SDK v2 deprecation warning in development
+if (process.env.NODE_ENV === 'development') {
+  process.removeAllListeners('warning');
+  process.on('warning', (warning) => {
+    // Suppress specific AWS SDK v2 warnings
+    if (warning.message && warning.message.includes('AWS SDK for JavaScript (v2)')) {
+      return; // Ignore this warning
+    }
+    // Log other warnings
+    console.warn('⚠️ Warning:', warning.message);
+  });
+}
+
 // Enhanced process exit handlers
 const gracefulShutdownHandler = (signal) => {
   console.log(`🛑 ${signal} received, cleaning up memory monitoring...`);
@@ -804,37 +817,9 @@ class QuickLocalRouteManager {
         routeModule = require(module);
         console.log(`✅ Successfully loaded: ${module}`);
       } catch (error) {
-        if (error.code === 'MODULE_NOT_FOUND') {
-          // Try alternative paths
-          const altPaths = [
-            module.replace('./', './routes/'),
-            `./routes/${module.split('/').pop()}`,
-            `${__dirname}/routes/${module.split('/').pop()}`
-          ];
-          
-          let loaded = false;
-          for (const altPath of altPaths) {
-            try {
-              console.log(`🔄 Trying alternative path: ${altPath}`);
-              routeModule = require(altPath);
-              console.log(`✅ Successfully loaded from: ${altPath}`);
-              loaded = true;
-              break;
-            } catch (altError) {
-              // Continue to next alternative
-            }
-          }
-          
-          if (!loaded) {
-            console.warn(`⚠️ Route module not found: ${module} - Skipping`);
-            this.failedRoutes.push({ path, name, error: 'Module not found' });
-            return; // Skip missing modules instead of failing
-          }
-        } else {
-          console.error(`❌ Error loading ${module}:`, error.message);
-          this.failedRoutes.push({ path, name, error: error.message });
-          return;
-        }
+        console.warn(`⚠️ Route module failed to load: ${module} - ${error.message}`);
+        this.failedRoutes.push({ path, name, error: error.message });
+        return; // Skip failed modules gracefully
       }
       
       if (!this.isValidRouter(routeModule)) {
