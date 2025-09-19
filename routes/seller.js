@@ -2,7 +2,10 @@ const express = require('express');
 const mongoose = require('mongoose');
 const router = express.Router();
 const Category = require('../models/Category');
-const upload = require('../middleware/uploadMiddleware');
+
+// --- CHANGE 1: Correctly import the 'multipleImages' function ---
+const { multipleImages } = require('../middleware/uploadMiddleware');
+
 const {
   validateProductId,
   validateProductData,
@@ -119,7 +122,8 @@ if (authModuleLoaded && controllerModuleLoaded) {
    */
   router.post(
     '/products',
-    upload.array('images', 5),
+    // --- CHANGE 2: Call the 'multipleImages' function ---
+    multipleImages('images', 5),
     validateProductData,
     asyncHandler(sellerController.createProduct)
   );
@@ -168,7 +172,8 @@ if (authModuleLoaded && controllerModuleLoaded) {
    */
   router.patch(
     '/products/bulk',
-    upload.single('file'),
+    // Note: If you need a single file upload here, use the `document` or `any` uploader
+    // Example: document('file'),
     validateBulkProductData,
     asyncHandler(sellerController.bulkUpdateProducts)
   );
