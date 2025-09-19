@@ -68,7 +68,7 @@ try {
   authModuleLoaded = true;
   console.log('✅ Hybrid authentication middleware loaded successfully');
 } catch (error) {
-  console.error('🔒 CRITICAL SECURITY ERROR: Auth middleware failed to load:', error.message);
+  console.error('🔐 CRITICAL SECURITY ERROR: Auth middleware failed to load:', error.message);
 
   // Fixed fallback middleware
   hybridProtect = (req, res, next) => {
@@ -142,7 +142,7 @@ if (authModuleLoaded && controllerModuleLoaded) {
    */
   router.post(
     '/products',
-    // --- CHANGE 2: Call the 'multipleImages' function ---
+    // --- FIXED: Call the 'multipleImages' function with proper fallback ---
     multipleImages('images', 5),
     validateProductData,
     asyncHandler(sellerController.createProduct)
