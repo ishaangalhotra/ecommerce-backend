@@ -1,3 +1,5 @@
+// sellerController.js
+
 const Product = require('../models/Product');
 const Category = require('../models/Category');
 const Order = require('../models/Order');
@@ -9,13 +11,11 @@ const { body, validationResult } = require('express-validator');
 let imagekit;
 try {
   imagekit = require('../utils/imagekit');
-  // Test if ImageKit is properly configured
   if (!imagekit || !imagekit.upload) {
     throw new Error('ImageKit not properly configured');
   }
 } catch (error) {
   console.warn('ImageKit initialization failed:', error.message);
-  // Create a mock imagekit object
   imagekit = {
     upload: () => Promise.reject(new Error('ImageKit not configured')),
     deleteFile: () => Promise.reject(new Error('ImageKit not configured'))
@@ -114,7 +114,6 @@ const uploadProduct = async (req, res) => {
       shipping = {}
     } = req.body;
 
-    // Validate category exists
     const categoryDoc = await Category.findById(category);
     if (!categoryDoc) {
       return res.status(400).json({
@@ -123,7 +122,6 @@ const uploadProduct = async (req, res) => {
       });
     }
 
-    // Process uploaded images
     let images = [];
     const allFiles = [
       ...(req.files?.images || []),
@@ -153,21 +151,19 @@ const uploadProduct = async (req, res) => {
         }
       }
 
-      const fs = require('fs'); // Import fs for file operations
+      const fs = require('fs');
       
       try {
         const folder = `products/${sellerId}`;
         const uploads = allFiles.map((f, idx) => {
-          // Create a readable stream from the temporary file path instead of using buffer
           const fileStream = fs.createReadStream(f.path);
           
           const uploadPromise = imagekit.upload({
-            file: fileStream, // Use stream instead of buffer
+            file: fileStream,
             fileName: `${Date.now()}_${idx}_${f.originalname}`.replace(/\s+/g, '_'),
             folder,
             useUniqueFileName: true
           }).then(result => {
-            // Clean up the temporary file after successful upload
             try {
               fs.unlinkSync(f.path);
             } catch (e) {
@@ -175,7 +171,6 @@ const uploadProduct = async (req, res) => {
             }
             return result;
           }).catch(error => {
-            // Clean up the temporary file even on error
             try {
               fs.unlinkSync(f.path);
             } catch (e) {
@@ -200,7 +195,6 @@ const uploadProduct = async (req, res) => {
           }));
       } catch (error) {
         console.error('Image upload process failed:', error);
-        // Clean up any remaining temp files on process error
         allFiles.forEach(file => {
           try {
             if (file.path) fs.unlinkSync(file.path);
@@ -208,12 +202,10 @@ const uploadProduct = async (req, res) => {
             console.warn('Failed to cleanup temp file:', file.path);
           }
         });
-        // Continue without images rather than failing the entire request
         images = [];
       }
     }
 
-    // Create product slug
     const slug = name.toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)/g, '') + '-' + Date.now();
@@ -492,7 +484,6 @@ const updateProduct = async (req, res) => {
           }));
       } catch (error) {
         console.error('Image upload process failed:', error);
-        // Continue without updating images rather than failing the entire request
       }
     }
 
@@ -584,12 +575,10 @@ const deleteProduct = async (req, res) => {
       });
     }
 
-    // Delete images from ImageKit
     if (product.images && product.images.length > 0) {
       const deletePromises = product.images.map(image => 
         imagekit.deleteFile(image.publicId).catch(err => {
           console.warn('Failed to delete image from ImageKit:', err);
-          // Don't fail the entire operation if image deletion fails
         })
       );
       await Promise.all(deletePromises);
@@ -618,10 +607,9 @@ const deleteProduct = async (req, res) => {
   }
 };
 
-// Get Seller Dashboard - Fixed with proper Order integration
+// Get Seller Dashboard
 const getSellerDashboard = async (req, res) => {
   try {
-    // Verify the user is a seller or admin
     if (req.user.role !== 'seller' && req.user.role !== 'admin') {
       return res.status(403).json({
         success: false,
@@ -632,7 +620,6 @@ const getSellerDashboard = async (req, res) => {
     const sellerId = new mongoose.Types.ObjectId(req.user.id);
     const { timeRange = '30d' } = req.query;
 
-    // Calculate date range
     const now = new Date();
     let startDate;
     switch (timeRange) {
@@ -642,9 +629,6 @@ const getSellerDashboard = async (req, res) => {
       case '7d':
         startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
         break;
-      case '30d':
-        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        break;
       case '90d':
         startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
         break;
@@ -652,7 +636,6 @@ const getSellerDashboard = async (req, res) => {
         startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     }
 
-    // Get dashboard data with proper aggregations
     const [
       totalProducts,
       activeProducts,
@@ -675,66 +658,29 @@ const getSellerDashboard = async (req, res) => {
         .select('name views averageRating stock price')
         .lean(),
       
-      // Revenue calculation
       Order.aggregate([
         { $unwind: '$items' },
-        {
-          $lookup: {
-            from: 'products',
-            localField: 'items.product',
-            foreignField: '_id',
-            as: 'prod',
-          },
-        },
+        { $lookup: { from: 'products', localField: 'items.product', foreignField: '_id', as: 'prod' } },
         { $unwind: '$prod' },
         { $match: { 'prod.seller': sellerId, createdAt: { $gte: startDate } } },
-        {
-          $group: {
-            _id: null,
-            totalRevenue: { $sum: { $multiply: ['$items.price', '$items.quantity'] } }
-          }
-        }
+        { $group: { _id: null, totalRevenue: { $sum: { $multiply: ['$items.price', '$items.quantity'] } } } }
       ]),
 
-      // Order count calculation
       Order.aggregate([
         { $unwind: '$items' },
-        {
-          $lookup: {
-            from: 'products',
-            localField: 'items.product',
-            foreignField: '_id',
-            as: 'prod',
-          },
-        },
+        { $lookup: { from: 'products', localField: 'items.product', foreignField: '_id', as: 'prod' } },
         { $unwind: '$prod' },
         { $match: { 'prod.seller': sellerId, createdAt: { $gte: startDate } } },
-        {
-          $group: {
-            _id: '$_id' // Group by order ID to avoid counting duplicates
-          }
-        },
+        { $group: { _id: '$_id' } },
         { $count: 'totalOrders' }
       ]),
 
-      // Customer count
       Order.aggregate([
         { $unwind: '$items' },
-        {
-          $lookup: {
-            from: 'products',
-            localField: 'items.product',
-            foreignField: '_id',
-            as: 'prod',
-          },
-        },
+        { $lookup: { from: 'products', localField: 'items.product', foreignField: '_id', as: 'prod' } },
         { $unwind: '$prod' },
         { $match: { 'prod.seller': sellerId } },
-        {
-          $group: {
-            _id: '$user' // Group by customer/user ID
-          }
-        },
+        { $group: { _id: '$user' } },
         { $count: 'totalCustomers' }
       ])
     ]);
@@ -743,24 +689,12 @@ const getSellerDashboard = async (req, res) => {
     const totalOrders = orderData[0]?.totalOrders || 0;
     const totalCustomers = customerData[0]?.totalCustomers || 0;
 
-    // Get pending orders count for seller
     const pendingOrdersData = await Order.aggregate([
       { $unwind: '$items' },
-      {
-        $lookup: {
-          from: 'products',
-          localField: 'items.product',
-          foreignField: '_id',
-          as: 'prod',
-        },
-      },
+      { $lookup: { from: 'products', localField: 'items.product', foreignField: '_id', as: 'prod' } },
       { $unwind: '$prod' },
       { $match: { 'prod.seller': sellerId, 'items.status': 'pending' } },
-      {
-        $group: {
-          _id: '$_id'
-        }
-      },
+      { $group: { _id: '$_id' } },
       { $count: 'pendingOrders' }
     ]);
     
@@ -803,7 +737,6 @@ const getProductAnalytics = async (req, res) => {
   try {
     const { productId } = req.params;
     const sellerId = req.user.id;
-    const { timeRange = '30d' } = req.query;
 
     if (!mongoose.Types.ObjectId.isValid(productId)) {
       return res.status(400).json({ 
@@ -831,7 +764,7 @@ const getProductAnalytics = async (req, res) => {
       stockLevel: product.stock,
       status: product.status,
       createdAt: product.createdAt,
-      timeRange
+      timeRange: req.query.timeRange || '30d'
     };
 
     res.json({
@@ -884,7 +817,6 @@ const bulkUpdateProducts = async (req, res) => {
       });
     }
 
-    // Normalize updateData
     const data = { ...updateData };
     if (data.tags) {
       data.tags = normalizeTags(data.tags);
@@ -894,7 +826,6 @@ const bulkUpdateProducts = async (req, res) => {
     if (data.stock != null) data.stock = Number(data.stock);
     if (data.costPerItem != null) data.costPerItem = Number(data.costPerItem);
 
-    // Recompute discount if relevant
     if (data.price != null && data.originalPrice != null && data.originalPrice > 0) {
       data.discountPercentage = Math.round(((data.originalPrice - data.price) / data.originalPrice) * 100);
     }
@@ -945,7 +876,6 @@ const exportProducts = async (req, res) => {
         fields.join(','),
         ...products.map(p => fields.map(f => {
           const val = p[f] ?? '';
-          // CSV-escape
           const s = (val instanceof Date) ? val.toISOString() : String(val);
           return `"${s.replace(/"/g, '""')}"`;
         }).join(','))
@@ -975,7 +905,7 @@ const exportProducts = async (req, res) => {
   }
 };
 
-// Get Seller Orders - NEW IMPLEMENTATION
+// Get Seller Orders
 const getSellerOrders = async (req, res) => {
   try {
     const sellerId = new mongoose.Types.ObjectId(req.user.id);
@@ -990,7 +920,6 @@ const getSellerOrders = async (req, res) => {
     const pageNum = Math.max(1, parseInt(page));
     const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
 
-    // Build match conditions for seller's products
     const matchConditions = { 'prod.seller': sellerId };
     if (status !== 'all') {
       matchConditions['items.status'] = status;
@@ -1002,24 +931,10 @@ const getSellerOrders = async (req, res) => {
     const [ordersData, totalCount] = await Promise.all([
       Order.aggregate([
         { $unwind: '$items' },
-        {
-          $lookup: {
-            from: 'products',
-            localField: 'items.product',
-            foreignField: '_id',
-            as: 'prod'
-          }
-        },
+        { $lookup: { from: 'products', localField: 'items.product', foreignField: '_id', as: 'prod' } },
         { $unwind: '$prod' },
         { $match: matchConditions },
-        {
-          $lookup: {
-            from: 'users',
-            localField: 'user',
-            foreignField: '_id',
-            as: 'customer'
-          }
-        },
+        { $lookup: { from: 'users', localField: 'user', foreignField: '_id', as: 'customer' } },
         { $unwind: { path: '$customer', preserveNullAndEmptyArrays: true } },
         {
           $group: {
@@ -1046,14 +961,7 @@ const getSellerOrders = async (req, res) => {
       ]),
       Order.aggregate([
         { $unwind: '$items' },
-        {
-          $lookup: {
-            from: 'products',
-            localField: 'items.product',
-            foreignField: '_id',
-            as: 'prod'
-          }
-        },
+        { $lookup: { from: 'products', localField: 'items.product', foreignField: '_id', as: 'prod' } },
         { $unwind: '$prod' },
         { $match: matchConditions },
         { $group: { _id: '$_id' } },
@@ -1090,7 +998,7 @@ const getSellerOrders = async (req, res) => {
   }
 };
 
-// Update Order Status - NEW IMPLEMENTATION
+// Update Order Status
 const updateOrderStatus = async (req, res) => {
   try {
     const { id: orderId } = req.params;
@@ -1112,7 +1020,6 @@ const updateOrderStatus = async (req, res) => {
       });
     }
 
-    // Find the order and verify seller owns the product
     const order = await Order.findById(orderId).populate('items.product');
     if (!order) {
       return res.status(404).json({
@@ -1121,7 +1028,6 @@ const updateOrderStatus = async (req, res) => {
       });
     }
 
-    // Check if seller owns any items in this order
     const sellerItems = order.items.filter(item => 
       item.product && item.product.seller.toString() === sellerId.toString()
     );
@@ -1133,7 +1039,6 @@ const updateOrderStatus = async (req, res) => {
       });
     }
 
-    // Update specific item or all seller's items
     if (itemId) {
       const itemIndex = order.items.findIndex(item => 
         item._id.toString() === itemId && 
@@ -1149,7 +1054,6 @@ const updateOrderStatus = async (req, res) => {
       
       order.items[itemIndex].status = status;
     } else {
-      // Update all items belonging to this seller
       order.items.forEach(item => {
         if (item.product && item.product.seller.toString() === sellerId.toString()) {
           item.status = status;
@@ -1186,7 +1090,7 @@ const updateOrderStatus = async (req, res) => {
   }
 };
 
-// Get Seller Customers - NEW IMPLEMENTATION
+// Get Seller Customers
 const getSellerCustomers = async (req, res) => {
   try {
     const sellerId = new mongoose.Types.ObjectId(req.user.id);
@@ -1198,24 +1102,10 @@ const getSellerCustomers = async (req, res) => {
     const [customersData, totalCount] = await Promise.all([
       Order.aggregate([
         { $unwind: '$items' },
-        {
-          $lookup: {
-            from: 'products',
-            localField: 'items.product',
-            foreignField: '_id',
-            as: 'prod'
-          }
-        },
+        { $lookup: { from: 'products', localField: 'items.product', foreignField: '_id', as: 'prod' } },
         { $unwind: '$prod' },
         { $match: { 'prod.seller': sellerId } },
-        {
-          $lookup: {
-            from: 'users',
-            localField: 'user',
-            foreignField: '_id',
-            as: 'customer'
-          }
-        },
+        { $lookup: { from: 'users', localField: 'user', foreignField: '_id', as: 'customer' } },
         { $unwind: '$customer' },
         {
           $group: {
@@ -1245,14 +1135,7 @@ const getSellerCustomers = async (req, res) => {
       ]),
       Order.aggregate([
         { $unwind: '$items' },
-        {
-          $lookup: {
-            from: 'products',
-            localField: 'items.product',
-            foreignField: '_id',
-            as: 'prod'
-          }
-        },
+        { $lookup: { from: 'products', localField: 'items.product', foreignField: '_id', as: 'prod' } },
         { $unwind: '$prod' },
         { $match: { 'prod.seller': sellerId } },
         { $group: { _id: '$user' } },
@@ -1303,7 +1186,7 @@ module.exports = {
   updateOrderStatus,
   getSellerCustomers,
   
-  // Aliases for backward compatibility with routes
+  // Aliases for backward compatibility
   createProduct: uploadProduct,
   getSellerProducts: getMyProducts
 };
