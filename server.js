@@ -527,14 +527,7 @@ class QuickLocalConfig {
   }
 
   validateEnvironment() {
-    // Skip validation if ValidationMiddleware doesn't exist
-    try {
-      ValidationMiddleware.validateEnvironment();
-    } catch (error) {
-      console.warn('⚠️ ValidationMiddleware not found, skipping validation');
-    }
-    
-    // Additional QuickLocal specific validations
+    // QuickLocal specific environment validations
     const criticalVars = ['MONGODB_URI', 'JWT_SECRET', 'COOKIE_SECRET', 'SESSION_SECRET'];
     const missing = criticalVars.filter(varName => !process.env[varName] && !process.env[varName.replace('MONGODB_URI', 'MONGO_URI')]);
     
