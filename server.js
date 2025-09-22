@@ -1097,7 +1097,12 @@ class QuickLocalServer {
           'https://www.quicklocal.shop',
           'https://quicklocal.shop',
           'https://my-frontend-ifyr.vercel.app',
-          'https://my-frontend-ifyr-6dh1011kk-ishans-projects-67ccbc5a.vercel.app'
+          'https://my-frontend-ifyr-6dh1011kk-ishans-projects-67ccbc5a.vercel.app',
+          // Local frontend development
+          'http://localhost:3000',
+          'http://127.0.0.1:3000',
+          'http://127.0.0.1:5500',
+          'null' // For local file:// protocol
         ];
         
         // Allow requests with no origin (Postman, server-to-server, mobile apps)
@@ -1162,8 +1167,14 @@ class QuickLocalServer {
       
       // Add CORS headers manually as backup
       const origin = req.headers.origin;
-      if (origin === 'https://www.quicklocal.shop' || origin === 'https://quicklocal.shop') {
-        res.setHeader('Access-Control-Allow-Origin', origin);
+      const isAllowedOrigin = origin === 'https://www.quicklocal.shop' || 
+                             origin === 'https://quicklocal.shop' ||
+                             origin?.startsWith('http://localhost') ||
+                             origin?.startsWith('http://127.0.0.1') ||
+                             !origin; // Allow null origin for local files
+      
+      if (isAllowedOrigin) {
+        res.setHeader('Access-Control-Allow-Origin', origin || '*');
         res.setHeader('Access-Control-Allow-Credentials', 'true');
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Api-Key, X-Correlation-ID');
@@ -1173,7 +1184,7 @@ class QuickLocalServer {
       // Handle preflight requests immediately
       if (req.method === 'OPTIONS') {
         console.log(`[CORS DEBUG] Handling OPTIONS preflight request for ${req.originalUrl}`);
-        if (origin === 'https://www.quicklocal.shop' || origin === 'https://quicklocal.shop') {
+        if (isAllowedOrigin) {
           res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
           return res.status(200).end();
         }
