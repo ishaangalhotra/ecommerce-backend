@@ -1201,21 +1201,13 @@ class QuickLocalServer {
       }
     }
 
-    // General static file serving from public directory
+    // ✅ FIX: Handle specific hybrid-auth-client.js route BEFORE general static serving
     const path = require('path');
-    this.app.use(express.static(path.join(__dirname, 'public'), {
-      setHeaders: (res, filePath, stat) => {
-        // Set correct Content-Type for JavaScript files
-        if (path.extname(filePath) === '.js') {
-          res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-          res.setHeader('Access-Control-Allow-Origin', '*');
-        }
-      }
-    }));
-    console.log('✅ Static file serving configured for public directory');
+    console.log('🔧 Configuring dedicated route for hybrid-auth-client.js BEFORE static middleware...');
     
     // Specific route for authentication client with enhanced CORS headers
     this.app.get('/hybrid-auth-client.js', (req, res) => {
+      console.log(`[HYBRID AUTH CLIENT] GET request from origin: ${req.headers.origin}`);
       res.type('application/javascript'); // This is the correct way to set MIME type
       res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 1 day
       
@@ -1229,13 +1221,26 @@ class QuickLocalServer {
     
     // Handle OPTIONS preflight requests for hybrid-auth-client.js
     this.app.options('/hybrid-auth-client.js', (req, res) => {
+      console.log(`[HYBRID AUTH CLIENT] OPTIONS preflight from origin: ${req.headers.origin}`);
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
       res.status(204).end();
     });
     
-    console.log('✅ Hybrid auth client static file route configured with CORS support');
+    console.log('✅ Hybrid auth client route configured with enhanced CORS support');
+
+    // General static file serving from public directory (after specific routes)
+    this.app.use(express.static(path.join(__dirname, 'public'), {
+      setHeaders: (res, filePath, stat) => {
+        // Set correct Content-Type for JavaScript files
+        if (path.extname(filePath) === '.js') {
+          res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+          res.setHeader('Access-Control-Allow-Origin', '*');
+        }
+      }
+    }));
+    console.log('✅ General static file serving configured for public directory');
 
     // CORS is handled by the cors library above - applied before security middleware
 
