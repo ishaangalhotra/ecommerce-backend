@@ -338,7 +338,7 @@ const logger = require('./utils/logger');
 const { connectDB } = require('./config/database');
 const applySecurity = require('./middleware/security');
 const ValidationMiddleware = require('./middleware/validation');
-const { hybridProtect } = require('./middleware/hybridAuth');
+const { hybridProtect } = require('./middleware/hybridAuthmiddleware');
 const MetricsCollector = require('./utils/metrics');
 const CircuitBreaker = require('./utils/circuitBreaker');
 
