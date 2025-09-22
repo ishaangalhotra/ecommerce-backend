@@ -1,455 +1,228 @@
 /**
  * Hybrid Authentication Client for Frontend
  * Supports both Supabase Auth and legacy JWT
- * Place this in your Vercel frontend project
+ * Place this in your backend's /public directory
  */
-
-// Import Supabase (add this to your package.json: npm install @supabase/supabase-js)
-// import { createClient } from '@supabase/supabase-js'
-
 class HybridAuthClient {
-  constructor(supabaseUrl, supabaseAnonKey, backendUrl) {
-    // Initialize Supabase client
-    this.supabase = window.supabase?.createClient ?
-      window.supabase.createClient(supabaseUrl, supabaseAnonKey) :
-      null;
+    constructor(supabaseUrl, supabaseAnonKey, backendUrl) {
+        // Initialize Supabase client if the library is available
+        this.supabase = window.supabase?.createClient ?
+            window.supabase.createClient(supabaseUrl, supabaseAnonKey) :
+            null;
 
-    this.backendUrl = backendUrl;
-    // Define the API base path
-    this.apiBasePath = '/api/v1';
-    this.currentUser = null;
-    this.authMethod = null;
-
-    // Initialize auth state
-    this.initializeAuth();
-  }
-
-  /**
-   * Initialize authentication state
-   */
-  async initializeAuth() {
-    try {
-      // Check for existing Supabase session
-      if (this.supabase) {
-        const { data: { session } } = await this.supabase.auth.getSession();
-        if (session) {
-          await this.handleSupabaseAuth(session);
-          return;
-        }
-      }
-
-      // Fallback to legacy JWT token
-      const token = localStorage.getItem('token') || localStorage.getItem('accessToken');
-      if (token) {
-        await this.handleLegacyAuth(token);
-      }
-    } catch (error) {
-      console.error('Failed to initialize auth:', error);
-    }
-  }
-
-  /**
-   * Handle Supabase authentication
-   */
-  async handleSupabaseAuth(session) {
-    try {
-      this.authMethod = 'supabase';
-
-      // Get user details from your backend
-      // FIXED: Added this.apiBasePath
-      const response = await fetch(`${this.backendUrl}${this.apiBasePath}/hybrid-auth/me`, {
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        this.currentUser = data.user;
-        this.authStateCallback?.(this.currentUser);
-      }
-    } catch (error) {
-      console.error('Supabase auth error:', error);
-    }
-  }
-
-  /**
-   * Handle legacy JWT authentication
-   */
-  async handleLegacyAuth(token) {
-    try {
-      this.authMethod = 'jwt';
-
-      // FIXED: Added this.apiBasePath
-      const response = await fetch(`${this.backendUrl}${this.apiBasePath}/hybrid-auth/me`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        this.currentUser = data.user;
-        this.authStateCallback?.(this.currentUser);
-      } else {
-        // Token might be expired, clear it
-        localStorage.removeItem('token');
-        localStorage.removeItem('accessToken');
-      }
-    } catch (error) {
-      console.error('Legacy auth error:', error);
-    }
-  }
-
-  /**
-   * Register new user (uses Supabase)
-   */
-   async register(userData) { // Changed to accept a single userData object
-    try {
-      // The backend expects name, email, password, and optionally phone/role
-      // FIXED: Added this.apiBasePath
-      const response = await fetch(`${this.backendUrl}${this.apiBasePath}/hybrid-auth/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(userData) // Send the entire object
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        return {
-          success: true,
-          message: data.message,
-          requiresVerification: data.requiresVerification,
-          userId: data.userId // Pass along the user ID
-        };
-      } else {
-        // Use the specific error message from the backend
-        throw new Error(data.message || 'Registration failed');
-      }
-    } catch (error) {
-      console.error('Registration error:', error);
-      return {
-        success: false,
-        message: error.message
-      };
-    }
-  }
-
-  /**
-   * Login user (hybrid approach)
-   */
-  async login(email, password) {
-    try {
-      // FIXED: Added this.apiBasePath
-      const response = await fetch(`${this.backendUrl}${this.apiBasePath}/hybrid-auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ identifier: email, password })
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        // Handle Supabase tokens
-        if (data.accessToken && data.refreshToken) {
-          localStorage.setItem('supabase_access_token', data.accessToken);
-          localStorage.setItem('supabase_refresh_token', data.refreshToken);
-          this.authMethod = 'supabase';
-        }
-        // Handle legacy JWT
-        else if (data.token) {
-          localStorage.setItem('token', data.token);
-          this.authMethod = 'jwt';
+        if (!this.supabase) {
+            console.warn('Supabase client library not found. Please ensure it is loaded for full functionality.');
         }
 
-        this.currentUser = data.user;
-        this.authStateCallback?.(this.currentUser);
+        this.backendUrl = backendUrl;
+        // CORRECTED: The backend routes are mounted under /auth, not /hybrid-auth
+        this.apiBasePath = '/api/v1/auth';
+        this.currentUser = null;
+        this.authMethod = null;
 
-        return {
-          success: true,
-          user: data.user,
-          message: data.message
-        };
-      } else {
-        // This is where the original error was thrown from
-        throw new Error(data.message || `Request failed with status ${response.status}`);
-      }
-    } catch (error) {
-      console.error('Login error:', error);
-      return {
-        success: false,
-        message: error.message
-      };
+        this.initializeAuth();
     }
-  }
 
-  /**
-   * Logout user
-   */
-  async logout() {
-    try {
-      // Call backend logout
-      // FIXED: Added this.apiBasePath
-      await fetch(`${this.backendUrl}${this.apiBasePath}/hybrid-auth/logout`, {
-        method: 'POST',
-        headers: {
-          'Authorization': this.getAuthHeader(),
-          'Content-Type': 'application/json'
+    async initializeAuth() {
+        try {
+            if (this.supabase) {
+                const { data: { session } } = await this.supabase.auth.getSession();
+                if (session) {
+                    await this.handleSupabaseAuth(session);
+                    return;
+                }
+            }
+            const token = localStorage.getItem('token') || localStorage.getItem('accessToken');
+            if (token) {
+                await this.handleLegacyAuth(token);
+            }
+        } catch (error) {
+            console.error('Failed to initialize auth:', error);
         }
-      });
-
-      // Sign out from Supabase if using Supabase
-      if (this.authMethod === 'supabase' && this.supabase) {
-        await this.supabase.auth.signOut();
-      }
-
-      // Clear local storage
-      localStorage.removeItem('token');
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('supabase_access_token');
-      localStorage.removeItem('supabase_refresh_token');
-
-      this.currentUser = null;
-      this.authMethod = null;
-      this.authStateCallback?.(null);
-
-      return { success: true };
-    } catch (error) {
-      console.error('Logout error:', error);
-      return { success: false, message: error.message };
     }
-  }
 
-  /**
-   * Get current authentication header
-   */
-  getAuthHeader() {
-    if (this.authMethod === 'supabase') {
-      const token = localStorage.getItem('supabase_access_token');
-      return token ? `Bearer ${token}` : '';
-    } else if (this.authMethod === 'jwt') {
-      const token = localStorage.getItem('token');
-      return token ? `Bearer ${token}` : '';
+    async handleSupabaseAuth(session) {
+        try {
+            this.authMethod = 'supabase';
+            const response = await fetch(`${this.backendUrl}${this.apiBasePath}/me`, {
+                headers: {
+                    'Authorization': `Bearer ${session.access_token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                this.currentUser = data.user;
+                this.authStateCallback?.(this.currentUser);
+            }
+        } catch (error) {
+            console.error('Supabase auth error:', error);
+        }
     }
-    return '';
-  }
 
-  /**
-   * Make authenticated API call
-   */
-  async apiCall(endpoint, options = {}) {
-    const defaultHeaders = {
-      'Content-Type': 'application/json',
-      'Authorization': this.getAuthHeader()
-    };
-    // Ensure endpoint starts with the base path
-    const fullEndpoint = endpoint.startsWith(this.apiBasePath) ? endpoint : `${this.apiBasePath}${endpoint}`;
+    async handleLegacyAuth(token) {
+        try {
+            this.authMethod = 'jwt';
+            const response = await fetch(`${this.backendUrl}${this.apiBasePath}/me`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                this.currentUser = data.user;
+                this.authStateCallback?.(this.currentUser);
+            } else {
+                localStorage.removeItem('token');
+                localStorage.removeItem('accessToken');
+            }
+        } catch (error) {
+            console.error('Legacy auth error:', error);
+        }
+    }
 
-    const response = await fetch(`${this.backendUrl}${fullEndpoint}`, {
-      ...options,
-      headers: {
-        ...defaultHeaders,
-        ...options.headers
-      }
-    });
+    async register(userData) {
+        try {
+            const response = await fetch(`${this.backendUrl}${this.apiBasePath}/register`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(userData)
+            });
+            const data = await response.json();
+            if (response.ok && data.success) {
+                return { success: true, message: data.message, data: data.data };
+            } else {
+                throw new Error(data.message || 'Registration failed');
+            }
+        } catch (error) {
+            console.error('Registration error:', error);
+            return { success: false, message: error.message };
+        }
+    }
 
-    // Handle token refresh for Supabase
-    if (response.status === 401 && this.authMethod === 'supabase') {
-      const refreshed = await this.refreshToken();
-      if (refreshed) {
-        // Retry the request with new token
-        return fetch(`${this.backendUrl}${fullEndpoint}`, {
-          ...options,
-          headers: {
-            ...defaultHeaders,
-            'Authorization': this.getAuthHeader(),
-            ...options.headers
-          }
+    async login(email, password) {
+        try {
+            const response = await fetch(`${this.backendUrl}${this.apiBasePath}/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                // CORRECTED: The backend expects the key 'email', not 'identifier'
+                body: JSON.stringify({ email: email, password: password })
+            });
+            const data = await response.json();
+            if (response.ok && data.success) {
+                if (data.session) { // Supabase login
+                    localStorage.setItem('supabase_access_token', data.session.access_token);
+                    localStorage.setItem('supabase_refresh_token', data.session.refresh_token);
+                    this.authMethod = 'supabase';
+                } else if (data.token) { // Legacy JWT
+                    localStorage.setItem('token', data.token);
+                    this.authMethod = 'jwt';
+                }
+                this.currentUser = data.user;
+                this.authStateCallback?.(this.currentUser);
+                return { success: true, user: data.user, message: data.message };
+            } else {
+                throw new Error(data.message || `Request failed with status ${response.status}`);
+            }
+        } catch (error) {
+            console.error('Login error:', error);
+            return { success: false, message: error.message };
+        }
+    }
+
+    async requestPasswordReset(email) {
+        try {
+            const response = await fetch(`${this.backendUrl}${this.apiBasePath}/forgot-password`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email })
+            });
+            const data = await response.json();
+            return { success: response.ok, message: data.message };
+        } catch (error) {
+            console.error('Password reset request error:', error);
+            return { success: false, message: error.message };
+        }
+    }
+
+    async logout() {
+        try {
+            await fetch(`${this.backendUrl}${this.apiBasePath}/logout`, {
+                method: 'POST',
+                headers: { 'Authorization': this.getAuthHeader() }
+            });
+            if (this.authMethod === 'supabase' && this.supabase) {
+                await this.supabase.auth.signOut();
+            }
+            localStorage.clear();
+            this.currentUser = null;
+            this.authMethod = null;
+            this.authStateCallback?.(null);
+            return { success: true };
+        } catch (error) {
+            console.error('Logout error:', error);
+            return { success: false, message: error.message };
+        }
+    }
+
+    getAuthHeader() {
+        const token = localStorage.getItem('supabase_access_token') || localStorage.getItem('token');
+        return token ? `Bearer ${token}` : '';
+    }
+
+    async apiCall(endpoint, options = {}) {
+        const fullEndpoint = endpoint.startsWith(this.apiBasePath) ? endpoint : `${this.apiBasePath}${endpoint}`;
+        const response = await fetch(`${this.backendUrl}${fullEndpoint}`, {
+            ...options,
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': this.getAuthHeader(),
+                ...options.headers
+            }
         });
-      }
+
+        if (response.status === 401 && this.authMethod === 'supabase') {
+            const refreshed = await this.refreshToken();
+            if (refreshed) {
+                return this.apiCall(endpoint, options); // Retry with new token
+            }
+        }
+        return response;
     }
 
-    return response;
-  }
+    async refreshToken() {
+        try {
+            const refreshToken = localStorage.getItem('supabase_refresh_token');
+            if (!refreshToken) return false;
 
-  /**
-   * Refresh Supabase token
-   */
-  async refreshToken() {
-    try {
-      const refreshToken = localStorage.getItem('supabase_refresh_token');
-      if (!refreshToken) return false;
+            const response = await fetch(`${this.backendUrl}${this.apiBasePath}/refresh-token`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ refreshToken: refreshToken })
+            });
 
-      // FIXED: Added this.apiBasePath
-      const response = await fetch(`${this.backendUrl}${this.apiBasePath}/hybrid-auth/refresh-token`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ refresh_token: refreshToken })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        localStorage.setItem('supabase_access_token', data.accessToken);
-        localStorage.setItem('supabase_refresh_token', data.refreshToken);
-        return true;
-      }
-    } catch (error) {
-      console.error('Token refresh error:', error);
-    }
-    return false;
-  }
-
-  // ... (rest of the file remains the same)
-  /**
-   * Subscribe to real-time updates via Supabase
-   */
-  subscribeToRealtime(userId, callbacks = {}) {
-    if (!this.supabase || this.authMethod !== 'supabase') {
-      console.warn('Real-time requires Supabase authentication');
-      return null;
+            if (response.ok) {
+                const data = await response.json();
+                localStorage.setItem('supabase_access_token', data.accessToken);
+                localStorage.setItem('supabase_refresh_token', data.refreshToken);
+                return true;
+            }
+        } catch (error) {
+            console.error('Token refresh error:', error);
+        }
+        return false;
     }
 
-    const channel = this.supabase
-      .channel(`user_${userId}`)
-      .on('postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'order_updates',
-          filter: `user_id=eq.${userId}`
-        },
-        callbacks.onOrderUpdate || (() => {})
-      )
-      .on('postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'user_notifications',
-          filter: `user_id=eq.${userId}`
-        },
-        callbacks.onNotification || (() => {})
-      )
-      .subscribe();
-
-    return channel;
-  }
-
-  /**
-   * Get user notifications
-   */
-  async getNotifications() {
-    if (!this.currentUser) return [];
-
-    const response = await this.apiCall('/notifications');
-    if (response.ok) {
-      const data = await response.json();
-      return data.notifications;
+    onAuthStateChange(callback) {
+        this.authStateCallback = callback;
     }
-    return [];
-  }
 
-  /**
-   * Mark notification as read
-   */
-  async markNotificationRead(notificationId) {
-    const response = await this.apiCall(`/notifications/${notificationId}/read`, {
-      method: 'PATCH'
-    });
-    return response.ok;
-  }
+    isAuthenticated() {
+        return !!this.currentUser;
+    }
 
-  /**
-   * Set auth state change callback
-   */
-  onAuthStateChange(callback) {
-    this.authStateCallback = callback;
-  }
-
-  /**
-   * Check if user is authenticated
-   */
-  isAuthenticated() {
-    return !!this.currentUser;
-  }
-
-  /**
-   * Get current user
-   */
-  getCurrentUser() {
-    return this.currentUser;
-  }
-
-  /**
-   * Get auth method being used
-   */
-  getAuthMethod() {
-    return this.authMethod;
-  }
-}
-
-// Usage example:
-/*
-const authClient = new HybridAuthClient(
-  'https://your-project.supabase.co',
-  'your-anon-key',
-  'https://your-backend.render.com' // or fly.io
-);
-
-// Set up auth state listener
-authClient.onAuthStateChange((user) => {
-  if (user) {
-    console.log('User logged in:', user);
-    // Update UI for authenticated state
-  } else {
-    console.log('User logged out');
-    // Update UI for unauthenticated state
-  }
-});
-
-// Login
-const result = await authClient.login('user@example.com', 'password');
-if (result.success) {
-  console.log('Login successful');
-}
-
-// Subscribe to real-time updates
-const channel = authClient.subscribeToRealtime(user.supabaseId, {
-  onOrderUpdate: (update) => {
-    console.log('Order updated:', update);
-  },
-  onNotification: (notification) => {
-    console.log('New notification:', notification);
-  }
-});
-*/
-
-// Auto-instantiate for immediate use
-const hybridAuthClient = new HybridAuthClient(
-  'https://pmvhsjezhuokwygvhhqk.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBtdmhzamV6aHVva3d5Z3ZoaHFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc2NTU3MDUsImV4cCI6MjA3MzIzMTcwNX0.ZrVjuqB28Qer7F7zSdG_rJIs_ZQZhX1PNyrmpK-Qojg',
-  'https://quicklocal-backend.onrender.com'
-);
-
-// Export for use in modules
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = {
-    HybridAuthClient,
-    hybridAuthClient
-  };
-} else {
-  // Make both class and instance available globally
-  window.HybridAuthClient = hybridAuthClient; // Instance for immediate use
-  window.HybridAuthClientClass = HybridAuthClient; // Class for manual instantiation
-
-  console.log('✅ HybridAuthClient loaded and available globally');
-  console.log('🔧 Auto-instantiated client ready for use');
+    getCurrentUser() {
+        return this.currentUser;
+    }
 }
