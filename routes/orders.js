@@ -22,7 +22,7 @@ const Order = require('../models/Order');
 const Product = require('../models/Product');
 const User = require('../models/User');
 const Cart = require('../models/cart');
-const { hybridProtect, requireRole } = require('../middleware/hybridAuth');
+const { hybridProtect, requireRole } = require('../middleware/hybridAuthmiddleware');
 // Old middleware is removed as it's no longer needed
 // const { authorize } = require('../middleware/authMiddleware');
 const { sendEmail } = require('../utils/email');

@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
 const User = require('../models/User');
-const { hybridProtect, requireRole } = require('../middleware/hybridAuth');
+const { hybridProtect, requireRole } = require('../middleware/hybridAuthmiddleware');
 // Old authMiddleware replaced with hybridAuth
 const router = express.Router();
 

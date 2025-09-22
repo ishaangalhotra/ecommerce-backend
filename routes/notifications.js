@@ -2,7 +2,7 @@ const express = require('express');
 const mongoose = require('mongoose');
 const Notification = require('../models/Notification');
 const User = require('../models/User');
-const { hybridProtect, requireRole } = require('../middleware/hybridAuth');
+const { hybridProtect, requireRole } = require('../middleware/hybridAuthmiddleware');
 const { body, validationResult } = require('express-validator');
 const router = express.Router();
 

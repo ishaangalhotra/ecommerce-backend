@@ -29,7 +29,7 @@ const User = require('../models/User');
 const Address = require('../models/Address');
 const Order = require('../models/Order');
 
-const { hybridProtect, requireRole } = require('../middleware/hybridAuth');
+const { hybridProtect, requireRole } = require('../middleware/hybridAuthmiddleware');
 // The old auth middleware is no longer needed
 // const { checkPermission } = require('../middleware/authMiddleware');
 const upload = require('../utils/multer'); // disk storage multer instance expected

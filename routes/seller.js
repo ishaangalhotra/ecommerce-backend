@@ -16,7 +16,7 @@ try {
 
 let hybridProtect, requireRole;
 try {
-  const hybridAuth = require('../middleware/hybridAuth');
+  const hybridAuth = require('../middleware/hybridAuthmiddleware');
   hybridProtect = hybridAuth.hybridProtect;
   requireRole = hybridAuth.requireRole;
   console.log('✅ Hybrid authentication middleware loaded successfully');

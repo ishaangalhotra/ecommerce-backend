@@ -11,7 +11,7 @@ const {
   shareWishlist,
   getSharedWishlist
 } = require('../controllers/wishlistController');
-const { hybridProtect } = require('../middleware/hybridAuth');
+const { hybridProtect } = require('../middleware/hybridAuthmiddleware');
 const { validateObjectId } = require('../middleware/validation');
 
 /**
