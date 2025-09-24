@@ -10,7 +10,7 @@ const router = express.Router();
 // const User = require('../models/User'); // MongoDB User model is no longer needed
 const logger = require('../utils/logger');
 const { sendEmail } = require('../utils/email');
-const { hybridProtect, requireRole } = require('../middleware/hybridAuth');
+const { hybridProtect, requireRole } = require('../middleware/hybridAuthmiddleware');
 const { supabase, supabaseAdmin, SupabaseHelpers } = require('../config/supabase');
 
 // Rate limiting for auth endpoints
