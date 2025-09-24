@@ -1,6 +1,6 @@
 const express = require('express');
 const { body, param, query, validationResult } = require('express-validator');
-const { hybridProtect, requireRole } = require('../middleware/hybridAuthmidleware');
+const { hybridProtect, requireRole } = require('../middleware/hybridAuthmiddleware');
 // Old authMiddleware replaced with hybridAuth
 const { cache: cacheMiddleware, invalidateCache: clearCache } = require('../middleware/cache');
 const rateLimit = require('express-rate-limit');

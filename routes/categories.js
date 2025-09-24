@@ -4,7 +4,6 @@ const mongoose = require('mongoose');
 const Category = require('../models/Category');
 const Product = require('../models/Product');
 const { hybridProtect, requireRole } = require('../middleware/hybridAuthmiddleware');
-const { authorize } = require('../middleware/hybridAuth'); // Keep for backward compatibility
 const { body, validationResult } = require('express-validator');
 const router = express.Router();
 
