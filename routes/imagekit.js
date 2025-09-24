@@ -2,7 +2,7 @@
 const express = require('express');
 const crypto = require('crypto');
 const router = express.Router();
-const { hybridProtect } = require('../middleware/hybridAuth');
+const { hybridProtect } = require('../middleware/hybridAuthmiddleware');
 const logger = require('../utils/logger');
 
 /**
