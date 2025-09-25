@@ -38,7 +38,7 @@ const {
 
 // --- Controller Import ---
 // This now imports the single, consolidated controller.
-const sellerController = require('../controllers/sellerController');
+const sellerController = require('../controllers/sellercontroller');
 
 // All routes below require a logged-in seller
 router.use(hybridProtect, requireRole('seller'));
