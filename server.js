@@ -1086,18 +1086,49 @@ class QuickLocalServer {
     // ==================================================================
     console.log('🔧 Configuring dedicated route for hybrid-auth-client.js BEFORE general CORS middleware...');
     
-    // Specific route for authentication client with enhanced CORS headers
+    // Specific route for authentication client with enhanced CORS headers and debugging
     this.app.get('/hybrid-auth-client.js', (req, res) => {
+      const filePath = path.join(__dirname, 'public', 'hybrid-auth-client.js');
+      
       console.log(`[HYBRID AUTH CLIENT] GET request from origin: ${req.headers.origin}`);
-      res.type('application/javascript'); // This is the correct way to set MIME type
-      res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 1 day
+      console.log(`[HYBRID AUTH CLIENT] Attempting to serve file from absolute path: ${filePath}`);
+      console.log(`[HYBRID AUTH CLIENT] Current working directory: ${process.cwd()}`);
+      console.log(`[HYBRID AUTH CLIENT] __dirname: ${__dirname}`);
       
-      // This permissive header allows the script to be loaded cross-origin from any frontend
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-      
-      res.sendFile(path.join(__dirname, 'public', 'hybrid-auth-client.js'));
+      // Check if the file actually exists at that path on the server
+      if (fs.existsSync(filePath)) {
+        console.log('[HYBRID AUTH CLIENT] ✅ File found! Sending file.');
+        
+        res.type('application/javascript');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+        
+        res.sendFile(filePath);
+      } else {
+        console.error(`[HYBRID AUTH CLIENT] ❌ ERROR: File not found at path: ${filePath}`);
+        
+        // List contents of the public directory to help debug
+        try {
+          const publicDir = path.join(__dirname, 'public');
+          if (fs.existsSync(publicDir)) {
+            const files = fs.readdirSync(publicDir);
+            console.log(`[HYBRID AUTH CLIENT] 📁 Contents of public directory (${publicDir}):`, files);
+          } else {
+            console.error(`[HYBRID AUTH CLIENT] ❌ Public directory does not exist: ${publicDir}`);
+          }
+        } catch (err) {
+          console.error('[HYBRID AUTH CLIENT] ❌ Error reading public directory:', err);
+        }
+        
+        res.status(404).json({
+          error: 'File not found',
+          message: 'Hybrid Auth Client script not found on server',
+          path: filePath,
+          suggestion: 'Check if public/hybrid-auth-client.js exists in deployment'
+        });
+      }
     });
     
     // Handle OPTIONS preflight requests for the script
