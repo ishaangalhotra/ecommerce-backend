@@ -105,7 +105,7 @@ class HybridAuthClient {
    async register(userData) { // Changed to accept a single userData object
     try {
       // The backend expects name, email, password, and optionally phone/role
-      const response = await fetch(`${this.backendUrl}/api/hybrid-auth/register`, {
+const response = await fetch(`${this.backendUrl}/api/v1/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -138,14 +138,14 @@ class HybridAuthClient {
   /**
    * Login user (hybrid approach)
    */
-  async login(email, password) {
+  async login(identifier, password) { // ✅ FIX: Changed from 'email' to 'identifier'
     try {
-      const response = await fetch(`${this.backendUrl}/api/hybrid-auth/login`, {
+      const response = await fetch(`${this.backendUrl}/api/v1/auth/login`, { // ✅ FIX: Changed endpoint
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ identifier: email, password })
+        body: JSON.stringify({ identifier, password }) // ✅ FIX: Now uses 'identifier' correctly
       });
 
       const data = await response.json();
@@ -176,6 +176,71 @@ class HybridAuthClient {
       }
     } catch (error) {
       console.error('Login error:', error);
+      return {
+        success: false,
+        message: error.message
+      };
+    }
+  }
+
+  /**
+   * Login with social provider (Google/Facebook)
+   */
+  async loginWithProvider(provider) {
+    try {
+      if (!this.supabase) {
+        throw new Error('Social login requires Supabase configuration');
+      }
+
+      const { data, error } = await this.supabase.auth.signInWithOAuth({
+        provider: provider,
+        options: {
+          redirectTo: `${window.location.origin}/marketplace.html?login=success`
+        }
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      return {
+        success: true,
+        message: `Redirecting to ${provider}...`
+      };
+    } catch (error) {
+      console.error(`${provider} login error:`, error);
+      return {
+        success: false,
+        message: error.message
+      };
+    }
+  }
+
+  /**
+   * Request password reset
+   */
+  async requestPasswordReset(email) {
+    try {
+      const response = await fetch(`${this.backendUrl}/api/v1/auth/forgot-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email })
+      });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        return {
+          success: true,
+          message: data.message
+        };
+      } else {
+        throw new Error(data.message || 'Failed to send reset email');
+      }
+    } catch (error) {
+      console.error('Password reset error:', error);
       return {
         success: false,
         message: error.message
@@ -365,7 +430,12 @@ class HybridAuthClient {
   /**
    * Check if user is authenticated
    */
-  isAuthenticated() {
+  async isAuthenticated() {
+    // Check if we have a current user
+    if (this.currentUser) return true;
+    
+    // Try to restore authentication state
+    await this.initializeAuth();
     return !!this.currentUser;
   }
 
