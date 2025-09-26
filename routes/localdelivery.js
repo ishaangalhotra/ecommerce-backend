@@ -3,7 +3,7 @@ const rateLimit = require('express-rate-limit');
 const { body, param, query, validationResult } = require('express-validator');
 const LocalDeliveryController = require('../controllers/LocalDeliveryController');
 const { hybridProtect, requireRole } = require('../middleware/hybridAuth');
-// Old authMiddleware replaced with hybridAuth
+const { authorize } = require('../middleware/authMiddleware'); // Keep for backward compatibility
 const logger = require('../utils/logger');
 const redis = require('../utils/redis');
 const { validateDeliveryParameters, validateLocation } = require('../validations/deliveryvalidation');

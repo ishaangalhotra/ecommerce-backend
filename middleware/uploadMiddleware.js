@@ -5,15 +5,14 @@ const { v4: uuidv4 } = require('uuid');
 const sharp = require('sharp');
 const crypto = require('crypto');
 const mime = require('mime-types');
-const { ErrorResponse } = require('./errorHandler');
+const { ErrorResponse } = require('./error');
 const logger = require('../utils/logger');
 const config = require('../config/config');
 const stream = require('stream');
 const util = require('util');
 const pipeline = util.promisify(stream.pipeline);
-// Cloud storage modules - only loaded if needed
-let Storage = null;
-let AWS = null;
+const { Storage } = require('@google-cloud/storage'); // For cloud storage
+const AWS = require('aws-sdk'); // For S3 storage
 
 /**
  * Enhanced error classes for upload handling
@@ -64,7 +63,7 @@ const UPLOAD_CONFIG = {
     TEMP_RETENTION: 24 * 60 * 60 * 1000, // 24 hours
     VIRUS_SCAN_ENABLED: process.env.VIRUS_SCAN_ENABLED === 'true',
     IMAGE_OPTIMIZATION: process.env.IMAGE_OPTIMIZATION !== 'false',
-    STORAGE_TYPE: 'local', // Force local storage (cloud storage disabled)
+    STORAGE_TYPE: process.env.STORAGE_TYPE || 'local', // local, s3, gcs
     MAX_FILENAME_LENGTH: 255,
     CHUNK_SIZE: 5 * 1024 * 1024, // 5MB chunks for large files
     RATE_LIMIT: {
@@ -82,10 +81,17 @@ const DIRECTORIES = {
     thumbnails: process.env.THUMBNAIL_DIR || path.join(process.cwd(), 'thumbnails')
 };
 
-// Initialize cloud storage clients if configured (disabled - using local storage only)
+// Initialize cloud storage clients if configured
 const storageClients = {
-    s3: null, // AWS SDK disabled
-    gcs: null // Google Cloud Storage disabled
+    s3: process.env.AWS_ACCESS_KEY_ID ? new AWS.S3({
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+        region: process.env.AWS_REGION
+    }) : null,
+    gcs: process.env.GOOGLE_CLOUD_PROJECT ? new Storage({
+        projectId: process.env.GOOGLE_CLOUD_PROJECT,
+        keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS
+    }) : null
 };
 
 /**
@@ -1040,9 +1046,7 @@ function getUploadedFiles(req) {
 async function cleanupFiles(files = [], options = {}) {
     const { force = false, retries = 3 } = options;
     
-    if (!Array.isArray(files)) {
-  return;
-}
+    if (!Array.isArray(files) return;
 
     const results = await Promise.allSettled(
         files.map(async (file) => {

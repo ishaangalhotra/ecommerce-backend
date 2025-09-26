@@ -59,9 +59,9 @@ const productSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
-  stock: {
-    type: Number,
-    default: 0,
+  stock: { 
+    type: Number, 
+    default: 0, 
     min: 0
   },
   lowStockThreshold: { type: Number, default: 10, min: 0 },
@@ -77,7 +77,7 @@ const productSchema = new mongoose.Schema({
     height: { type: Number, min: 0 },
     unit: { type: String, enum: ['cm', 'inch', 'mm'], default: 'cm' }
   },
-
+  
   // 📊 Rating & Reviews
   averageRating: {
     type: Number,
@@ -94,9 +94,9 @@ const productSchema = new mongoose.Schema({
     4: { type: Number, default: 0 },
     5: { type: Number, default: 0 }
   },
-
-  slug: {
-    type: String,
+  
+  slug: { 
+    type: String, 
     lowercase: true,
     sparse: true
     // Index will be created explicitly below to avoid conflicts
@@ -112,7 +112,7 @@ const productSchema = new mongoose.Schema({
     default: 'draft',
     index: true
   },
-
+  
   // 🗑️ Soft Delete
   isDeleted: { type: Boolean, default: false, index: true },
   deletedAt: Date,
@@ -120,18 +120,18 @@ const productSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
-
+  
   // 📈 Analytics
   views: { type: Number, default: 0, min: 0, index: true },
   totalSales: { type: Number, default: 0, min: 0 },
   totalRevenue: { type: Number, default: 0, min: 0 },
   wishlistCount: { type: Number, default: 0, min: 0 },
   cartAddCount: { type: Number, default: 0, min: 0 },
-
+  
   // 🏷️ Product Details
-  brand: {
-    type: String,
-    trim: true,
+  brand: { 
+    type: String, 
+    trim: true, 
     maxlength: 50,
     index: true
   },
@@ -144,15 +144,15 @@ const productSchema = new mongoose.Schema({
     type: String,
     unique: true,
     sparse: true,
-    uppercase: true
-    // redundant index:true removed
+    uppercase: true,
+    index: true
   },
   barcode: {
     type: String,
     unique: true,
     sparse: true
   },
-
+  
   // 📋 Specifications & Features
   specifications: {
     type: Map,
@@ -170,7 +170,7 @@ const productSchema = new mongoose.Schema({
     stock: { type: Number, default: 0 },
     price: Number // Optional size-specific pricing
   }],
-
+  
   // ⏰ Time-sensitive fields
   expiryDate: {
     type: Date,
@@ -210,7 +210,7 @@ const productSchema = new mongoose.Schema({
     landmark: { type: String, default: '' },
     country: { type: String, default: 'India' }
   },
-
+  
   deliveryConfig: {
     isLocalDeliveryEnabled: { type: Boolean, default: false },
     maxDeliveryRadius: { type: Number, default: 5000, min: 500, max: 20000 },
@@ -236,7 +236,7 @@ const productSchema = new mongoose.Schema({
       maxOrdersPerHour: { type: Number, default: 10 }
     }]
   },
-
+  
   // 📊 Enhanced Delivery Metrics
   deliveryMetrics: {
     totalDeliveries: { type: Number, default: 0 },
@@ -257,7 +257,7 @@ const productSchema = new mongoose.Schema({
   isBestSeller: { type: Boolean, default: false, index: true },
   promotionalBadges: [String],
   seasonalTags: [String],
-
+  
   // 🔍 SEO & Metadata
   seoMetadata: {
     metaTitle: { type: String, maxlength: 60 },
@@ -266,7 +266,7 @@ const productSchema = new mongoose.Schema({
     canonicalUrl: String,
     ogImage: String
   },
-
+  
   // 🏢 Business & Compliance
   businessMetadata: {
     hsnCode: String, // For tax purposes
@@ -283,7 +283,7 @@ const productSchema = new mongoose.Schema({
     certifications: [String],
     safetyWarnings: [String]
   },
-
+  
   // 📱 Digital Commerce
   digitalProductInfo: {
     isDigital: { type: Boolean, default: false },
@@ -293,10 +293,10 @@ const productSchema = new mongoose.Schema({
     downloadLimit: Number,
     licenseType: String
   }
-
+  
 }, {
   timestamps: true,
-  toJSON: {
+  toJSON: { 
     virtuals: true,
     transform: function(doc, ret) {
       delete ret.__v;
@@ -368,16 +368,16 @@ productSchema.pre('save', async function (next) {
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)+/g, '');
-
+    
     // Ensure unique slug
     let slug = baseSlug;
     let counter = 1;
-
+    
     while (await this.constructor.findOne({ slug, _id: { $ne: this._id } })) {
       slug = `${baseSlug}-${counter}`;
       counter++;
     }
-
+    
     this.slug = slug;
   }
 
@@ -443,9 +443,9 @@ productSchema.methods.calculateDeliveryDetails = function (userLocation) {
   const distance = this.calculateDistance(userLocation, this.sellerLocation.coordinates);
 
   if (distance > this.deliveryConfig.maxDeliveryRadius) {
-    return {
-      canDeliver: false,
-      reason: 'Outside delivery radius',
+    return { 
+      canDeliver: false, 
+      reason: 'Outside delivery radius', 
       distance: Math.round(distance),
       maxRadius: this.deliveryConfig.maxDeliveryRadius
     };
@@ -453,7 +453,7 @@ productSchema.methods.calculateDeliveryDetails = function (userLocation) {
 
   const travelTime = Math.ceil(distance / 250); // Assuming 15 km/h average speed
   const totalTime = this.deliveryConfig.preparationTime + travelTime;
-
+  
   let deliveryFee = 0;
   if (distance > 2000) { // Free delivery within 2km
     deliveryFee = this.deliveryConfig.deliveryFee || 25;
@@ -533,7 +533,7 @@ productSchema.statics.searchProducts = function(searchTerm, filters = {}) {
       { tags: { $in: [new RegExp(searchTerm, 'i')] } }
     ]
   };
-
+  
   return this.find(searchQuery);
 };
 

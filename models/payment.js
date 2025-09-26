@@ -6,30 +6,30 @@ const paymentSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Order',
     required: true,
-    // index: true <-- REMOVED
+    index: true
   },
   userId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: true,
-    // index: true <-- REMOVED
+    index: true
   },
   paymentGateway: {
     type: String,
     required: true,
     enum: ['razorpay', 'stripe', 'paypal', 'cash'],
-    // index: true <-- REMOVED
+    index: true
   },
   gatewayOrderId: {
     type: String,
     required: function() {
       return this.paymentGateway !== 'cash';
     },
-    // index: true <-- REMOVED
+    index: true
   },
   gatewayPaymentId: {
     type: String,
-    // index: true <-- REMOVED
+    index: true
   },
   gatewaySignature: {
     type: String
@@ -50,11 +50,11 @@ const paymentSchema = new mongoose.Schema({
     required: true,
     enum: ['pending', 'completed', 'failed', 'cancelled', 'refunded'],
     default: 'pending',
-    // index: true <-- REMOVED
+    index: true
   },
   paidAt: {
     type: Date,
-    // index: true <-- REMOVED
+    index: true
   },
   // Refund related fields
   refundAmount: {
@@ -117,7 +117,7 @@ const paymentSchema = new mongoose.Schema({
   toObject: { virtuals: true }
 });
 
-// Indexes - This is now the single source of truth for indexes.
+// Indexes
 paymentSchema.index({ orderId: 1, status: 1 });
 paymentSchema.index({ userId: 1, status: 1 });
 paymentSchema.index({ paymentGateway: 1, status: 1 });

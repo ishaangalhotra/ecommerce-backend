@@ -266,19 +266,6 @@ process.on('warning', (warning) => {
 // Start memory monitoring
 memoryMonitor.start();
 
-// Suppress AWS SDK v2 deprecation warning in development
-if (process.env.NODE_ENV === 'development') {
-  process.removeAllListeners('warning');
-  process.on('warning', (warning) => {
-    // Suppress specific AWS SDK v2 warnings
-    if (warning.message && warning.message.includes('AWS SDK for JavaScript (v2)')) {
-      return; // Ignore this warning
-    }
-    // Log other warnings
-    console.warn('⚠️ Warning:', warning.message);
-  });
-}
-
 // Enhanced process exit handlers
 const gracefulShutdownHandler = (signal) => {
   console.log(`🛑 ${signal} received, cleaning up memory monitoring...`);
@@ -338,7 +325,7 @@ const logger = require('./utils/logger');
 const { connectDB } = require('./config/database');
 const applySecurity = require('./middleware/security');
 const ValidationMiddleware = require('./middleware/validation');
-const { hybridProtect } = require('./middleware/hybridAuthmiddleware');
+const AuthenticationMiddleware = require('./middleware/authMiddleware');
 const MetricsCollector = require('./utils/metrics');
 const CircuitBreaker = require('./utils/circuitBreaker');
 
@@ -527,7 +514,14 @@ class QuickLocalConfig {
   }
 
   validateEnvironment() {
-    // QuickLocal specific environment validations
+    // Skip validation if ValidationMiddleware doesn't exist
+    try {
+      ValidationMiddleware.validateEnvironment();
+    } catch (error) {
+      console.warn('⚠️ ValidationMiddleware not found, skipping validation');
+    }
+    
+    // Additional QuickLocal specific validations
     const criticalVars = ['MONGODB_URI', 'JWT_SECRET', 'COOKIE_SECRET', 'SESSION_SECRET'];
     const missing = criticalVars.filter(varName => !process.env[varName] && !process.env[varName.replace('MONGODB_URI', 'MONGO_URI')]);
     
@@ -810,9 +804,37 @@ class QuickLocalRouteManager {
         routeModule = require(module);
         console.log(`✅ Successfully loaded: ${module}`);
       } catch (error) {
-        console.warn(`⚠️ Route module failed to load: ${module} - ${error.message}`);
-        this.failedRoutes.push({ path, name, error: error.message });
-        return; // Skip failed modules gracefully
+        if (error.code === 'MODULE_NOT_FOUND') {
+          // Try alternative paths
+          const altPaths = [
+            module.replace('./', './routes/'),
+            `./routes/${module.split('/').pop()}`,
+            `${__dirname}/routes/${module.split('/').pop()}`
+          ];
+          
+          let loaded = false;
+          for (const altPath of altPaths) {
+            try {
+              console.log(`🔄 Trying alternative path: ${altPath}`);
+              routeModule = require(altPath);
+              console.log(`✅ Successfully loaded from: ${altPath}`);
+              loaded = true;
+              break;
+            } catch (altError) {
+              // Continue to next alternative
+            }
+          }
+          
+          if (!loaded) {
+            console.warn(`⚠️ Route module not found: ${module} - Skipping`);
+            this.failedRoutes.push({ path, name, error: 'Module not found' });
+            return; // Skip missing modules instead of failing
+          }
+        } else {
+          console.error(`❌ Error loading ${module}:`, error.message);
+          this.failedRoutes.push({ path, name, error: error.message });
+          return;
+        }
       }
       
       if (!this.isValidRouter(routeModule)) {
@@ -1081,72 +1103,14 @@ class QuickLocalServer {
       next();
     });
 
-    // ✅ FIX: The specific, permissive handler for the auth client script is now placed FIRST.
-    // This ensures it runs BEFORE the general CORS middleware.
     // ==================================================================
-    console.log('🔧 Configuring dedicated route for hybrid-auth-client.js BEFORE general CORS middleware...');
-    
-    // Specific route for authentication client with enhanced CORS headers and debugging
-    this.app.get('/hybrid-auth-client.js', (req, res) => {
-      const filePath = path.join(__dirname, 'public', 'hybrid-auth-client.js');
-      
-      console.log(`[HYBRID AUTH CLIENT] GET request from origin: ${req.headers.origin}`);
-      console.log(`[HYBRID AUTH CLIENT] Attempting to serve file from absolute path: ${filePath}`);
-      console.log(`[HYBRID AUTH CLIENT] Current working directory: ${process.cwd()}`);
-      console.log(`[HYBRID AUTH CLIENT] __dirname: ${__dirname}`);
-      
-      // Check if the file actually exists at that path on the server
-      if (fs.existsSync(filePath)) {
-        console.log('[HYBRID AUTH CLIENT] ✅ File found! Sending file.');
-        
-        res.type('application/javascript');
-        res.setHeader('Cache-Control', 'public, max-age=86400');
-        res.setHeader('Access-Control-Allow-Origin', '*');
-        res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-        
-        res.sendFile(filePath);
-      } else {
-        console.error(`[HYBRID AUTH CLIENT] ❌ ERROR: File not found at path: ${filePath}`);
-        
-        // List contents of the public directory to help debug
-        try {
-          const publicDir = path.join(__dirname, 'public');
-          if (fs.existsSync(publicDir)) {
-            const files = fs.readdirSync(publicDir);
-            console.log(`[HYBRID AUTH CLIENT] 📁 Contents of public directory (${publicDir}):`, files);
-          } else {
-            console.error(`[HYBRID AUTH CLIENT] ❌ Public directory does not exist: ${publicDir}`);
-          }
-        } catch (err) {
-          console.error('[HYBRID AUTH CLIENT] ❌ Error reading public directory:', err);
-        }
-        
-        res.status(404).json({
-          error: 'File not found',
-          message: 'Hybrid Auth Client script not found on server',
-          path: filePath,
-          suggestion: 'Check if public/hybrid-auth-client.js exists in deployment'
-        });
-      }
-    });
-    
-    // Handle OPTIONS preflight requests for the script
-    this.app.options('/hybrid-auth-client.js', (req, res) => {
-      console.log(`[HYBRID AUTH CLIENT] OPTIONS preflight from origin: ${req.headers.origin}`);
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-      res.status(204).end();
-    });
-    console.log('✅ Hybrid auth client route configured with enhanced CORS support');
-    // ==================================================================
-
-
-    // ==================================================================
-    // == CRITICAL: GENERAL CORS MIDDLEWARE APPLIED AFTER SPECIFIC HANDLERS
+    // == CRITICAL: APPLY CORS FIRST BEFORE SECURITY MIDDLEWARE
+    // == FIXED: More permissive CORS for production debugging
     // ==================================================================
     const corsOptions = {
+      /**
+       * FIXED: More reliable origin checking with fallbacks
+       */
       origin: function (origin, callback) {
         console.log(`[CORS] 🔍 Checking origin: "${origin}"`);
         
@@ -1155,12 +1119,7 @@ class QuickLocalServer {
           'https://www.quicklocal.shop',
           'https://quicklocal.shop',
           'https://my-frontend-ifyr.vercel.app',
-          'https://my-frontend-ifyr-6dh1011kk-ishans-projects-67ccbc5a.vercel.app',
-          // Local frontend development
-          'http://localhost:3000',
-          'http://127.0.0.1:3000',
-          'http://127.0.0.1:5500',
-          'null' // For local file:// protocol
+          'https://my-frontend-ifyr-6dh1011kk-ishans-projects-67ccbc5a.vercel.app'
         ];
         
         // Allow requests with no origin (Postman, server-to-server, mobile apps)
@@ -1193,8 +1152,11 @@ class QuickLocalServer {
         
         callback(null, false);
       },
+      // Allows the browser to send cookies and authorization headers with the request.
       credentials: true,
+      // Specifies the HTTP methods that are allowed.
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+      // Specifies the headers that are allowed in a request.
       allowedHeaders: [
         'Content-Type',
         'Authorization',
@@ -1204,38 +1166,37 @@ class QuickLocalServer {
         'X-Api-Key',
         'X-Correlation-ID'
       ],
+      // Expose headers that the frontend can access
       exposedHeaders: [
         'X-Correlation-ID',
         'X-Response-Time',
         'X-Instance-ID'
       ],
+      // Some legacy browsers (IE11, various SmartTVs) choke on 204.
       optionsSuccessStatus: 200,
+      // Preflight cache (24 hours)
       maxAge: 86400
     };
     
-    // Add CORS debugging middleware
+    // Add CORS debugging middleware FIRST
     this.app.use((req, res, next) => {
       console.log(`[CORS DEBUG] ${req.method} ${req.originalUrl} from origin: "${req.headers.origin || 'NO ORIGIN'}"`);
       
+      // Add CORS headers manually as backup
       const origin = req.headers.origin;
-      const isAllowedOrigin = origin === 'https://www.quicklocal.shop' || 
-                             origin === 'https://quicklocal.shop' ||
-                             origin?.startsWith('http://localhost') ||
-                             origin?.startsWith('http://127.0.0.1') ||
-                             !origin;
-      
-      if (isAllowedOrigin) {
-        res.setHeader('Access-Control-Allow-Origin', origin || '*');
+      if (origin === 'https://www.quicklocal.shop' || origin === 'https://quicklocal.shop') {
+        res.setHeader('Access-Control-Allow-Origin', origin);
         res.setHeader('Access-Control-Allow-Credentials', 'true');
         res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin, X-Api-Key, X-Correlation-ID');
         res.setHeader('Access-Control-Expose-Headers', 'X-Correlation-ID, X-Response-Time, X-Instance-ID');
       }
       
+      // Handle preflight requests immediately
       if (req.method === 'OPTIONS') {
         console.log(`[CORS DEBUG] Handling OPTIONS preflight request for ${req.originalUrl}`);
-        if (isAllowedOrigin) {
-          res.setHeader('Access-Control-Max-Age', '86400');
+        if (origin === 'https://www.quicklocal.shop' || origin === 'https://quicklocal.shop') {
+          res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
           return res.status(200).end();
         }
       }
@@ -1245,9 +1206,12 @@ class QuickLocalServer {
     
     this.app.use(cors(corsOptions));
     
+    // Explicitly handle preflight requests for all routes.
+    // This ensures that OPTIONS requests get a successful response quickly,
+    // which is crucial for complex requests (e.g., with custom headers or methods like PUT/DELETE).
     this.app.options('*', cors(corsOptions));
     
-    console.log('✅ General CORS middleware applied');
+    console.log('✅ CORS middleware applied BEFORE security middleware with debugging');
 
     // Security headers with Helmet (applied AFTER CORS to avoid conflicts)
     if (this.config.HELMET_ENABLED) {
@@ -1258,17 +1222,44 @@ class QuickLocalServer {
         this.app.use(helmet());
       }
     }
-    
-    // General static file serving from public directory (after specific routes)
+
+    // General static file serving from public directory
+    const path = require('path');
     this.app.use(express.static(path.join(__dirname, 'public'), {
       setHeaders: (res, filePath, stat) => {
+        // Set correct Content-Type for JavaScript files
         if (path.extname(filePath) === '.js') {
           res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
           res.setHeader('Access-Control-Allow-Origin', '*');
         }
       }
     }));
-    console.log('✅ General static file serving configured for public directory');
+    console.log('✅ Static file serving configured for public directory');
+    
+    // Specific route for authentication client with enhanced CORS headers
+    this.app.get('/hybrid-auth-client.js', (req, res) => {
+      res.type('application/javascript'); // This is the correct way to set MIME type
+      res.setHeader('Cache-Control', 'public, max-age=86400'); // Cache for 1 day
+      
+      // Fix CORS headers for cross-origin loading from Vercel frontend
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+      
+      res.sendFile(path.join(__dirname, 'public', 'hybrid-auth-client.js'));
+    });
+    
+    // Handle OPTIONS preflight requests for hybrid-auth-client.js
+    this.app.options('/hybrid-auth-client.js', (req, res) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+      res.status(204).end();
+    });
+    
+    console.log('✅ Hybrid auth client static file route configured with CORS support');
+
+    // CORS is handled by the cors library above - applied before security middleware
 
     // Brute force protection for hybrid auth endpoints
     const bruteForce = EnhancedSecurityManager.createBruteForceProtection();
@@ -1288,10 +1279,13 @@ class QuickLocalServer {
       100,
       500
     ));
+
+    // CORS configuration moved to the beginning of middleware setup to avoid conflicts
     
     // MEMORY OPTIMIZATION: Strict body parsing limits to prevent memory spikes
+    // Using smaller limits by default, larger limits only on specific endpoints
     this.app.use(express.json({
-      limit: '100kb',
+      limit: '100kb', // REDUCED from MAX_REQUEST_SIZE for memory efficiency
       verify: (req, res, buf) => {
         req.rawBody = buf;
       },
@@ -1300,19 +1294,20 @@ class QuickLocalServer {
     
     this.app.use(express.urlencoded({ 
       extended: true, 
-      limit: '100kb',
-      parameterLimit: 100
+      limit: '100kb', // REDUCED for memory efficiency
+      parameterLimit: 100 // REDUCED from 1000
     }));
     
-    // MEMORY SAFETY: Pre-flight content-length check
+    // MEMORY SAFETY: Pre-flight content-length check to prevent buffering large requests
     this.app.use((req, res, next) => {
       const contentLength = parseInt(req.headers['content-length'] || '0', 10);
       const MAX_SAFE_SIZE = 1024 * 1024; // 1MB safety limit
       
+      // Allow larger payloads only for specific endpoints
       const allowLargePayloads = [
-        '/api/v1/products',
-        '/api/v1/seller/products',
-        '/webhook'
+        '/api/v1/products', // Product creation might need larger JSON
+        '/api/v1/seller/products', // Seller product uploads
+        '/webhook' // Webhooks might be larger
       ].some(path => req.originalUrl.includes(path));
       
       if (!allowLargePayloads && contentLength > MAX_SAFE_SIZE) {
@@ -1344,7 +1339,15 @@ class QuickLocalServer {
       }));
     }
 
+    
+    // ========================================
     // Supabase Hybrid Architecture Integration
+    // ========================================
+    
+    // Hybrid authentication routes will be mounted under /api/v1/auth in setupEndpoints
+    // This ensures consistent CORS handling and middleware application
+    
+    // Initialize Supabase real-time service (memory efficient)
     if (process.env.SUPABASE_REALTIME_ENABLED === 'true' && realtimeService) {
       try {
         await realtimeService.initialize();
@@ -1386,6 +1389,7 @@ class QuickLocalServer {
       res.setHeader('X-Instance-ID', this.config.INSTANCE_ID);
       res.setHeader('X-Response-Time', '0ms');
 
+      // Override res.send to capture response time
       const originalSend = res.send;
       res.send = function(data) {
         const endTime = process.hrtime.bigint();
@@ -1393,7 +1397,8 @@ class QuickLocalServer {
         
         res.setHeader('X-Response-Time', `${duration.toFixed(2)}ms`);
         
-        if (duration > 2000) {
+        // Log slow requests
+        if (duration > 2000) { // 2 seconds
           console.warn(`🐌 Slow request [${req.correlationId}]: ${req.method} ${req.originalUrl} took ${duration.toFixed(2)}ms`);
         }
 
@@ -1411,7 +1416,7 @@ class QuickLocalServer {
       next();
     });
 
-    // Advanced caching middleware
+    // Advanced caching middleware (if available and not in API-only mode)
     if (memoryCacheMiddleware && !this.config.API_ONLY_MODE) {
       try {
         console.log('📋 Adding memory cache middleware...');
@@ -1427,10 +1432,12 @@ class QuickLocalServer {
 
     // Security and validation middleware
     this.app.use((req, res, next) => {
+      // Security headers
       res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader('X-Frame-Options', 'DENY');
       res.setHeader('X-XSS-Protection', '1; mode=block');
       
+      // Basic validation
       const userAgent = req.get('User-Agent');
       if (!userAgent || userAgent.length < 5) {
         return res.status(403).json({ success: false, message: 'Access denied' });
@@ -1459,6 +1466,7 @@ class QuickLocalServer {
         
         console.log(`✅ Database connected: ${this.config.DB_NAME}`);
         
+        // Initialize database optimizations if available
         if (dbOptimizer) {
           try {
             console.log('🔧 Initializing database optimizations...');
@@ -1469,6 +1477,7 @@ class QuickLocalServer {
           }
         }
         
+        // Initialize advanced search system if available
         if (advancedSearchSystem) {
           try {
             console.log('🔍 Initializing advanced search system...');
@@ -1504,8 +1513,8 @@ class QuickLocalServer {
         saveUninitialized: false,
         store: MongoStore.create({
           mongoUrl: this.config.MONGODB_URI,
-          touchAfter: 24 * 3600,
-          ttl: parseInt(process.env.SESSION_COOKIE_MAX_AGE) || 604800000
+          touchAfter: 24 * 3600, // lazy session update
+          ttl: parseInt(process.env.SESSION_COOKIE_MAX_AGE) || 604800000 // 7 days
         }),
         cookie: {
           secure: process.env.SESSION_COOKIE_SECURE === 'true',
@@ -1572,6 +1581,7 @@ class QuickLocalServer {
     
     redirectRoutes.forEach(route => {
       this.app.get(route, (req, res) => {
+        // Instead of trying to serve files, redirect to the Vercel frontend
         const redirectUrl = `${frontendUrl}${route === '/marketplace' ? '/' : route}`;
         console.log(`🔄 Redirecting ${route} to frontend: ${redirectUrl}`);
         res.redirect(302, redirectUrl);
@@ -1584,10 +1594,14 @@ class QuickLocalServer {
     // CRITICAL: Mount main API routes
     try {
       const mainRoutes = require('./routes');
+      
+      // Main routes already include auth routes via routes/index.js
       this.app.use('/api/v1', mainRoutes);
       console.log('✅ Main API routes mounted at /api/v1 (includes auth routes)');
     } catch (error) {
       console.error('❌ Failed to mount main API routes:', error);
+      
+      // Fallback: Mount essential routes directly
       console.log('🔄 Attempting fallback route mounting...');
       this.mountFallbackRoutes();
     }
@@ -1623,6 +1637,8 @@ class QuickLocalServer {
         const imageRoutes = createImageRoutes(cdnImageOptimization);
         this.app.use('/api/v1', imageRoutes.router);
         console.log('✅ Image optimization routes enabled');
+        
+        // Make middleware available globally for use in product routes
         this.app.locals.imageMiddleware = imageRoutes.middleware;
       } catch (error) {
         console.warn('⚠️ Image optimization routes setup failed:', error.message);
@@ -1636,6 +1652,8 @@ class QuickLocalServer {
         const smsRoutes = createSMSRoutes(smsGatewaySystem);
         this.app.use('/api/v1', smsRoutes.router);
         console.log('✅ SMS gateway routes enabled');
+        
+        // Make middleware available globally
         this.app.locals.smsMiddleware = smsRoutes.middleware;
       } catch (error) {
         console.warn('⚠️ SMS routes setup failed:', error.message);
@@ -1649,12 +1667,16 @@ class QuickLocalServer {
         const twoFARoutes = create2FARoutes(twoFactorSystem);
         this.app.use('/api/v1', twoFARoutes.router);
         console.log('✅ Two-Factor Authentication routes enabled');
+        
+        // Make middleware available globally
         this.app.locals.twoFAMiddleware = twoFARoutes.middleware;
       } catch (error) {
         console.warn('⚠️ 2FA routes setup failed:', error.message);
       }
     }
     
+    // Server info available at /api/v1/info instead of root
+
     // Comprehensive health check
     this.app.get('/health', async (req, res) => {
       const healthData = {
@@ -1687,6 +1709,7 @@ class QuickLocalServer {
         }
       };
 
+      // Determine overall health
       const failedChecks = Object.values(healthData.checks).filter(check => 
         check.status && check.status !== 'healthy'
       );
@@ -1712,8 +1735,9 @@ class QuickLocalServer {
         arrayBuffers: Math.round((mem.arrayBuffers || 0) / 1024 / 1024)
       };
       
+      // Memory health indicators
       const heapUsagePercent = Math.round((mem.heapUsed / mem.heapTotal) * 100);
-      const isHealthy = memoryMB.rss < 400 && heapUsagePercent < 80;
+      const isHealthy = memoryMB.rss < 400 && heapUsagePercent < 80; // Render free tier ~512MB
       const alertLevel = memoryMB.rss > 450 ? 'critical' : memoryMB.rss > 350 ? 'warning' : 'normal';
       
       res.json({
@@ -1723,15 +1747,17 @@ class QuickLocalServer {
         isHealthy,
         alertLevel,
         uptime: Math.floor(process.uptime()),
+        // Additional context
         nodeVersion: process.version,
         platform: process.platform,
         pid: process.pid,
+        // Render-specific info
         renderMemoryLimit: '512MB (free tier)',
         recommendations: isHealthy ? [] : this.getMemoryRecommendations(memoryMB, heapUsagePercent)
       });
     });
     
-    // Metrics endpoint
+    // Metrics endpoint (enhanced with memory focus)
     if (this.config.ENABLE_METRICS) {
       this.app.get('/metrics', (req, res) => {
         const mem = process.memoryUsage();

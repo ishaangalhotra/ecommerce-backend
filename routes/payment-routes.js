@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const PaymentService = require('../services/paymentservice');
-const { hybridProtect } = require('../middleware/hybridAuthmiddleware'); // ← Changed this line
+const { hybridProtect } = require('../middleware/hybridAuth'); // ← Changed this line
 const { validateOrder } = require('../middleware/validation');
 
 // ============================================================================
