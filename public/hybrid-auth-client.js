@@ -226,3 +226,10 @@ class HybridAuthClient {
         return this.currentUser;
     }
 }
+
+// Explicitly make the class available globally
+if (typeof window !== 'undefined') {
+    window.HybridAuthClient = HybridAuthClient;
+} else if (typeof global !== 'undefined') {
+    global.HybridAuthClient = HybridAuthClient;
+}
