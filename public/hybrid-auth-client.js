@@ -138,23 +138,30 @@ const response = await fetch(`${this.backendUrl}/api/v1/auth/register`, {
   /**
    * Login user (hybrid approach)
    */
-  async login(identifier, password) { // ✅ FIX: Changed from 'email' to 'identifier'
+  async login(identifier, password) {
     try {
-      const response = await fetch(`${this.backendUrl}/api/v1/auth/login`, { // ✅ FIX: Changed endpoint
+      const response = await fetch(`${this.backendUrl}/api/v1/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ identifier, password }) // ✅ FIX: Now uses 'identifier' correctly
+        body: JSON.stringify({ identifier, password })
       });
 
       const data = await response.json();
       
       if (response.ok) {
-        // Handle Supabase tokens
+        // Handle Supabase tokens - FIXED VERSION
         if (data.accessToken && data.refreshToken) {
-          localStorage.setItem('supabase_access_token', data.accessToken);
-          localStorage.setItem('supabase_refresh_token', data.refreshToken);
+          if (this.supabase) {
+            await this.supabase.auth.setSession({
+              access_token: data.accessToken,
+              refresh_token: data.refreshToken,
+            });
+            console.log('✅ Supabase session set successfully.');
+          } else {
+            console.error('Supabase client not initialized; cannot set session.');
+          }
           this.authMethod = 'supabase';
         } 
         // Handle legacy JWT
