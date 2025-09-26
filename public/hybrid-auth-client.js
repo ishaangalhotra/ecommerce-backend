@@ -256,37 +256,55 @@ const response = await fetch(`${this.backendUrl}/api/v1/auth/register`, {
   }
 
   /**
-   * Logout user
+   * Logout user - CORRECTED VERSION
    */
   async logout() {
     try {
-      // Call backend logout
-      await fetch(`${this.backendUrl}/api/hybrid-auth/logout`, {
+      // CORRECTED: Call the correct, versioned logout endpoint
+      await fetch(`${this.backendUrl}/api/v1/auth/logout`, {
         method: 'POST',
         headers: {
           'Authorization': this.getAuthHeader(),
           'Content-Type': 'application/json'
         }
       });
+      // The backend call is best-effort; we proceed with client-side cleanup regardless.
+    } catch (error) {
+      // Log the error but don't stop the logout process.
+      console.warn('Backend logout call failed, proceeding with client-side cleanup:', error.message);
+    }
 
+    try {
       // Sign out from Supabase if using Supabase
       if (this.authMethod === 'supabase' && this.supabase) {
         await this.supabase.auth.signOut();
       }
 
-      // Clear local storage
+      // Clear all known local storage keys related to auth
       localStorage.removeItem('token');
       localStorage.removeItem('accessToken');
-      localStorage.removeItem('supabase_access_token');
-      localStorage.removeItem('supabase_refresh_token');
+      localStorage.removeItem('quicklocal_access_token');
+      localStorage.removeItem('quicklocal_refresh_token');
+      localStorage.removeItem('quicklocal_user');
+      
+      // Also clear Supabase's own storage keys
+      Object.keys(localStorage).forEach(key => {
+        if (key.startsWith('sb-') && key.includes('-auth-token')) {
+          localStorage.removeItem(key);
+        }
+      });
 
       this.currentUser = null;
       this.authMethod = null;
-      this.authStateCallback?.(null);
+      if (this.authStateCallback) {
+        this.authStateCallback(null);
+      }
 
+      console.log('✅ User logged out and session cleared from client.');
       return { success: true };
+
     } catch (error) {
-      console.error('Logout error:', error);
+      console.error('Client-side logout error:', error);
       return { success: false, message: error.message };
     }
   }
