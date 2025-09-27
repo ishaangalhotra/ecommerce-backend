@@ -136,7 +136,7 @@ const response = await fetch(`${this.backendUrl}/api/v1/auth/register`, {
   }
 
   /**
-   * Login user (hybrid approach)
+   * Login user (hybrid approach) - FIXED VERSION
    */
   async login(identifier, password) {
     try {
@@ -162,6 +162,11 @@ const response = await fetch(`${this.backendUrl}/api/v1/auth/register`, {
           } else {
             console.error('Supabase client not initialized; cannot set session.');
           }
+          
+          // FIX: Manually set the tokens in localStorage so getAuthHeader() can find them
+          localStorage.setItem('supabase_access_token', data.accessToken);
+          localStorage.setItem('supabase_refresh_token', data.refreshToken);
+          
           this.authMethod = 'supabase';
         } 
         // Handle legacy JWT
@@ -256,7 +261,7 @@ const response = await fetch(`${this.backendUrl}/api/v1/auth/register`, {
   }
 
   /**
-   * Logout user - CORRECTED VERSION
+   * Logout user - FIXED VERSION
    */
   async logout() {
     try {
@@ -286,6 +291,10 @@ const response = await fetch(`${this.backendUrl}/api/v1/auth/register`, {
       localStorage.removeItem('quicklocal_access_token');
       localStorage.removeItem('quicklocal_refresh_token');
       localStorage.removeItem('quicklocal_user');
+      
+      // FIX: Also remove the supabase tokens on logout
+      localStorage.removeItem('supabase_access_token');
+      localStorage.removeItem('supabase_refresh_token');
       
       // Also clear Supabase's own storage keys
       Object.keys(localStorage).forEach(key => {
