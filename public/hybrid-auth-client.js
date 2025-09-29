@@ -322,13 +322,24 @@ const response = await fetch(`${this.backendUrl}/api/v1/auth/register`, {
    * Get current authentication header
    */
   getAuthHeader() {
-    if (this.authMethod === 'supabase') {
-      const token = localStorage.getItem('supabase_access_token');
-      return token ? `Bearer ${token}` : '';
-    } else if (this.authMethod === 'jwt') {
-      const token = localStorage.getItem('token');
-      return token ? `Bearer ${token}` : '';
+    // FIX: Make token retrieval more robust by checking all possible keys.
+    // This is the core fix for the session issue.
+    const tokenKeys = [
+        'supabase_access_token',
+        'quicklocal_access_token',
+        'token',
+        'accessToken'
+    ];
+
+    for (const key of tokenKeys) {
+        const token = localStorage.getItem(key);
+        if (token) {
+            console.log(`✅ Auth token found in localStorage key: "${key}"`);
+            return `Bearer ${token}`;
+        }
     }
+    
+    console.warn('⚠️ No authentication token found in any known localStorage key.');
     return '';
   }
 
@@ -336,9 +347,21 @@ const response = await fetch(`${this.backendUrl}/api/v1/auth/register`, {
    * Make authenticated API call
    */
   async apiCall(endpoint, options = {}) {
+    const authHeader = this.getAuthHeader();
+    if (!authHeader) {
+        // FIX: Prevent API calls if no token is found, which can trigger logouts.
+        console.error(`❌ Aborting API call to ${endpoint}: User is not authenticated.`);
+        // Return a response that looks like a 401 error to be handled by the caller.
+        return new Response(JSON.stringify({ message: "Client-side authentication token not found." }), {
+            status: 401,
+            statusText: "Unauthorized",
+            headers: { 'Content-Type': 'application/json' }
+        });
+    }
+
     const defaultHeaders = {
       'Content-Type': 'application/json',
-      'Authorization': this.getAuthHeader()
+      'Authorization': authHeader
     };
 
     const response = await fetch(`${this.backendUrl}${endpoint}`, {
@@ -349,7 +372,7 @@ const response = await fetch(`${this.backendUrl}/api/v1/auth/register`, {
       }
     });
 
-    // Handle token refresh for Supabase
+    // Handle token refresh for Supabase (no change needed here)
     if (response.status === 401 && this.authMethod === 'supabase') {
       const refreshed = await this.refreshToken();
       if (refreshed) {
