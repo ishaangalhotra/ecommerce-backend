@@ -28,7 +28,7 @@ class MemoryMonitor {
       // Set up interval (reduced frequency for production)
       this.checkInterval = setInterval(() => {
         this.checkMemory();
-      }, 10 * 60 * 1000); // Every 10 minutes (reduced from 2 minutes)
+      }, 30 * 60 * 1000); // Every 10 minutes (reduced from 2 minutes)
 
       return true;
     } catch (error) {
@@ -39,11 +39,11 @@ class MemoryMonitor {
   }
 
   checkMemory() {
-    try {
-      const memUsage = process.memoryUsage();
-      const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
-      const heapTotalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
-      const usage = Math.round((memUsage.heapUsed / memUsage.heapTotal) * 100);
+  try {
+    const memUsage = process.memoryUsage();
+    const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+    const heapTotalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
+    const usage = Math.round((memUsage.heapUsed / memUsage.heapTotal) * 100);
       const timestamp = new Date().toISOString();
 
       // Store sample for trend analysis
