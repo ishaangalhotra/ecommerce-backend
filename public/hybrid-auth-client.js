@@ -1,25 +1,35 @@
 /**
- * Hybrid Authentication Client for Frontend
- * Supports both Supabase Auth and legacy JWT
- * Place this in your Vercel frontend project
+ * Hybrid Authentication Client for Frontend - SECURE PRODUCTION VERSION
+ * Supports both Supabase Auth and legacy JWT with enhanced security
  */
-
-// Import Supabase (add this to your package.json: npm install @supabase/supabase-js)
-// import { createClient } from '@supabase/supabase-js'
-
 class HybridAuthClient {
-  constructor(supabaseUrl, supabaseAnonKey, backendUrl) {
-    // Initialize Supabase client
+  constructor(config = {}) {
+    const {
+      supabaseUrl = window.REACT_APP_SUPABASE_URL || 'https://pmvhsjezhuokwygvhhqk.supabase.co',
+      supabaseAnonKey = window.REACT_APP_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBtdmhzamV6aHVva3d5Z3ZoaHFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc2NTU3MDUsImV4cCI6MjA3MzIzMTcwNX0.ZrVjuqB28Qer7F7zSdG_rJIs_ZQZhX1PNyrmpK-Qojg',
+      backendUrl = window.REACT_APP_BACKEND_URL || 'https://quicklocal-backend.onrender.com',
+      autoInitialize = true,
+      enableSessionWatcher = true,
+      maxRetryAttempts = 2
+    } = config;
+    
     this.supabase = window.supabase?.createClient ? 
-      window.supabase.createClient(supabaseUrl, supabaseAnonKey) :
-      null;
+      window.supabase.createClient(supabaseUrl, supabaseAnonKey) : null;
     
     this.backendUrl = backendUrl;
     this.currentUser = null;
     this.authMethod = null;
+    this.config = config;
+    this.maxRetryAttempts = maxRetryAttempts;
+    this.sessionInterval = null;
     
-    // Initialize auth state
-    this.initializeAuth();
+    if (autoInitialize) {
+      this.initializeAuth();
+    }
+    
+    if (enableSessionWatcher) {
+      this.startSessionWatcher();
+    }
   }
 
   /**
@@ -27,22 +37,68 @@ class HybridAuthClient {
    */
   async initializeAuth() {
     try {
-      // Check for existing Supabase session
+      console.log('[Auth] Initializing authentication state...');
+
+      // Priority 1: Check for an active Supabase session via SDK
       if (this.supabase) {
         const { data: { session } } = await this.supabase.auth.getSession();
-        if (session) {
+        if (session && this.validateToken(session.access_token)) {
+          console.log('[Auth] Initialized from Supabase SDK session.');
           await this.handleSupabaseAuth(session);
           return;
         }
       }
 
-      // Fallback to legacy JWT token
-      const token = localStorage.getItem('token') || localStorage.getItem('accessToken');
-      if (token) {
-        await this.handleLegacyAuth(token);
+      // Priority 2: Check secure storage for a Supabase token
+      const accessToken = this.getSecureToken('supabase_access_token');
+      if (accessToken && this.validateToken(accessToken)) {
+        console.log('[Auth] Initialized from secure storage token.');
+        const mockSession = { access_token: accessToken };
+        await this.handleSupabaseAuth(mockSession);
+        return;
       }
+
+      // Priority 3: Fallback to legacy JWT token
+      const legacyToken = this.getSecureToken('token') || this.getSecureToken('accessToken');
+      if (legacyToken && this.validateToken(legacyToken)) {
+        console.log('[Auth] Initialized from legacy JWT.');
+        await this.handleLegacyAuth(legacyToken);
+        return;
+      }
+
+      console.log('[Auth] No valid authentication tokens found.');
     } catch (error) {
       console.error('Failed to initialize auth:', error);
+    }
+  }
+
+  /**
+   * Validate token structure and expiry
+   */
+  validateToken(token) {
+    if (!token || token === 'undefined' || token === 'null' || token === '') {
+      return false;
+    }
+    
+    try {
+      // Basic JWT structure validation
+      const parts = token.split('.');
+      if (parts.length !== 3) {
+        console.warn('[Auth] Invalid token structure');
+        return false;
+      }
+      
+      // Check if token is expired
+      const payload = JSON.parse(atob(parts[1]));
+      if (payload.exp && payload.exp < Date.now() / 1000) {
+        console.warn('[Auth] Token expired');
+        return false;
+      }
+      
+      return true;
+    } catch (error) {
+      console.warn('[Auth] Token validation failed:', error);
+      return false;
     }
   }
 
@@ -50,11 +106,15 @@ class HybridAuthClient {
    * Handle Supabase authentication
    */
   async handleSupabaseAuth(session) {
+    if (!session || !this.validateToken(session.access_token)) {
+      console.warn('[Auth] handleSupabaseAuth called with invalid session.');
+      return;
+    }
+
     try {
       this.authMethod = 'supabase';
       
-      // Get user details from your backend
-      const response = await fetch(`${this.backendUrl}/api/hybrid-auth/me`, {
+      const response = await fetch(`${this.backendUrl}/api/v1/auth/me`, {
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json'
@@ -63,11 +123,21 @@ class HybridAuthClient {
 
       if (response.ok) {
         const data = await response.json();
-        this.currentUser = data.user;
-        this.authStateCallback?.(this.currentUser);
+        if (data.success && data.user) {
+          this.currentUser = data.user;
+          this.setSecureToken('quicklocal_user', JSON.stringify(this.currentUser));
+          console.log('[Auth] User authenticated:', this.currentUser.name);
+          this.authStateCallback?.(this.currentUser);
+        } else {
+          throw new Error('Invalid user data received');
+        }
+      } else {
+        console.warn('[Auth] Token validation failed, clearing tokens');
+        await this.logout();
       }
     } catch (error) {
       console.error('Supabase auth error:', error);
+      await this.logout();
     }
   }
 
@@ -78,7 +148,7 @@ class HybridAuthClient {
     try {
       this.authMethod = 'jwt';
       
-      const response = await fetch(`${this.backendUrl}/api/hybrid-auth/me`, {
+      const response = await fetch(`${this.backendUrl}/api/v1/auth/me`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -87,116 +157,126 @@ class HybridAuthClient {
 
       if (response.ok) {
         const data = await response.json();
-        this.currentUser = data.user;
-        this.authStateCallback?.(this.currentUser);
+        if (data.success && data.user) {
+          this.currentUser = data.user;
+          this.authStateCallback?.(this.currentUser);
+        }
       } else {
-        // Token might be expired, clear it
-        localStorage.removeItem('token');
-        localStorage.removeItem('accessToken');
+        await this.logout();
       }
     } catch (error) {
       console.error('Legacy auth error:', error);
+      await this.logout();
     }
   }
 
   /**
-   * Register new user (uses Supabase)
+   * Register new user
    */
-   async register(userData) { // Changed to accept a single userData object
+  async register(userData) {
     try {
-      // The backend expects name, email, password, and optionally phone/role
-const response = await fetch(`${this.backendUrl}/api/v1/auth/register`, {
+      const response = await fetch(`${this.backendUrl}/api/v1/auth/register`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(userData) // Send the entire object
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(userData)
       });
-
+      
       const data = await response.json();
       
       if (response.ok) {
-        return {
-          success: true,
-          message: data.message,
-          requiresVerification: data.requiresVerification,
-          userId: data.userId // Pass along the user ID
-        };
+        return { success: true, ...data };
       } else {
-        // Use the specific error message from the backend
-        throw new Error(data.message || 'Registration failed');
+        // Provide specific error messages based on status code
+        switch (response.status) {
+          case 400:
+            throw new Error(data.message || 'Invalid registration data');
+          case 409:
+            throw new Error(data.message || 'User already exists');
+          case 422:
+            throw new Error(data.message || 'Validation failed');
+          default:
+            throw new Error(data.message || 'Registration failed');
+        }
       }
     } catch (error) {
-      console.error('Registration error:', error);
-      return {
-        success: false,
-        message: error.message
+      return { 
+        success: false, 
+        message: error.message,
+        code: 'REGISTRATION_FAILED'
       };
     }
   }
 
   /**
-   * Login user (hybrid approach) - FIXED VERSION
+   * Login user
    */
   async login(identifier, password) {
     try {
       const response = await fetch(`${this.backendUrl}/api/v1/auth/login`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ identifier, password })
       });
-
+      
       const data = await response.json();
       
-      if (response.ok) {
-        // Handle Supabase tokens - FIXED VERSION
-        if (data.accessToken && data.refreshToken) {
-          if (this.supabase) {
-            await this.supabase.auth.setSession({
-              access_token: data.accessToken,
-              refresh_token: data.refreshToken,
-            });
-            console.log('✅ Supabase session set successfully.');
-          } else {
-            console.error('Supabase client not initialized; cannot set session.');
-          }
-          
-          // FIX: Manually set the tokens in localStorage so getAuthHeader() can find them
-          localStorage.setItem('supabase_access_token', data.accessToken);
-          localStorage.setItem('supabase_refresh_token', data.refreshToken);
-          
-          this.authMethod = 'supabase';
-        } 
-        // Handle legacy JWT
-        else if (data.token) {
-          localStorage.setItem('token', data.token);
-          this.authMethod = 'jwt';
+      if (!response.ok) {
+        // Provide specific error messages
+        switch (response.status) {
+          case 401:
+            throw new Error('Invalid email/phone or password');
+          case 429:
+            throw new Error('Too many login attempts. Please try again later.');
+          case 423:
+            throw new Error('Account temporarily locked due to failed attempts');
+          default:
+            throw new Error(data.message || 'Login failed');
         }
-
-        this.currentUser = data.user;
-        this.authStateCallback?.(this.currentUser);
-
-        return {
-          success: true,
-          user: data.user,
-          message: data.message
-        };
-      } else {
-        throw new Error(data.message);
       }
+
+      if (data.accessToken) {
+        this.setSecureToken('supabase_access_token', data.accessToken);
+        this.setSecureToken('quicklocal_access_token', data.accessToken);
+        this.setSecureToken('token', data.accessToken);
+        
+        if (data.refreshToken) {
+          this.setSecureToken('supabase_refresh_token', data.refreshToken);
+          this.setSecureToken('quicklocal_refresh_token', data.refreshToken);
+        }
+        
+        if (this.supabase && data.accessToken && data.refreshToken) {
+          await this.supabase.auth.setSession({
+            access_token: data.accessToken,
+            refresh_token: data.refreshToken,
+          });
+        }
+        
+        this.authMethod = 'supabase';
+      }
+
+      if (data.user) {
+        this.currentUser = data.user;
+        this.setSecureToken('quicklocal_user', JSON.stringify(data.user));
+        this.authStateCallback?.(this.currentUser);
+      }
+
+      return { 
+        success: true, 
+        user: data.user, 
+        message: data.message || 'Login successful' 
+      };
     } catch (error) {
       console.error('Login error:', error);
-      return {
-        success: false,
-        message: error.message
+      return { 
+        success: false, 
+        message: error.message,
+        code: 'LOGIN_FAILED'
       };
     }
   }
 
   /**
-   * Login with social provider (Google/Facebook)
+   * Login with social provider
    */
   async loginWithProvider(provider) {
     try {
@@ -204,26 +284,25 @@ const response = await fetch(`${this.backendUrl}/api/v1/auth/register`, {
         throw new Error('Social login requires Supabase configuration');
       }
 
-      const { data, error } = await this.supabase.auth.signInWithOAuth({
+      const { error } = await this.supabase.auth.signInWithOAuth({
         provider: provider,
-        options: {
-          redirectTo: `${window.location.origin}/marketplace.html?login=success`
+        options: { 
+          redirectTo: `${window.location.origin}/marketplace.html?login=success` 
         }
       });
 
-      if (error) {
-        throw error;
-      }
-
-      return {
-        success: true,
-        message: `Redirecting to ${provider}...`
+      if (error) throw error;
+      
+      return { 
+        success: true, 
+        message: `Redirecting to ${provider}...` 
       };
     } catch (error) {
       console.error(`${provider} login error:`, error);
-      return {
-        success: false,
-        message: error.message
+      return { 
+        success: false, 
+        message: error.message,
+        code: 'SOCIAL_LOGIN_FAILED'
       };
     }
   }
@@ -235,100 +314,196 @@ const response = await fetch(`${this.backendUrl}/api/v1/auth/register`, {
     try {
       const response = await fetch(`${this.backendUrl}/api/v1/auth/forgot-password`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })
       });
-
+      
       const data = await response.json();
       
       if (response.ok) {
-        return {
-          success: true,
-          message: data.message
-        };
+        return { success: true, message: data.message };
       } else {
-        throw new Error(data.message || 'Failed to send reset email');
+        switch (response.status) {
+          case 404:
+            throw new Error('No account found with this email');
+          case 429:
+            throw new Error('Too many reset attempts. Please try again later.');
+          default:
+            throw new Error(data.message || 'Failed to send reset email');
+        }
       }
     } catch (error) {
-      console.error('Password reset error:', error);
-      return {
-        success: false,
-        message: error.message
+      return { 
+        success: false, 
+        message: error.message,
+        code: 'PASSWORD_RESET_FAILED'
       };
     }
   }
 
   /**
-   * Logout user - FIXED VERSION
+   * Refresh token
+   */
+  async refreshToken() {
+    try {
+      const refreshToken = this.getSecureToken('supabase_refresh_token') || 
+                           this.getSecureToken('quicklocal_refresh_token');
+      
+      if (!refreshToken || !this.validateToken(refreshToken)) {
+        console.warn('[Auth] No valid refresh token available');
+        return false;
+      }
+
+      console.log('[Auth] Attempting token refresh...');
+      
+      const response = await fetch(`${this.backendUrl}/api/v1/auth/refresh`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${refreshToken}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        
+        if (data.accessToken && this.validateToken(data.accessToken)) {
+          this.setSecureToken('supabase_access_token', data.accessToken);
+          this.setSecureToken('quicklocal_access_token', data.accessToken);
+          this.setSecureToken('token', data.accessToken);
+          
+          if (data.refreshToken && this.validateToken(data.refreshToken)) {
+            this.setSecureToken('supabase_refresh_token', data.refreshToken);
+            this.setSecureToken('quicklocal_refresh_token', data.refreshToken);
+          }
+          
+          console.log('[Auth] Token refreshed successfully');
+          return true;
+        }
+      }
+      
+      console.warn('[Auth] Token refresh failed');
+      return false;
+      
+    } catch (error) {
+      console.error('[Auth] Token refresh error:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Logout user
    */
   async logout() {
     try {
-      // CORRECTED: Call the correct, versioned logout endpoint
-      await fetch(`${this.backendUrl}/api/v1/auth/logout`, {
-        method: 'POST',
-        headers: {
-          'Authorization': this.getAuthHeader(),
-          'Content-Type': 'application/json'
-        }
-      });
-      // The backend call is best-effort; we proceed with client-side cleanup regardless.
-    } catch (error) {
-      // Log the error but don't stop the logout process.
-      console.warn('Backend logout call failed, proceeding with client-side cleanup:', error.message);
-    }
+      // Stop session watcher
+      this.stopSessionWatcher();
 
-    try {
-      // Sign out from Supabase if using Supabase
-      if (this.authMethod === 'supabase' && this.supabase) {
+      try {
+        await fetch(`${this.backendUrl}/api/v1/auth/logout`, {
+          method: 'POST',
+          headers: { 'Authorization': this.getAuthHeader() }
+        });
+      } catch (error) {
+        console.warn('Backend logout call failed:', error.message);
+      }
+
+      if (this.supabase) {
         await this.supabase.auth.signOut();
       }
 
-      // Clear all known local storage keys related to auth
-      localStorage.removeItem('token');
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('quicklocal_access_token');
-      localStorage.removeItem('quicklocal_refresh_token');
-      localStorage.removeItem('quicklocal_user');
-      
-      // FIX: Also remove the supabase tokens on logout
-      localStorage.removeItem('supabase_access_token');
-      localStorage.removeItem('supabase_refresh_token');
-      
-      // Also clear Supabase's own storage keys
-      Object.keys(localStorage).forEach(key => {
-        if (key.startsWith('sb-') && key.includes('-auth-token')) {
-          localStorage.removeItem(key);
-        }
-      });
+      this.clearAllAuthData();
 
       this.currentUser = null;
       this.authMethod = null;
-      if (this.authStateCallback) {
-        this.authStateCallback(null);
-      }
+      this.authStateCallback?.(null);
 
-      console.log('✅ User logged out and session cleared from client.');
+      console.log('✅ User logged out successfully');
       return { success: true };
-
+      
     } catch (error) {
-      console.error('Client-side logout error:', error);
-      return { success: false, message: error.message };
+      console.error('Logout error:', error);
+      this.clearAllAuthData();
+      return { 
+        success: false, 
+        message: error.message,
+        code: 'LOGOUT_FAILED'
+      };
     }
+  }
+
+  /**
+   * Secure token storage with basic obfuscation
+   */
+  setSecureToken(key, value) {
+    try {
+      // Simple obfuscation (not true encryption, but better than plain storage)
+      const encoded = btoa(JSON.stringify({
+        value: value,
+        timestamp: Date.now(),
+        version: '1.0'
+      }));
+      localStorage.setItem(key, encoded);
+    } catch (error) {
+      console.warn('Secure storage failed, falling back to plain storage');
+      localStorage.setItem(key, value);
+    }
+  }
+
+  getSecureToken(key) {
+    try {
+      const encoded = localStorage.getItem(key);
+      if (!encoded) return null;
+      
+      const decoded = JSON.parse(atob(encoded));
+      // Optional: Check token age and auto-expire (24 hours max)
+      if (Date.now() - decoded.timestamp > 24 * 60 * 60 * 1000) {
+        this.removeSecureToken(key);
+        return null;
+      }
+      
+      return decoded.value;
+    } catch {
+      return localStorage.getItem(key);
+    }
+  }
+
+  removeSecureToken(key) {
+    localStorage.removeItem(key);
+  }
+
+  /**
+   * Clear all authentication data
+   */
+  clearAllAuthData() {
+    const authKeys = [
+      'token', 'accessToken', 
+      'quicklocal_access_token', 'quicklocal_refresh_token', 'quicklocal_user',
+      'supabase_access_token', 'supabase_refresh_token'
+    ];
+    
+    authKeys.forEach(key => this.removeSecureToken(key));
+    
+    // Clean up any Supabase storage
+    Object.keys(localStorage).forEach(key => {
+      if (key.startsWith('sb-') && key.includes('-auth-token')) {
+        localStorage.removeItem(key);
+      }
+    });
   }
 
   /**
    * Get current authentication header
    */
   getAuthHeader() {
-    if (this.authMethod === 'supabase') {
-      const token = localStorage.getItem('supabase_access_token');
-      return token ? `Bearer ${token}` : '';
-    } else if (this.authMethod === 'jwt') {
-      const token = localStorage.getItem('token');
-      return token ? `Bearer ${token}` : '';
+    const token = this.getSecureToken('supabase_access_token') || 
+                  this.getSecureToken('quicklocal_access_token') || 
+                  this.getSecureToken('token');
+
+    if (token && this.validateToken(token)) {
+      return `Bearer ${token}`;
     }
+    
     return '';
   }
 
@@ -336,122 +511,83 @@ const response = await fetch(`${this.backendUrl}/api/v1/auth/register`, {
    * Make authenticated API call
    */
   async apiCall(endpoint, options = {}) {
-    const defaultHeaders = {
-      'Content-Type': 'application/json',
-      'Authorization': this.getAuthHeader()
-    };
-
-    const response = await fetch(`${this.backendUrl}${endpoint}`, {
-      ...options,
-      headers: {
-        ...defaultHeaders,
-        ...options.headers
-      }
-    });
-
-    // Handle token refresh for Supabase
-    if (response.status === 401 && this.authMethod === 'supabase') {
-      const refreshed = await this.refreshToken();
-      if (refreshed) {
-        // Retry the request with new token
-        return fetch(`${this.backendUrl}${endpoint}`, {
-          ...options,
-          headers: {
-            ...defaultHeaders,
-            'Authorization': this.getAuthHeader(),
-            ...options.headers
-          }
-        });
-      }
-    }
-
-    return response;
-  }
-
-  /**
-   * Refresh Supabase token
-   */
-  async refreshToken() {
     try {
-      const refreshToken = localStorage.getItem('supabase_refresh_token');
-      if (!refreshToken) return false;
+      const authHeader = this.getAuthHeader();
+      
+      if (!authHeader) {
+        throw new Error('No authentication token available');
+      }
 
-      const response = await fetch(`${this.backendUrl}/api/hybrid-auth/refresh-token`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ refresh_token: refreshToken })
+      const defaultHeaders = {
+        'Content-Type': 'application/json',
+        'Authorization': authHeader
+      };
+
+      console.log(`[API] Calling: ${endpoint}`);
+
+      let response = await fetch(`${this.backendUrl}${endpoint}`, {
+        ...options,
+        headers: { ...defaultHeaders, ...options.headers }
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        localStorage.setItem('supabase_access_token', data.accessToken);
-        localStorage.setItem('supabase_refresh_token', data.refreshToken);
-        return true;
+      // Check for retry with limits to prevent infinite loops
+      const retryCount = options._retryCount || 0;
+      if (response.status === 401 && retryCount < this.maxRetryAttempts) {
+        console.log('[API] 401 received, attempting token refresh...');
+        const refreshed = await this.refreshToken();
+        
+        if (refreshed) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          // Retry the original call with incremented retry count
+          console.log('[API] Retrying request with new token...');
+          return this.apiCall(endpoint, { 
+            ...options, 
+            _retryCount: retryCount + 1 
+          });
+        } else {
+          await this.logout();
+          throw new Error('Session expired. Please log in again.');
+        }
       }
+
+      return response;
+      
     } catch (error) {
-      console.error('Token refresh error:', error);
+      console.error(`[API] Call failed: ${endpoint}`, error);
+      throw error;
     }
-    return false;
   }
 
   /**
-   * Subscribe to real-time updates via Supabase
+   * Session management and monitoring
    */
-  subscribeToRealtime(userId, callbacks = {}) {
-    if (!this.supabase || this.authMethod !== 'supabase') {
-      console.warn('Real-time requires Supabase authentication');
-      return null;
-    }
-
-    const channel = this.supabase
-      .channel(`user_${userId}`)
-      .on('postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'order_updates',
-          filter: `user_id=eq.${userId}`
-        },
-        callbacks.onOrderUpdate || (() => {})
-      )
-      .on('postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'user_notifications',
-          filter: `user_id=eq.${userId}`
-        },
-        callbacks.onNotification || (() => {})
-      )
-      .subscribe();
-
-    return channel;
+  startSessionWatcher() {
+    // Check every 5 minutes for session validity
+    this.sessionInterval = setInterval(async () => {
+      if (this.currentUser) {
+        const isValid = await this.validateCurrentSession();
+        if (!isValid) {
+          console.warn('[Auth] Session invalid, logging out...');
+          await this.logout();
+        }
+      }
+    }, 5 * 60 * 1000); // 5 minutes
   }
 
-  /**
-   * Get user notifications
-   */
-  async getNotifications() {
-    if (!this.currentUser) return [];
-
-    const response = await this.apiCall('/api/notifications');
-    if (response.ok) {
-      const data = await response.json();
-      return data.notifications;
+  stopSessionWatcher() {
+    if (this.sessionInterval) {
+      clearInterval(this.sessionInterval);
+      this.sessionInterval = null;
     }
-    return [];
   }
 
-  /**
-   * Mark notification as read
-   */
-  async markNotificationRead(notificationId) {
-    const response = await this.apiCall(`/api/notifications/${notificationId}/read`, {
-      method: 'PATCH'
-    });
-    return response.ok;
+  async validateCurrentSession() {
+    try {
+      const response = await this.apiCall('/api/v1/auth/me');
+      return response.ok;
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -465,83 +601,116 @@ const response = await fetch(`${this.backendUrl}/api/v1/auth/register`, {
    * Check if user is authenticated
    */
   async isAuthenticated() {
-    // Check if we have a current user
     if (this.currentUser) return true;
     
-    // Try to restore authentication state
-    await this.initializeAuth();
-    return !!this.currentUser;
+    try {
+      const storedUser = this.getSecureToken('quicklocal_user');
+      if (storedUser) {
+        this.currentUser = JSON.parse(storedUser);
+        return true;
+      }
+    } catch (error) {
+      console.warn('Failed to restore user from storage:', error);
+    }
+    
+    return false;
   }
 
   /**
    * Get current user
    */
   getCurrentUser() {
-    return this.currentUser;
+    if (this.currentUser) return this.currentUser;
+    
+    try {
+      const storedUser = this.getSecureToken('quicklocal_user');
+      return storedUser ? JSON.parse(storedUser) : null;
+    } catch (error) {
+      return null;
+    }
   }
 
   /**
-   * Get auth method being used
+   * Get auth method
    */
   getAuthMethod() {
     return this.authMethod;
   }
+
+  /**
+   * Update user profile
+   */
+  async updateProfile(userData) {
+    try {
+      const response = await this.apiCall('/api/v1/auth/profile', {
+        method: 'PUT',
+        body: JSON.stringify(userData)
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        this.currentUser = { ...this.currentUser, ...data.user };
+        this.setSecureToken('quicklocal_user', JSON.stringify(this.currentUser));
+        this.authStateCallback?.(this.currentUser);
+        
+        return { success: true, user: this.currentUser };
+      } else {
+        throw new Error(data.message || 'Profile update failed');
+      }
+    } catch (error) {
+      return { 
+        success: false, 
+        message: error.message,
+        code: 'PROFILE_UPDATE_FAILED'
+      };
+    }
+  }
+
+  /**
+   * Change password
+   */
+  async changePassword(currentPassword, newPassword) {
+    try {
+      const response = await this.apiCall('/api/v1/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify({ currentPassword, newPassword })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        return { success: true, message: data.message };
+      } else {
+        throw new Error(data.message || 'Password change failed');
+      }
+    } catch (error) {
+      return { 
+        success: false, 
+        message: error.message,
+        code: 'PASSWORD_CHANGE_FAILED'
+      };
+    }
+  }
 }
 
-// Usage example:
-/*
-const authClient = new HybridAuthClient(
-  'https://your-project.supabase.co',
-  'your-anon-key',
-  'https://your-backend.render.com' // or fly.io
-);
-
-// Set up auth state listener
-authClient.onAuthStateChange((user) => {
-  if (user) {
-    console.log('User logged in:', user);
-    // Update UI for authenticated state
-  } else {
-    console.log('User logged out');
-    // Update UI for unauthenticated state
-  }
+// Auto-instantiate with configuration
+const hybridAuthClient = new HybridAuthClient({
+  supabaseUrl: window.REACT_APP_SUPABASE_URL || 'https://pmvhsjezhuokwygvhhqk.supabase.co',
+  supabaseAnonKey: window.REACT_APP_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBtdmhzamV6aHVva3d5Z3ZoaHFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc2NTU3MDUsImV4cCI6MjA3MzIzMTcwNX0.ZrVjuqB28Qer7F7zSdG_rJIs_ZQZhX1PNyrmpK-Qojg',
+  backendUrl: window.REACT_APP_BACKEND_URL || 'https://quicklocal-backend.onrender.com',
+  autoInitialize: true,
+  enableSessionWatcher: true,
+  maxRetryAttempts: 2
 });
 
-// Login
-const result = await authClient.login('user@example.com', 'password');
-if (result.success) {
-  console.log('Login successful');
-}
+// Make available globally
+window.HybridAuthClient = hybridAuthClient;
+window.HybridAuthClientClass = HybridAuthClient;
 
-// Subscribe to real-time updates
-const channel = authClient.subscribeToRealtime(user.supabaseId, {
-  onOrderUpdate: (update) => {
-    console.log('Order updated:', update);
-  },
-  onNotification: (notification) => {
-    console.log('New notification:', notification);
-  }
-});
-*/
+console.log('✅ HybridAuthClient (SECURE PRODUCTION VERSION) loaded and available globally');
 
-// Auto-instantiate for immediate use
-const hybridAuthClient = new HybridAuthClient(
-  'https://pmvhsjezhuokwygvhhqk.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBtdmhzamV6aHVva3d5Z3ZoaHFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc2NTU3MDUsImV4cCI6MjA3MzIzMTcwNX0.ZrVjuqB28Qer7F7zSdG_rJIs_ZQZhX1PNyrmpK-Qojg',
-  'https://quicklocal-backend.onrender.com'
-);
-
-// Export for use in modules
+// Export for module systems
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = {
-    HybridAuthClient,
-    hybridAuthClient
-  };
-} else {
-  // Make both class and instance available globally
-  window.HybridAuthClient = hybridAuthClient; // Instance for immediate use
-  window.HybridAuthClientClass = HybridAuthClient; // Class for manual instantiation
-  
-  console.log('✅ HybridAuthClient loaded and available globally');
-  console.log('🔧 Auto-instantiated client ready for use');
+  module.exports = { HybridAuthClient, hybridAuthClient };
 }
