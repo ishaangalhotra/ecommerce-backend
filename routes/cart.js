@@ -1,7 +1,8 @@
 const { couponLimiter } = require('../middleware/rateLimiters');
 const express = require('express');
 const mongoose = require('mongoose');
-const { body, query, validationResult } = require('express-validator');
+// MODIFIED: Added 'param' for route parameter validation
+const { body, query, param, validationResult } = require('express-validator');
 const rateLimit = require('express-rate-limit');
 const Cart = require('../models/cart');
 const Product = require('../models/Product');
@@ -12,7 +13,7 @@ const { calculateDeliveryFee, estimateDeliveryTime } = require('../utils/deliver
 const { calculateTax } = require('../utils/tax');
 const logger = require('../utils/logger');
 const redis = require('../config/redis');
-// const { io } = require');
+// const { io } = require('../app'); // Assuming io is exported from your main app file
 
 const router = express.Router();
 
@@ -98,27 +99,28 @@ const validateCoupon = [
 /**
  * @swagger
  * /cart:
- *   get:
- *     summary: Get user's cart
- *     tags: [Cart]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: includeUnavailable
- *         schema:
- *           type: boolean
- *           default: false
- *         description: Include unavailable items in response
- *       - in: query
- *         name: deliveryPincode
- *         schema:
- *           type: string
- *         description: Pincode for delivery estimation
- *     responses:
- *       200:
- *         description: Cart details with pricing breakdown
+ * get:
+ * summary: Get user's cart
+ * tags: [Cart]
+ * security:
+ * - bearerAuth: []
+ * parameters:
+ * - in: query
+ * name: includeUnavailable
+ * schema:
+ * type: boolean
+ * default: false
+ * description: Include unavailable items in response
+ * - in: query
+ * name: deliveryPincode
+ * schema:
+ * type: string
+ * description: Pincode for delivery estimation
+ * responses:
+ * 200:
+ * description: Cart details with pricing breakdown
  */
+// NO CHANGE: This route remains the base for GET cart
 router.get('/',
   hybridProtect,
   cartLimiter,
@@ -275,41 +277,42 @@ router.get('/',
 
 /**
  * @swagger
- * /cart/add:
- *   post:
- *     summary: Add item to cart
- *     tags: [Cart]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - productId
- *               - quantity
- *             properties:
- *               productId:
- *                 type: string
- *               quantity:
- *                 type: integer
- *                 minimum: 1
- *                 maximum: 100
- *               selectedVariant:
- *                 type: object
- *               customizations:
- *                 type: array
- *               giftWrap:
- *                 type: boolean
- *               giftMessage:
- *                 type: string
- *     responses:
- *       200:
- *         description: Item added to cart successfully
+ * /cart:
+ * post:
+ * summary: Add item to cart
+ * tags: [Cart]
+ * security:
+ * - bearerAuth: []
+ * requestBody:
+ * required: true
+ * content:
+ * application/json:
+ * schema:
+ * type: object
+ * required:
+ * - productId
+ * - quantity
+ * properties:
+ * productId:
+ * type: string
+ * quantity:
+ * type: integer
+ * minimum: 1
+ * maximum: 100
+ * selectedVariant:
+ * type: object
+ * customizations:
+ * type: array
+ * giftWrap:
+ * type: boolean
+ * giftMessage:
+ * type: string
+ * responses:
+ * 200:
+ * description: Item added to cart successfully
  */
-router.post('/add',
+// UPDATED: Changed from '/add' to '/'
+router.post('/',
   hybridProtect,
   addItemLimiter,
   validateCartItem,
@@ -436,13 +439,13 @@ router.post('/add',
       const pricing = await calculateCartPricing(cart.items, cart.appliedCoupons || []);
 
       // Emit real-time event
-      io.to(`user-${req.user.id}`).emit('cart-updated', {
-        action: 'item-added',
-        productId,
-        quantity,
-        itemCount: cart.items.reduce((sum, item) => sum + item.quantity, 0),
-        total: pricing.total
-      });
+    //   io.to(`user-${req.user.id}`).emit('cart-updated', {
+    //     action: 'item-added',
+    //     productId,
+    //     quantity,
+    //     itemCount: cart.items.reduce((sum, item) => sum + item.quantity, 0),
+    //     total: pricing.total
+    //   });
 
       // Track analytics
       await trackCartEvent('item_added', req.user.id, productId, quantity);
@@ -482,37 +485,42 @@ router.post('/add',
 
 /**
  * @swagger
- * /cart/update:
- *   patch:
- *     summary: Update cart item quantity
- *     tags: [Cart]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - productId
- *               - quantity
- *             properties:
- *               productId:
- *                 type: string
- *               quantity:
- *                 type: integer
- *                 minimum: 0
- *                 maximum: 100
- *     responses:
- *       200:
- *         description: Cart item updated successfully
+ * /cart/{productId}:
+ * patch:
+ * summary: Update cart item quantity
+ * tags: [Cart]
+ * security:
+ * - bearerAuth: []
+ * parameters:
+ * - in: path
+ * name: productId
+ * required: true
+ * schema:
+ * type: string
+ * requestBody:
+ * required: true
+ * content:
+ * application/json:
+ * schema:
+ * type: object
+ * required:
+ * - quantity
+ * properties:
+ * quantity:
+ * type: integer
+ * minimum: 0
+ * maximum: 100
+ * responses:
+ * 200:
+ * description: Cart item updated successfully
  */
-router.patch('/update',
+// UPDATED: Changed from '/update' to '/:productId'
+router.patch('/:productId',
   hybridProtect,
   cartLimiter,
   [
-    body('productId').isMongoId().withMessage('Valid product ID required'),
+    // UPDATED: Changed from body to param for productId
+    param('productId').isMongoId().withMessage('Valid product ID required'),
     body('quantity').isInt({ min: 0, max: 100 }).withMessage('Quantity must be 0-100').toInt()
   ],
   async (req, res) => {
@@ -525,7 +533,9 @@ router.patch('/update',
         });
       }
 
-      const { productId, quantity } = req.body;
+      // UPDATED: Get productId from params and quantity from body
+      const { productId } = req.params;
+      const { quantity } = req.body;
 
       const cart = await Cart.findOne({ user: req.user.id });
       if (!cart) {
@@ -602,13 +612,13 @@ router.patch('/update',
       const pricing = await calculateCartPricing(cart.items, cart.appliedCoupons || []);
 
       // Emit real-time event
-      io.to(`user-${req.user.id}`).emit('cart-updated', {
-        action: quantity === 0 ? 'item-removed' : 'item-updated',
-        productId,
-        quantity,
-        itemCount: cart.items.reduce((sum, item) => sum + item.quantity, 0),
-        total: pricing.total
-      });
+    //   io.to(`user-${req.user.id}`).emit('cart-updated', {
+    //     action: quantity === 0 ? 'item-removed' : 'item-updated',
+    //     productId,
+    //     quantity,
+    //     itemCount: cart.items.reduce((sum, item) => sum + item.quantity, 0),
+    //     total: pricing.total
+    //   });
 
       res.json({
         success: true,
@@ -632,23 +642,24 @@ router.patch('/update',
 
 /**
  * @swagger
- * /cart/remove/{productId}:
- *   delete:
- *     summary: Remove item from cart
- *     tags: [Cart]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: productId
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Item removed from cart successfully
+ * /cart/{productId}:
+ * delete:
+ * summary: Remove item from cart
+ * tags: [Cart]
+ * security:
+ * - bearerAuth: []
+ * parameters:
+ * - in: path
+ * name: productId
+ * required: true
+ * schema:
+ * type: string
+ * responses:
+ * 200:
+ * description: Item removed from cart successfully
  */
-router.delete('/remove/:productId',
+// UPDATED: Changed from '/remove/:productId' to '/:productId'
+router.delete('/:productId',
   hybridProtect,
   cartLimiter,
   async (req, res) => {
@@ -690,12 +701,12 @@ router.delete('/remove/:productId',
       const pricing = await calculateCartPricing(cart.items, cart.appliedCoupons || []);
 
       // Emit real-time event
-      io.to(`user-${req.user.id}`).emit('cart-updated', {
-        action: 'item-removed',
-        productId,
-        itemCount: cart.items.reduce((sum, item) => sum + item.quantity, 0),
-        total: pricing.total
-      });
+    //   io.to(`user-${req.user.id}`).emit('cart-updated', {
+    //     action: 'item-removed',
+    //     productId,
+    //     itemCount: cart.items.reduce((sum, item) => sum + item.quantity, 0),
+    //     total: pricing.total
+    //   });
 
       // Track analytics
       await trackCartEvent('item_removed', req.user.id, productId, removedItem.quantity);
@@ -732,17 +743,18 @@ router.delete('/remove/:productId',
 
 /**
  * @swagger
- * /cart/clear:
- *   delete:
- *     summary: Clear entire cart
- *     tags: [Cart]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Cart cleared successfully
+ * /cart:
+ * delete:
+ * summary: Clear entire cart
+ * tags: [Cart]
+ * security:
+ * - bearerAuth: []
+ * responses:
+ * 200:
+ * description: Cart cleared successfully
  */
-router.delete('/clear',
+// UPDATED: Changed from '/clear' to '/'
+router.delete('/',
   hybridProtect,
   cartLimiter,
   async (req, res) => {
@@ -764,11 +776,11 @@ router.delete('/clear',
       await cart.save();
 
       // Emit real-time event
-      io.to(`user-${req.user.id}`).emit('cart-updated', {
-        action: 'cart-cleared',
-        itemCount: 0,
-        total: 0
-      });
+    //   io.to(`user-${req.user.id}`).emit('cart-updated', {
+    //     action: 'cart-cleared',
+    //     itemCount: 0,
+    //     total: 0
+    //   });
 
       // Track analytics
       await trackCartEvent('cart_cleared', req.user.id, null, itemCount);
@@ -808,35 +820,36 @@ router.delete('/clear',
 
 /**
  * @swagger
- * /cart/bulk/add:
- *   post:
- *     summary: Add multiple items to cart
- *     tags: [Cart]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - items
- *             properties:
- *               items:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     productId:
- *                       type: string
- *                     quantity:
- *                       type: integer
- *     responses:
- *       200:
- *         description: Items added to cart successfully
+ * /cart/bulk:
+ * post:
+ * summary: Add multiple items to cart
+ * tags: [Cart]
+ * security:
+ * - bearerAuth: []
+ * requestBody:
+ * required: true
+ * content:
+ * application/json:
+ * schema:
+ * type: object
+ * required:
+ * - items
+ * properties:
+ * items:
+ * type: array
+ * items:
+ * type: object
+ * properties:
+ * productId:
+ * type: string
+ * quantity:
+ * type: integer
+ * responses:
+ * 200:
+ * description: Items added to cart successfully
  */
-router.post('/bulk/add',
+// UPDATED: Changed from '/bulk/add' to '/bulk'
+router.post('/bulk',
   hybridProtect,
   cartLimiter,
   validateBulkOperation,
@@ -947,12 +960,12 @@ router.post('/bulk/add',
       const pricing = await calculateCartPricing(cart.items, cart.appliedCoupons || []);
 
       // Emit real-time event
-      io.to(`user-${req.user.id}`).emit('cart-updated', {
-        action: 'bulk-add',
-        addedCount: addedItems.length,
-        itemCount: cart.items.reduce((sum, item) => sum + item.quantity, 0),
-        total: pricing.total
-      });
+    //   io.to(`user-${req.user.id}`).emit('cart-updated', {
+    //     action: 'bulk-add',
+    //     addedCount: addedItems.length,
+    //     itemCount: cart.items.reduce((sum, item) => sum + item.quantity, 0),
+    //     total: pricing.total
+    //   });
 
       logger.info(`Bulk add to cart completed`, {
         userId: req.user.id,
@@ -986,28 +999,29 @@ router.post('/bulk/add',
 
 /**
  * @swagger
- * /cart/coupon/apply:
- *   post:
- *     summary: Apply coupon to cart
- *     tags: [Cart]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - couponCode
- *             properties:
- *               couponCode:
- *                 type: string
- *     responses:
- *       200:
- *         description: Coupon applied successfully
+ * /cart/coupon:
+ * post:
+ * summary: Apply coupon to cart
+ * tags: [Cart]
+ * security:
+ * - bearerAuth: []
+ * requestBody:
+ * required: true
+ * content:
+ * application/json:
+ * schema:
+ * type: object
+ * required:
+ * - couponCode
+ * properties:
+ * couponCode:
+ * type: string
+ * responses:
+ * 200:
+ * description: Coupon applied successfully
  */
-router.post('/coupon/apply',
+// UPDATED: Changed from '/coupon/apply' to '/coupon'
+router.post('/coupon',
   hybridProtect,
   cartLimiter,
   validateCoupon,
@@ -1079,12 +1093,12 @@ router.post('/coupon/apply',
       const pricing = await calculateCartPricing(cart.items, cart.appliedCoupons);
 
       // Emit real-time event
-      io.to(`user-${req.user.id}`).emit('cart-updated', {
-        action: 'coupon-applied',
-        couponCode: couponCode.toUpperCase(),
-        discountAmount: couponResult.discountAmount,
-        total: pricing.total
-      });
+    //   io.to(`user-${req.user.id}`).emit('cart-updated', {
+    //     action: 'coupon-applied',
+    //     couponCode: couponCode.toUpperCase(),
+    //     discountAmount: couponResult.discountAmount,
+    //     total: pricing.total
+    //   });
 
       logger.info(`Coupon applied: ${couponCode}`, {
         userId: req.user.id,
@@ -1116,28 +1130,29 @@ router.post('/coupon/apply',
 
 /**
  * @swagger
- * /cart/coupon/remove:
- *   delete:
- *     summary: Remove coupon from cart
- *     tags: [Cart]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - couponCode
- *             properties:
- *               couponCode:
- *                 type: string
- *     responses:
- *       200:
- *         description: Coupon removed successfully
+ * /cart/coupon:
+ * delete:
+ * summary: Remove coupon from cart
+ * tags: [Cart]
+ * security:
+ * - bearerAuth: []
+ * requestBody:
+ * required: true
+ * content:
+ * application/json:
+ * schema:
+ * type: object
+ * required:
+ * - couponCode
+ * properties:
+ * couponCode:
+ * type: string
+ * responses:
+ * 200:
+ * description: Coupon removed successfully
  */
-router.delete('/coupon/remove',
+// UPDATED: Changed from '/coupon/remove' to '/coupon'
+router.delete('/coupon',
   hybridProtect,
   cartLimiter,
   validateCoupon,
@@ -1188,11 +1203,11 @@ router.delete('/coupon/remove',
       const pricing = await calculateCartPricing(cart.items, cart.appliedCoupons);
 
       // Emit real-time event
-      io.to(`user-${req.user.id}`).emit('cart-updated', {
-        action: 'coupon-removed',
-        couponCode: couponCode.toUpperCase(),
-        total: pricing.total
-      });
+    //   io.to(`user-${req.user.id}`).emit('cart-updated', {
+    //     action: 'coupon-removed',
+    //     couponCode: couponCode.toUpperCase(),
+    //     total: pricing.total
+    //   });
 
       logger.info(`Coupon removed: ${couponCode}`, {
         userId: req.user.id,
@@ -1224,15 +1239,16 @@ router.delete('/coupon/remove',
 /**
  * @swagger
  * /cart/analysis:
- *   get:
- *     summary: Get cart analysis and recommendations
- *     tags: [Cart]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Cart analysis with recommendations
+ * get:
+ * summary: Get cart analysis and recommendations
+ * tags: [Cart]
+ * security:
+ * - bearerAuth: []
+ * responses:
+ * 200:
+ * description: Cart analysis with recommendations
  */
+// NO CHANGE: This route path is correct
 router.get('/analysis',
   hybridProtect,
   cartLimiter,

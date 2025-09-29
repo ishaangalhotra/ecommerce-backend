@@ -242,7 +242,7 @@ exports.addToCart = asyncHandler(async (req, res, next) => {
 
 /**
  * @desc    Update cart item quantity with validation
- * @route   PUT /api/v1/cart/:productId
+ * @route   PATCH /api/v1/cart/:productId
  * @access  Private
  */
 exports.updateCartItem = asyncHandler(async (req, res, next) => {
