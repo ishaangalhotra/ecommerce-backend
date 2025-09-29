@@ -513,7 +513,7 @@ class HybridAuthClient {
   async apiCall(endpoint, options = {}) {
     try {
       const authHeader = this.getAuthHeader();
-      
+          
       if (!authHeader) {
         throw new Error('No authentication token available');
       }
@@ -523,31 +523,25 @@ class HybridAuthClient {
         'Authorization': authHeader
       };
 
-      // ✅ FIX: Normalize endpoint to always include /api/v1 prefix
-      let normalizedEndpoint = endpoint;
-      
-      // Remove leading slash if present for consistent handling
-      if (normalizedEndpoint.startsWith('/')) {
-        normalizedEndpoint = normalizedEndpoint.substring(1);
+      // ✅ FIXED: Simpler, more reliable endpoint normalization
+      let finalEndpoint = endpoint;
+          
+      // Remove leading slash if present
+      if (finalEndpoint.startsWith('/')) {
+        finalEndpoint = finalEndpoint.substring(1);
       }
-      
-      // Add /api/v1 prefix only if not already present
-      if (!normalizedEndpoint.startsWith('api/v1/')) {
-        // Check if it starts with just 'api/' (missing version)
-        if (normalizedEndpoint.startsWith('api/')) {
-          normalizedEndpoint = normalizedEndpoint.replace(/^api\//, 'api/v1/');
-        } else {
-          // No api prefix at all, add the full prefix
-          normalizedEndpoint = `api/v1/${normalizedEndpoint}`;
-        }
+          
+      // Only add /api/v1 if it's not already there
+      if (!finalEndpoint.startsWith('api/v1/')) {
+        finalEndpoint = `api/v1/${finalEndpoint}`;
       }
+          
+      // Add back the leading slash
+      finalEndpoint = `/${finalEndpoint}`;
+          
+      console.log(`[API] 🔍 Normalized: ${endpoint} → ${finalEndpoint}`);
       
-      // Ensure it starts with a slash for URL construction
-      const fullEndpoint = `/${normalizedEndpoint}`;
-      
-      console.log(`[API] Calling: ${fullEndpoint}`);
-
-      let response = await fetch(`${this.backendUrl}${fullEndpoint}`, {
+      let response = await fetch(`${this.backendUrl}${finalEndpoint}`, {
         ...options,
         headers: { ...defaultHeaders, ...options.headers }
       });
