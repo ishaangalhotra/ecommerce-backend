@@ -91,7 +91,7 @@
     "aws-sdk": "^2.1692.0",
     "axios": "^1.11.0",
     "bcryptjs": "^2.4.3",
-    "bullmq": "^5.2.0",
+    "bullmq": "^5.56.8",
     "cloudinary": "^1.41.0",
     "compression": "^1.8.1",
     "connect-mongo": "^5.1.0",
