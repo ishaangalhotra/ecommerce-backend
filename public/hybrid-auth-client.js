@@ -508,7 +508,7 @@ class HybridAuthClient {
   }
 
   /**
-   * Make authenticated API call
+   * Make authenticated API call - IMPROVED VERSION
    */
   async apiCall(endpoint, options = {}) {
     try {
@@ -523,14 +523,36 @@ class HybridAuthClient {
         'Authorization': authHeader
       };
 
-      console.log(`[API] Calling: ${endpoint}`);
+      // ✅ FIX: Normalize endpoint to always include /api/v1 prefix
+      let normalizedEndpoint = endpoint;
+      
+      // Remove leading slash if present for consistent handling
+      if (normalizedEndpoint.startsWith('/')) {
+        normalizedEndpoint = normalizedEndpoint.substring(1);
+      }
+      
+      // Add /api/v1 prefix only if not already present
+      if (!normalizedEndpoint.startsWith('api/v1/')) {
+        // Check if it starts with just 'api/' (missing version)
+        if (normalizedEndpoint.startsWith('api/')) {
+          normalizedEndpoint = normalizedEndpoint.replace(/^api\//, 'api/v1/');
+        } else {
+          // No api prefix at all, add the full prefix
+          normalizedEndpoint = `api/v1/${normalizedEndpoint}`;
+        }
+      }
+      
+      // Ensure it starts with a slash for URL construction
+      const fullEndpoint = `/${normalizedEndpoint}`;
+      
+      console.log(`[API] Calling: ${fullEndpoint}`);
 
-      let response = await fetch(`${this.backendUrl}${endpoint}`, {
+      let response = await fetch(`${this.backendUrl}${fullEndpoint}`, {
         ...options,
         headers: { ...defaultHeaders, ...options.headers }
       });
 
-      // Check for retry with limits to prevent infinite loops
+      // Handle 401 with retry logic
       const retryCount = options._retryCount || 0;
       if (response.status === 401 && retryCount < this.maxRetryAttempts) {
         console.log('[API] 401 received, attempting token refresh...');
@@ -538,8 +560,8 @@ class HybridAuthClient {
         
         if (refreshed) {
           await new Promise(resolve => setTimeout(resolve, 100));
-          // Retry the original call with incremented retry count
           console.log('[API] Retrying request with new token...');
+          // Retry with original endpoint (will be normalized again)
           return this.apiCall(endpoint, { 
             ...options, 
             _retryCount: retryCount + 1 
