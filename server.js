@@ -970,7 +970,7 @@ class QuickLocalServer {
       await this.setupMiddleware();
       await this.connectDatabase();
       await this.setupSession();
-      await this.loadRoutes();
+      
       await this.setupEndpoints();
       await this.setupErrorHandling();
       await this.startServer();
