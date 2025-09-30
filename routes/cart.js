@@ -1,7 +1,5 @@
-const { couponLimiter } = require('../middleware/rateLimiters');
 const express = require('express');
 const mongoose = require('mongoose');
-// MODIFIED: Added 'param' for route parameter validation
 const { body, query, param, validationResult } = require('express-validator');
 const rateLimit = require('express-rate-limit');
 const Cart = require('../models/cart');
@@ -13,14 +11,17 @@ const { calculateDeliveryFee, estimateDeliveryTime } = require('../utils/deliver
 const { calculateTax } = require('../utils/tax');
 const logger = require('../utils/logger');
 const redis = require('../config/redis');
-// const { io } = require('../app'); // Assuming io is exported from your main app file
 
+// ==================== ROUTERS ====================
+// Main cart router
 const router = express.Router();
+// Sub-router for cart items
+const itemsRouter = express.Router({ mergeParams: true });
 
-// Enhanced rate limiting
+// ==================== RATE LIMITERS ====================
 const cartLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 200, // 200 requests per window (higher for cart operations)
+  windowMs: 15 * 60 * 1000,
+  max: 200,
   keyGenerator: (req) => `cart:${req.ip}:${req.user?.id || 'guest'}`,
   handler: (req, res) => {
     logger.warn(`Cart rate limit exceeded for ${req.ip}`);
@@ -33,56 +34,25 @@ const cartLimiter = rateLimit({
 });
 
 const addItemLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 30, // 30 add operations per minute
+  windowMs: 60 * 1000,
+  max: 30,
   message: { error: 'Too many add to cart requests, please slow down' }
 });
 
-// Validation middleware
+// ==================== VALIDATION MIDDLEWARE ====================
 const validateCartItem = [
-  body('productId')
-    .isMongoId()
-    .withMessage('Valid product ID required'),
-  
-  body('quantity')
-    .isInt({ min: 1, max: 100 })
-    .withMessage('Quantity must be between 1-100')
-    .toInt(),
-  
-  body('selectedVariant')
-    .optional()
-    .isObject()
-    .withMessage('Selected variant must be an object'),
-  
-  body('customizations')
-    .optional()
-    .isArray({ max: 10 })
-    .withMessage('Maximum 10 customizations allowed'),
-  
-  body('giftWrap')
-    .optional()
-    .isBoolean()
-    .withMessage('Gift wrap must be boolean'),
-  
-  body('giftMessage')
-    .optional()
-    .trim()
-    .isLength({ max: 200 })
-    .withMessage('Gift message must be under 200 characters')
+  body('productId').isMongoId().withMessage('Valid product ID required'),
+  body('quantity').isInt({ min: 1, max: 100 }).withMessage('Quantity must be between 1-100').toInt(),
+  body('selectedVariant').optional().isObject().withMessage('Selected variant must be an object'),
+  body('customizations').optional().isArray({ max: 10 }).withMessage('Maximum 10 customizations allowed'),
+  body('giftWrap').optional().isBoolean().withMessage('Gift wrap must be boolean'),
+  body('giftMessage').optional().trim().isLength({ max: 200 }).withMessage('Gift message must be under 200 characters')
 ];
 
 const validateBulkOperation = [
-  body('items')
-    .isArray({ min: 1, max: 50 })
-    .withMessage('Items array required (max 50 items)'),
-  
-  body('items.*.productId')
-    .isMongoId()
-    .withMessage('Valid product ID required'),
-  
-  body('items.*.quantity')
-    .isInt({ min: 0, max: 100 })
-    .withMessage('Quantity must be between 0-100')
+  body('items').isArray({ min: 1, max: 50 }).withMessage('Items array required (max 50 items)'),
+  body('items.*.productId').isMongoId().withMessage('Valid product ID required'),
+  body('items.*.quantity').isInt({ min: 0, max: 100 }).withMessage('Quantity must be between 0-100')
 ];
 
 const validateCoupon = [
@@ -94,363 +64,280 @@ const validateCoupon = [
     .withMessage('Coupon code must contain only uppercase letters and numbers')
 ];
 
-// ==================== CART MANAGEMENT ROUTES ====================
+// ==================== MAIN CART ROUTES ====================
 
 /**
- * @swagger
- * /cart:
- * get:
- * summary: Get user's cart
- * tags: [Cart]
- * security:
- * - bearerAuth: []
- * parameters:
- * - in: query
- * name: includeUnavailable
- * schema:
- * type: boolean
- * default: false
- * description: Include unavailable items in response
- * - in: query
- * name: deliveryPincode
- * schema:
- * type: string
- * description: Pincode for delivery estimation
- * responses:
- * 200:
- * description: Cart details with pricing breakdown
+ * GET /api/v1/cart - Get user's cart
  */
-router.get('/',
-  hybridProtect,
-  cartLimiter,
-  async (req, res) => {
-    try {
-      const { includeUnavailable = false, deliveryPincode } = req.query;
+router.get('/', hybridProtect, cartLimiter, async (req, res) => {
+  try {
+    const { includeUnavailable = false, deliveryPincode } = req.query;
 
-      // Get cart with populated products
-      let cart = await Cart.findOne({ user: req.user.id })
-        .populate({
-          path: 'items.product',
-          select: 'name price images stock status seller category discountPercentage maxQuantityPerOrder',
-          populate: {
-            path: 'seller',
-            select: 'name rating verified shopName'
-          }
-        })
-        .lean();
-
-      if (!cart) {
-        return res.json({
-          success: true,
-          data: {
-            id: null,
-            items: [],
-            itemCount: 0,
-            pricing: {
-              subtotal: 0,
-              tax: 0,
-              deliveryFee: 0,
-              discount: 0,
-              total: 0
-            },
-            appliedCoupons: [],
-            estimatedDeliveryTime: null,
-            availableItems: [],
-            unavailableItems: [],
-            isEmpty: true
-          }
-        });
-      }
-
-      // Separate available and unavailable items
-      const availableItems = [];
-      const unavailableItems = [];
-      let hasChanges = false;
-
-      for (const item of cart.items) {
-        const product = item.product;
-        
-        // Check product availability
-        const isAvailable = product && 
-                           product.status === 'active' && 
-                           product.stock >= item.quantity;
-
-        if (isAvailable) {
-          // Apply current discount
-          const discountAmount = product.discountPercentage > 0 
-            ? (product.price * product.discountPercentage / 100) * item.quantity
-            : 0;
-
-          availableItems.push({
-            ...item,
-            product: {
-              ...product,
-              currentPrice: product.price,
-              originalPrice: product.price,
-              discountAmount,
-              finalPrice: product.price - (discountAmount / item.quantity)
-            },
-            isAvailable: true,
-            availableStock: product.stock,
-            maxQuantityAllowed: Math.min(product.stock, product.maxQuantityPerOrder || 100),
-            totalPrice: item.priceAtAdd * item.quantity // Calculate dynamically
-          });
-        } else {
-          unavailableItems.push({
-            ...item,
-            product,
-            isAvailable: false,
-            unavailableReason: !product ? 'Product removed' :
-                             product.status !== 'active' ? 'Product inactive' :
-                             'Out of stock',
-            totalPrice: item.priceAtAdd * item.quantity // Calculate dynamically
-          });
+    let cart = await Cart.findOne({ user: req.user.id })
+      .populate({
+        path: 'items.product',
+        select: 'name price images stock status seller category discountPercentage maxQuantityPerOrder',
+        populate: {
+          path: 'seller',
+          select: 'name rating verified shopName'
         }
-      }
+      })
+      .lean();
 
-      // Calculate pricing for available items
-      const pricing = await calculateCartPricing(
-        availableItems, 
-        cart.appliedCoupons || [],
-        deliveryPincode,
-        req.user.id
-      );
-
-      // Calculate delivery estimation
-      let estimatedDeliveryTime = null;
-      if (deliveryPincode && availableItems.length > 0) {
-        estimatedDeliveryTime = await estimateCartDeliveryTime(
-          availableItems,
-          deliveryPincode
-        );
-      }
-
-      // Group items by seller for better organization
-      const itemsBySeller = groupItemsBySeller(availableItems);
-
-      // Check for seller-specific offers
-      const sellerOffers = await getSellerOffers(availableItems);
-
-      // Get recommended products
-      const recommendations = await getCartRecommendations(availableItems, req.user.id);
-
-      res.json({
+    if (!cart) {
+      return res.json({
         success: true,
         data: {
-          id: cart._id,
-          items: includeUnavailable ? [...availableItems, ...unavailableItems] : availableItems,
-          itemCount: availableItems.reduce((sum, item) => sum + item.quantity, 0),
-          pricing,
-          appliedCoupons: cart.appliedCoupons || [],
-          estimatedDeliveryTime,
-          availableItems,
-          unavailableItems: includeUnavailable ? unavailableItems : [],
-          itemsBySeller,
-          sellerOffers,
-          recommendations,
-          lastUpdated: cart.updatedAt,
-          hasUnavailableItems: unavailableItems.length > 0,
-          isEmpty: availableItems.length === 0
+          id: null,
+          items: [],
+          itemCount: 0,
+          pricing: { subtotal: 0, tax: 0, deliveryFee: 0, discount: 0, total: 0 },
+          appliedCoupons: [],
+          estimatedDeliveryTime: null,
+          availableItems: [],
+          unavailableItems: [],
+          isEmpty: true
         }
       });
-
-    } catch (error) {
-      logger.error('Get cart error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error retrieving cart'
-      });
     }
-  }
-);
 
-/**
- * @swagger
- * /cart/items:
- * post:
- * summary: Add item to cart
- * tags: [Cart]
- * security:
- * - bearerAuth: []
- * requestBody:
- * required: true
- * content:
- * application/json:
- * schema:
- * type: object
- * required:
- * - productId
- * - quantity
- * properties:
- * productId:
- * type: string
- * quantity:
- * type: integer
- * minimum: 1
- * maximum: 100
- * selectedVariant:
- * type: object
- * customizations:
- * type: array
- * giftWrap:
- * type: boolean
- * giftMessage:
- * type: string
- * responses:
- * 200:
- * description: Item added to cart successfully
- */
-// FIXED: Changed from '/' to '/items' to avoid conflict with GET /cart
-router.post('/items',
-  hybridProtect,
-  addItemLimiter,
-  validateCartItem,
-  async (req, res) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          success: false,
-          errors: errors.array()
-        });
-      }
+    // Process cart items
+    const availableItems = [];
+    const unavailableItems = [];
+    let hasChanges = false;
 
-      const {
-        productId,
-        quantity,
-        selectedVariant = null,
-        customizations = [],
-        giftWrap = false,
-        giftMessage = ''
-      } = req.body;
-
-      // Validate product availability
-      const product = await Product.findById(productId)
-        .populate('seller', 'name rating verified')
-        .lean();
-
-      if (!product) {
-        return res.status(404).json({
-          success: false,
-          message: 'Product not found'
-        });
-      }
-
-      if (product.status !== 'active') {
-        return res.status(400).json({
-          success: false,
-          message: 'Product is not available for purchase'
-        });
-      }
-
-      if (product.stock < quantity) {
-        return res.status(400).json({
-          success: false,
-          message: `Only ${product.stock} items available in stock`
-        });
-      }
+    for (const item of cart.items) {
+      const product = item.product;
       
-      // FIXED: Use req.user.id consistently
-      let cart = await Cart.findOne({ user: req.user.id });
-      if (!cart) {
-        cart = new Cart({ 
-          user: req.user.id, 
-          items: [] 
+      // Check product availability
+      const isAvailable = product && 
+                         product.status === 'active' && 
+                         product.stock >= item.quantity;
+
+      if (isAvailable) {
+        // Apply current discount
+        const discountAmount = product.discountPercentage > 0 
+          ? (product.price * product.discountPercentage / 100) * item.quantity
+          : 0;
+
+        availableItems.push({
+          ...item,
+          product: {
+            ...product,
+            currentPrice: product.price,
+            originalPrice: product.price,
+            discountAmount,
+            finalPrice: product.price - (discountAmount / item.quantity)
+          },
+          isAvailable: true,
+          availableStock: product.stock,
+          maxQuantityAllowed: Math.min(product.stock, product.maxQuantityPerOrder || 100),
+          totalPrice: item.priceAtAdd * item.quantity
         });
-      }
-
-      // Check if item already exists in cart
-      const existingItemIndex = cart.items.findIndex(item => 
-        item.product.toString() === productId
-      );
-
-      if (existingItemIndex > -1) {
-        // Update existing item
-        const existingItem = cart.items[existingItemIndex];
-        const newQuantity = existingItem.quantity + quantity;
-
-        // Check stock
-        if (newQuantity > product.stock) {
-          return res.status(400).json({
-            success: false,
-            message: `Cannot add ${quantity} more. Only ${product.stock - existingItem.quantity} items available`
-          });
-        }
-
-        existingItem.quantity = newQuantity;
       } else {
-        // Add new item with all fields
-        cart.items.push({
-          product: productId,
-          quantity,
-          priceAtAdd: product.price,
-          selectedVariant,
-          customizations,
-          giftWrap,
-          giftMessage: giftWrap ? giftMessage : '',
-          addedAt: new Date()
+        unavailableItems.push({
+          ...item,
+          product,
+          isAvailable: false,
+          unavailableReason: !product ? 'Product removed' :
+                           product.status !== 'active' ? 'Product inactive' :
+                           'Out of stock',
+          totalPrice: item.priceAtAdd * item.quantity
         });
       }
-
-      cart.updatedAt = new Date();
-      await cart.save();
-
-      // Calculate item count for response
-      const itemCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
-
-      res.json({
-        success: true,
-        message: 'Item added to cart successfully',
-        data: {
-          id: cart._id,
-          itemCount: itemCount,
-          cartItemCount: cart.items.length
-        }
-      });
-
-    } catch (error) {
-      console.error('Add to cart backend error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error adding item to cart: ' + error.message
-      });
     }
+
+    // Calculate pricing for available items
+    const pricing = await calculateCartPricing(
+      availableItems, 
+      cart.appliedCoupons || [],
+      deliveryPincode,
+      req.user.id
+    );
+
+    // Calculate delivery estimation
+    let estimatedDeliveryTime = null;
+    if (deliveryPincode && availableItems.length > 0) {
+      estimatedDeliveryTime = await estimateCartDeliveryTime(
+        availableItems,
+        deliveryPincode
+      );
+    }
+
+    // Group items by seller for better organization
+    const itemsBySeller = groupItemsBySeller(availableItems);
+
+    // Check for seller-specific offers
+    const sellerOffers = await getSellerOffers(availableItems);
+
+    // Get recommended products
+    const recommendations = await getCartRecommendations(availableItems, req.user.id);
+
+    res.json({
+      success: true,
+      data: {
+        id: cart._id,
+        items: includeUnavailable ? [...availableItems, ...unavailableItems] : availableItems,
+        itemCount: availableItems.reduce((sum, item) => sum + item.quantity, 0),
+        pricing,
+        appliedCoupons: cart.appliedCoupons || [],
+        estimatedDeliveryTime,
+        availableItems,
+        unavailableItems: includeUnavailable ? unavailableItems : [],
+        itemsBySeller,
+        sellerOffers,
+        recommendations,
+        lastUpdated: cart.updatedAt,
+        hasUnavailableItems: unavailableItems.length > 0,
+        isEmpty: availableItems.length === 0
+      }
+    });
+
+  } catch (error) {
+    logger.error('Get cart error:', error);
+    res.status(500).json({ success: false, message: 'Error retrieving cart' });
   }
-);
+});
 
 /**
- * @swagger
- * /cart/items/{productId}:
- * patch:
- * summary: Update cart item quantity
- * tags: [Cart]
- * security:
- * - bearerAuth: []
- * parameters:
- * - in: path
- * name: productId
- * required: true
- * schema:
- * type: string
- * requestBody:
- * required: true
- * content:
- * application/json:
- * schema:
- * type: object
- * required:
- * - quantity
- * properties:
- * quantity:
- * type: integer
- * minimum: 0
- * maximum: 100
- * responses:
- * 200:
- * description: Cart item updated successfully
+ * DELETE /api/v1/cart/clear - Clear entire cart
  */
-// FIXED: Changed from '/:productId' to '/items/:productId' to avoid conflicts
-router.patch('/items/:productId',
+router.delete('/clear', hybridProtect, cartLimiter, async (req, res) => {
+  try {
+    const cart = await Cart.findOne({ user: req.user.id });
+    
+    if (!cart || cart.items.length === 0) {
+      return res.json({ success: true, message: 'Cart is already empty' });
+    }
+
+    const itemCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
+    
+    cart.items = [];
+    cart.appliedCoupons = [];
+    cart.updatedAt = new Date();
+    await cart.save();
+
+    await trackCartEvent('cart_cleared', req.user.id, null, itemCount);
+
+    logger.info('Cart cleared', { userId: req.user.id, previousItemCount: itemCount });
+
+    res.json({
+      success: true,
+      message: 'Cart cleared successfully',
+      data: {
+        id: cart._id,
+        itemCount: 0,
+        pricing: { subtotal: 0, tax: 0, deliveryFee: 0, discount: 0, total: 0 }
+      }
+    });
+
+  } catch (error) {
+    logger.error('Clear cart error:', error);
+    res.status(500).json({ success: false, message: 'Error clearing cart' });
+  }
+});
+
+// ==================== CART ITEMS SUB-ROUTES ====================
+
+/**
+ * POST /api/v1/cart/items - Add item to cart
+ */
+itemsRouter.post('/', hybridProtect, addItemLimiter, validateCartItem, async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array() });
+    }
+
+    const { productId, quantity, selectedVariant = null, customizations = [], giftWrap = false, giftMessage = '' } = req.body;
+
+    const product = await Product.findById(productId).populate('seller', 'name rating verified').lean();
+
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Product not found' });
+    }
+
+    if (product.status !== 'active') {
+      return res.status(400).json({ success: false, message: 'Product is not available for purchase' });
+    }
+
+    if (product.stock < quantity) {
+      return res.status(400).json({ success: false, message: `Only ${product.stock} items available in stock` });
+    }
+
+    let cart = await Cart.findOne({ user: req.user.id });
+    if (!cart) {
+      cart = new Cart({ user: req.user.id, items: [] });
+    }
+
+    const existingItemIndex = cart.items.findIndex(item => item.product.toString() === productId);
+
+    if (existingItemIndex > -1) {
+      const existingItem = cart.items[existingItemIndex];
+      const newQuantity = existingItem.quantity + quantity;
+
+      if (newQuantity > product.stock) {
+        return res.status(400).json({
+          success: false,
+          message: `Cannot add ${quantity} more. Only ${product.stock - existingItem.quantity} items available`
+        });
+      }
+
+      existingItem.quantity = newQuantity;
+      existingItem.updatedAt = new Date();
+    } else {
+      // Map productId to product field (backend schema uses 'product')
+      cart.items.push({
+        product: productId, // This matches the Cart schema's 'product' field
+        quantity,
+        priceAtAdd: product.price, // Store current price at time of adding
+        selectedVariant: selectedVariant || null,
+        customizations: customizations || [],
+        giftWrap: giftWrap || false,
+        giftMessage: (giftWrap && giftMessage) ? giftMessage : '',
+        addedAt: new Date()
+      });
+    }
+
+    cart.updatedAt = new Date();
+    await cart.save();
+
+    // Populate the cart to get product details for response
+    await cart.populate({
+      path: 'items.product',
+      select: 'name price images stock status'
+    });
+
+    const itemCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
+
+    res.json({
+      success: true,
+      message: 'Item added to cart successfully',
+      data: { 
+        id: cart._id, 
+        itemCount, 
+        cartItemCount: cart.items.length,
+        // Return the added/updated item details
+        updatedItem: existingItemIndex > -1 ? {
+          product: cart.items[existingItemIndex].product,
+          quantity: cart.items[existingItemIndex].quantity
+        } : {
+          product: cart.items[cart.items.length - 1].product,
+          quantity: cart.items[cart.items.length - 1].quantity
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Add to cart error:', error);
+    res.status(500).json({ success: false, message: 'Error adding item to cart: ' + error.message });
+  }
+});
+
+/**
+ * PATCH /api/v1/cart/items/:productId - Update cart item quantity
+ */
+itemsRouter.patch('/:productId',
   hybridProtect,
   cartLimiter,
   [
@@ -461,10 +348,7 @@ router.patch('/items/:productId',
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return res.status(400).json({
-          success: false,
-          errors: errors.array()
-        });
+        return res.status(400).json({ success: false, errors: errors.array() });
       }
 
       const { productId } = req.params;
@@ -472,51 +356,28 @@ router.patch('/items/:productId',
 
       const cart = await Cart.findOne({ user: req.user.id });
       if (!cart) {
-        return res.status(404).json({
-          success: false,
-          message: 'Cart not found'
-        });
+        return res.status(404).json({ success: false, message: 'Cart not found' });
       }
 
-      const itemIndex = cart.items.findIndex(item => 
-        item.product.toString() === productId
-      );
+      const itemIndex = cart.items.findIndex(item => item.product.toString() === productId);
 
       if (itemIndex === -1) {
-        return res.status(404).json({
-          success: false,
-          message: 'Item not found in cart'
-        });
+        return res.status(404).json({ success: false, message: 'Item not found in cart' });
       }
 
-      // If quantity is 0, remove item
       if (quantity === 0) {
         const removedItem = cart.items[itemIndex];
         cart.items.splice(itemIndex, 1);
-        
-        // Track removal
         await trackCartEvent('item_removed', req.user.id, productId, removedItem.quantity);
-        
-        logger.info(`Item removed from cart`, {
-          userId: req.user.id,
-          productId
-        });
       } else {
-        // Validate product availability for new quantity
         const product = await Product.findById(productId).select('stock maxQuantityPerOrder status');
         
         if (!product || product.status !== 'active') {
-          return res.status(400).json({
-            success: false,
-            message: 'Product is no longer available'
-          });
+          return res.status(400).json({ success: false, message: 'Product is no longer available' });
         }
 
         if (product.stock < quantity) {
-          return res.status(400).json({
-            success: false,
-            message: `Only ${product.stock} items available in stock`
-          });
+          return res.status(400).json({ success: false, message: `Only ${product.stock} items available in stock` });
         }
 
         const maxQuantity = product.maxQuantityPerOrder || 100;
@@ -527,30 +388,17 @@ router.patch('/items/:productId',
           });
         }
 
-        // Update item - FIXED: Don't store totalPrice
         const item = cart.items[itemIndex];
         const oldQuantity = item.quantity;
         item.quantity = quantity;
         item.updatedAt = new Date();
-
-        // Track update
         await trackCartEvent('item_updated', req.user.id, productId, quantity - oldQuantity);
       }
 
       cart.updatedAt = new Date();
       await cart.save();
 
-      // Calculate updated pricing
       const pricing = await calculateCartPricing(cart.items, cart.appliedCoupons || []);
-
-      // Emit real-time event
-      // io.to(`user-${req.user.id}`).emit('cart-updated', {
-      //   action: quantity === 0 ? 'item-removed' : 'item-updated',
-      //   productId,
-      //   quantity,
-      //   itemCount: cart.items.reduce((sum, item) => sum + item.quantity, 0),
-      //   total: pricing.total
-      // });
 
       res.json({
         success: true,
@@ -564,220 +412,63 @@ router.patch('/items/:productId',
 
     } catch (error) {
       logger.error('Update cart error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error updating cart'
-      });
+      res.status(500).json({ success: false, message: 'Error updating cart' });
     }
   }
 );
 
 /**
- * @swagger
- * /cart/items/{productId}:
- * delete:
- * summary: Remove item from cart
- * tags: [Cart]
- * security:
- * - bearerAuth: []
- * parameters:
- * - in: path
- * name: productId
- * required: true
- * schema:
- * type: string
- * responses:
- * 200:
- * description: Item removed from cart successfully
+ * DELETE /api/v1/cart/items/:productId - Remove item from cart
  */
-// FIXED: Changed from '/:productId' to '/items/:productId' to avoid conflicts
-router.delete('/items/:productId',
-  hybridProtect,
-  cartLimiter,
-  async (req, res) => {
-    try {
-      const { productId } = req.params;
+itemsRouter.delete('/:productId', hybridProtect, cartLimiter, async (req, res) => {
+  try {
+    const { productId } = req.params;
 
-      if (!mongoose.Types.ObjectId.isValid(productId)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid product ID'
-        });
-      }
-
-      const cart = await Cart.findOne({ user: req.user.id });
-      if (!cart) {
-        return res.status(404).json({
-          success: false,
-          message: 'Cart not found'
-        });
-      }
-
-      const itemIndex = cart.items.findIndex(item => 
-        item.product.toString() === productId
-      );
-
-      if (itemIndex === -1) {
-        return res.status(404).json({
-          success: false,
-          message: 'Item not found in cart'
-        });
-      }
-
-      const removedItem = cart.items[itemIndex];
-      cart.items.splice(itemIndex, 1);
-      cart.updatedAt = new Date();
-      await cart.save();
-
-      // Calculate updated pricing
-      const pricing = await calculateCartPricing(cart.items, cart.appliedCoupons || []);
-
-      // Emit real-time event
-      // io.to(`user-${req.user.id}`).emit('cart-updated', {
-      //   action: 'item-removed',
-      //   productId,
-      //   itemCount: cart.items.reduce((sum, item) => sum + item.quantity, 0),
-      //   total: pricing.total
-      // });
-
-      // Track analytics
-      await trackCartEvent('item_removed', req.user.id, productId, removedItem.quantity);
-
-      logger.info(`Item removed from cart`, {
-        userId: req.user.id,
-        productId
-      });
-
-      res.json({
-        success: true,
-        message: 'Item removed from cart successfully',
-        data: {
-          id: cart._id,
-          itemCount: cart.items.reduce((sum, item) => sum + item.quantity, 0),
-          pricing
-        },
-        removedItem: {
-          productId,
-          quantity: removedItem.quantity
-        }
-      });
-
-    } catch (error) {
-      logger.error('Remove from cart error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error removing item from cart'
-      });
+    if (!mongoose.Types.ObjectId.isValid(productId)) {
+      return res.status(400).json({ success: false, message: 'Invalid product ID' });
     }
-  }
-);
 
-/**
- * @swagger
- * /cart/clear:
- * delete:
- * summary: Clear entire cart
- * tags: [Cart]
- * security:
- * - bearerAuth: []
- * responses:
- * 200:
- * description: Cart cleared successfully
- */
-// FIXED: Changed from '/' to '/clear' to avoid conflict with other DELETE routes
-router.delete('/clear',
-  hybridProtect,
-  cartLimiter,
-  async (req, res) => {
-    try {
-      const cart = await Cart.findOne({ user: req.user.id });
-      
-      if (!cart || cart.items.length === 0) {
-        return res.json({
-          success: true,
-          message: 'Cart is already empty'
-        });
-      }
-
-      const itemCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
-      
-      cart.items = [];
-      cart.appliedCoupons = [];
-      cart.updatedAt = new Date();
-      await cart.save();
-
-      // Emit real-time event
-      // io.to(`user-${req.user.id}`).emit('cart-updated', {
-      //   action: 'cart-cleared',
-      //   itemCount: 0,
-      //   total: 0
-      // });
-
-      // Track analytics
-      await trackCartEvent('cart_cleared', req.user.id, null, itemCount);
-
-      logger.info(`Cart cleared`, {
-        userId: req.user.id,
-        previousItemCount: itemCount
-      });
-
-      res.json({
-        success: true,
-        message: 'Cart cleared successfully',
-        data: {
-          id: cart._id,
-          itemCount: 0,
-          pricing: {
-            subtotal: 0,
-            tax: 0,
-            deliveryFee: 0,
-            discount: 0,
-            total: 0
-          }
-        }
-      });
-
-    } catch (error) {
-      logger.error('Clear cart error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error clearing cart'
-      });
+    const cart = await Cart.findOne({ user: req.user.id });
+    if (!cart) {
+      return res.status(404).json({ success: false, message: 'Cart not found' });
     }
+
+    const itemIndex = cart.items.findIndex(item => item.product.toString() === productId);
+
+    if (itemIndex === -1) {
+      return res.status(404).json({ success: false, message: 'Item not found in cart' });
+    }
+
+    const removedItem = cart.items[itemIndex];
+    cart.items.splice(itemIndex, 1);
+    cart.updatedAt = new Date();
+    await cart.save();
+
+    const pricing = await calculateCartPricing(cart.items, cart.appliedCoupons || []);
+
+    await trackCartEvent('item_removed', req.user.id, productId, removedItem.quantity);
+
+    res.json({
+      success: true,
+      message: 'Item removed from cart successfully',
+      data: {
+        id: cart._id,
+        itemCount: cart.items.reduce((sum, item) => sum + item.quantity, 0),
+        pricing
+      },
+      removedItem: { productId, quantity: removedItem.quantity }
+    });
+
+  } catch (error) {
+    logger.error('Remove from cart error:', error);
+    res.status(500).json({ success: false, message: 'Error removing item from cart' });
   }
-);
+});
 
 // ==================== BULK OPERATIONS ====================
 
 /**
- * @swagger
- * /cart/bulk:
- * post:
- * summary: Add multiple items to cart
- * tags: [Cart]
- * security:
- * - bearerAuth: []
- * requestBody:
- * required: true
- * content:
- * application/json:
- * schema:
- * type: object
- * required:
- * - items
- * properties:
- * items:
- * type: array
- * items:
- * type: object
- * properties:
- * productId:
- * type: string
- * quantity:
- * type: integer
- * responses:
- * 200:
- * description: Items added to cart successfully
+ * POST /api/v1/cart/bulk - Add multiple items to cart
  */
 router.post('/bulk',
   hybridProtect,
@@ -787,10 +478,7 @@ router.post('/bulk',
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return res.status(400).json({
-          success: false,
-          errors: errors.array()
-        });
+        return res.status(400).json({ success: false, errors: errors.array() });
       }
 
       const { items } = req.body;
@@ -849,15 +537,18 @@ router.post('/bulk',
               continue;
             }
 
-            // FIXED: Only update quantity
             existingItem.quantity = newQuantity;
             existingItem.updatedAt = new Date();
           } else {
-            // FIXED: Use correct schema fields
+            // Map productId to product field consistently
             cart.items.push({
-              product: item.productId,
+              product: item.productId, // Backend schema uses 'product', not 'productId'
               quantity: item.quantity,
               priceAtAdd: product.price,
+              selectedVariant: item.selectedVariant || null,
+              customizations: item.customizations || [],
+              giftWrap: item.giftWrap || false,
+              giftMessage: (item.giftWrap && item.giftMessage) ? item.giftMessage : '',
               addedAt: new Date()
             });
           }
@@ -885,16 +576,7 @@ router.post('/bulk',
       cart.updatedAt = new Date();
       await cart.save();
 
-      // Calculate updated pricing
       const pricing = await calculateCartPricing(cart.items, cart.appliedCoupons || []);
-
-      // Emit real-time event
-      // io.to(`user-${req.user.id}`).emit('cart-updated', {
-      //   action: 'bulk-add',
-      //   addedCount: addedItems.length,
-      //   itemCount: cart.items.reduce((sum, item) => sum + item.quantity, 0),
-      //   total: pricing.total
-      // });
 
       logger.info(`Bulk add to cart completed`, {
         userId: req.user.id,
@@ -927,29 +609,8 @@ router.post('/bulk',
 // ==================== COUPON MANAGEMENT ====================
 
 /**
- * @swagger
- * /cart/coupons:
- * post:
- * summary: Apply coupon to cart
- * tags: [Cart]
- * security:
- * - bearerAuth: []
- * requestBody:
- * required: true
- * content:
- * application/json:
- * schema:
- * type: object
- * required:
- * - couponCode
- * properties:
- * couponCode:
- * type: string
- * responses:
- * 200:
- * description: Coupon applied successfully
+ * POST /api/v1/cart/coupons - Apply coupon to cart
  */
-// FIXED: Changed from '/coupon' to '/coupons' for better REST structure
 router.post('/coupons',
   hybridProtect,
   cartLimiter,
@@ -958,10 +619,7 @@ router.post('/coupons',
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return res.status(400).json({
-          success: false,
-          errors: errors.array()
-        });
+        return res.status(400).json({ success: false, errors: errors.array() });
       }
 
       const { couponCode } = req.body;
@@ -1018,13 +676,325 @@ router.post('/coupons',
       cart.updatedAt = new Date();
       await cart.save();
 
-      // Calculate updated pricing with coupon
       const pricing = await calculateCartPricing(cart.items, cart.appliedCoupons);
 
-      // Emit real-time event
-      // io.to(`user-${req.user.id}`).emit('cart-updated', {
-      //   action: 'coupon-applied',
-      //   couponCode: couponCode.toUpperCase(),
-      //   discountAmount: couponResult.discountAmount,
-      //   total: pricing.total
-      // });
+      res.json({
+        success: true,
+        message: 'Coupon applied successfully',
+        data: {
+          id: cart._id,
+          discountAmount: couponResult.discountAmount,
+          coupon: {
+            code: couponCode.toUpperCase(),
+            type: couponResult.coupon.type,
+            value: couponResult.coupon.value
+          },
+          pricing
+        }
+      });
+
+    } catch (error) {
+      logger.error('Apply coupon error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error applying coupon'
+      });
+    }
+  }
+);
+
+/**
+ * DELETE /api/v1/cart/coupons/:couponCode - Remove coupon from cart
+ */
+router.delete('/coupons/:couponCode',
+  hybridProtect,
+  cartLimiter,
+  async (req, res) => {
+    try {
+      const { couponCode } = req.params;
+
+      const cart = await Cart.findOne({ user: req.user.id });
+      if (!cart) {
+        return res.status(404).json({
+          success: false,
+          message: 'Cart not found'
+        });
+      }
+
+      if (!cart.appliedCoupons || cart.appliedCoupons.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'No coupons applied to cart'
+        });
+      }
+
+      const couponIndex = cart.appliedCoupons.findIndex(coupon => 
+        coupon.code.toUpperCase() === couponCode.toUpperCase()
+      );
+
+      if (couponIndex === -1) {
+        return res.status(404).json({
+          success: false,
+          message: 'Coupon not found in cart'
+        });
+      }
+
+      cart.appliedCoupons.splice(couponIndex, 1);
+      cart.updatedAt = new Date();
+      await cart.save();
+
+      const pricing = await calculateCartPricing(cart.items, cart.appliedCoupons);
+
+      res.json({
+        success: true,
+        message: 'Coupon removed successfully',
+        data: {
+          id: cart._id,
+          pricing
+        }
+      });
+
+    } catch (error) {
+      logger.error('Remove coupon error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error removing coupon'
+      });
+    }
+  }
+);
+
+// ==================== MOUNT SUB-ROUTER ====================
+router.use('/items', itemsRouter);
+
+// ==================== HELPER FUNCTIONS ====================
+const calculateCartPricing = async (items, coupons, deliveryPincode, userId) => {
+  let subtotal = 0;
+  
+  // Calculate subtotal from available items
+  items.forEach(item => {
+    if (item.product && item.product.price) {
+      subtotal += item.product.price * item.quantity;
+    }
+  });
+
+  // Calculate delivery fee
+  const deliveryFee = await calculateDeliveryFee(items, deliveryPincode, userId) || 
+                     (subtotal >= 500 ? 0 : 25);
+
+  // Calculate tax
+  const tax = calculateTax(subtotal, items);
+
+  // Calculate discount from coupons
+  let discount = 0;
+  if (coupons && coupons.length > 0) {
+    coupons.forEach(coupon => {
+      discount += coupon.discountAmount || 0;
+    });
+  }
+
+  // Ensure discount doesn't exceed subtotal
+  discount = Math.min(discount, subtotal);
+
+  const total = Math.max(0, subtotal + deliveryFee + tax - discount);
+
+  return {
+    subtotal: Math.round(subtotal * 100) / 100,
+    tax: Math.round(tax * 100) / 100,
+    deliveryFee: Math.round(deliveryFee * 100) / 100,
+    discount: Math.round(discount * 100) / 100,
+    total: Math.round(total * 100) / 100
+  };
+};
+
+const estimateCartDeliveryTime = async (items, deliveryPincode) => {
+  try {
+    if (!items || items.length === 0) return null;
+    
+    const deliveryTimes = await Promise.all(
+      items.map(async (item) => {
+        if (item.product && item.product.seller) {
+          return await estimateDeliveryTime(
+            item.product.seller._id || item.product.seller,
+            deliveryPincode
+          );
+        }
+        return null;
+      })
+    );
+
+    const validTimes = deliveryTimes.filter(time => time !== null);
+    if (validTimes.length === 0) return null;
+
+    // Return the maximum delivery time (most conservative estimate)
+    return Math.max(...validTimes);
+  } catch (error) {
+    logger.warn('Error estimating delivery time:', error);
+    return null;
+  }
+};
+
+const groupItemsBySeller = (items) => {
+  const grouped = {};
+  
+  items.forEach(item => {
+    if (item.product && item.product.seller) {
+      const sellerId = item.product.seller._id || item.product.seller;
+      const sellerName = item.product.seller.name || 'Unknown Seller';
+      
+      if (!grouped[sellerId]) {
+        grouped[sellerId] = {
+          seller: {
+            id: sellerId,
+            name: sellerName,
+            rating: item.product.seller.rating,
+            verified: item.product.seller.verified,
+            shopName: item.product.seller.shopName
+          },
+          items: []
+        };
+      }
+      
+      grouped[sellerId].items.push(item);
+    }
+  });
+  
+  return Object.values(grouped);
+};
+
+const getSellerOffers = async (items) => {
+  try {
+    const sellerIds = [...new Set(items.map(item => 
+      item.product.seller._id || item.product.seller
+    ).filter(id => id))];
+
+    if (sellerIds.length === 0) return [];
+
+    // In a real implementation, you would query your offers/discounts database
+    // This is a simplified version
+    return sellerIds.map(sellerId => ({
+      sellerId,
+      offer: 'Free shipping on orders above ₹499',
+      minOrder: 499
+    })).filter(offer => offer !== null);
+
+  } catch (error) {
+    logger.warn('Error getting seller offers:', error);
+    return [];
+  }
+};
+
+const getCartRecommendations = async (items, userId) => {
+  try {
+    if (!items || items.length === 0) return [];
+
+    const categories = [...new Set(items.map(item => 
+      item.product.category
+    ).filter(cat => cat))];
+
+    if (categories.length === 0) return [];
+
+    // Get recommended products based on cart categories
+    const recommendations = await Product.find({
+      category: { $in: categories },
+      status: 'active',
+      stock: { $gt: 0 },
+      _id: { $nin: items.map(item => item.product._id) }
+    })
+    .select('name price images category discountPercentage')
+    .limit(4)
+    .lean();
+
+    return recommendations;
+
+  } catch (error) {
+    logger.warn('Error getting cart recommendations:', error);
+    return [];
+  }
+};
+
+const validateAndApplyCoupon = async (couponCode, cartItems, userId) => {
+  try {
+    const coupon = await Coupon.findOne({
+      code: couponCode.toUpperCase(),
+      isActive: true,
+      startDate: { $lte: new Date() },
+      $or: [
+        { endDate: { $gte: new Date() } },
+        { endDate: null }
+      ]
+    });
+
+    if (!coupon) {
+      return { success: false, message: 'Invalid or expired coupon' };
+    }
+
+    // Check usage limits
+    if (coupon.usageLimit && coupon.usedCount >= coupon.usageLimit) {
+      return { success: false, message: 'Coupon usage limit reached' };
+    }
+
+    // Check if user has already used this coupon
+    if (coupon.onePerUser) {
+      const userUsage = await Cart.findOne({
+        user: userId,
+        'appliedCoupons.code': couponCode.toUpperCase()
+      });
+      
+      if (userUsage) {
+        return { success: false, message: 'You have already used this coupon' };
+      }
+    }
+
+    // Calculate cart subtotal for minimum amount check
+    const subtotal = cartItems.reduce((sum, item) => {
+      if (item.product && item.product.price) {
+        return sum + (item.product.price * item.quantity);
+      }
+      return sum;
+    }, 0);
+
+    if (coupon.minOrderValue && subtotal < coupon.minOrderValue) {
+      return { 
+        success: false, 
+        message: `Minimum order value of ₹${coupon.minOrderValue} required` 
+      };
+    }
+
+    // Calculate discount amount
+    let discountAmount = 0;
+    
+    if (coupon.type === 'percentage') {
+      discountAmount = (subtotal * coupon.value) / 100;
+      if (coupon.maxDiscount) {
+        discountAmount = Math.min(discountAmount, coupon.maxDiscount);
+      }
+    } else if (coupon.type === 'fixed') {
+      discountAmount = Math.min(coupon.value, subtotal);
+    }
+
+    return {
+      success: true,
+      coupon,
+      discountAmount
+    };
+
+  } catch (error) {
+    logger.error('Coupon validation error:', error);
+    return { success: false, message: 'Error validating coupon' };
+  }
+};
+
+const trackCartEvent = async (action, userId, productId, quantity) => {
+  try {
+    const event = { action, userId, productId, quantity, timestamp: new Date() };
+    if (redis) {
+      await redis.lpush('cart_events', JSON.stringify(event));
+      await redis.ltrim('cart_events', 0, 9999);
+    }
+  } catch (error) {
+    logger.warn('Failed to track cart event', { error: error.message });
+  }
+};
+
+module.exports = router;
