@@ -99,26 +99,26 @@ const validateCoupon = [
 /**
  * @swagger
  * /cart:
- *   get:
- *     summary: Get user's cart
- *     tags: [Cart]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: includeUnavailable
- *         schema:
- *           type: boolean
- *           default: false
- *         description: Include unavailable items in response
- *       - in: query
- *         name: deliveryPincode
- *         schema:
- *           type: string
- *         description: Pincode for delivery estimation
- *     responses:
- *       200:
- *         description: Cart details with pricing breakdown
+ * get:
+ * summary: Get user's cart
+ * tags: [Cart]
+ * security:
+ * - bearerAuth: []
+ * parameters:
+ * - in: query
+ * name: includeUnavailable
+ * schema:
+ * type: boolean
+ * default: false
+ * description: Include unavailable items in response
+ * - in: query
+ * name: deliveryPincode
+ * schema:
+ * type: string
+ * description: Pincode for delivery estimation
+ * responses:
+ * 200:
+ * description: Cart details with pricing breakdown
  */
 router.get('/',
   hybridProtect,
@@ -267,38 +267,38 @@ router.get('/',
 /**
  * @swagger
  * /cart/items:
- *   post:
- *     summary: Add item to cart
- *     tags: [Cart]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - productId
- *               - quantity
- *             properties:
- *               productId:
- *                 type: string
- *               quantity:
- *                 type: integer
- *                 minimum: 1
- *                 maximum: 100
- *               selectedVariant:
- *                 type: object
- *               customizations:
- *                 type: array
- *               giftWrap:
- *                 type: boolean
- *               giftMessage:
- *                 type: string
- *     responses:
- *       200:
- *         description: Item added to cart successfully
+ * post:
+ * summary: Add item to cart
+ * tags: [Cart]
+ * security:
+ * - bearerAuth: []
+ * requestBody:
+ * required: true
+ * content:
+ * application/json:
+ * schema:
+ * type: object
+ * required:
+ * - productId
+ * - quantity
+ * properties:
+ * productId:
+ * type: string
+ * quantity:
+ * type: integer
+ * minimum: 1
+ * maximum: 100
+ * selectedVariant:
+ * type: object
+ * customizations:
+ * type: array
+ * giftWrap:
+ * type: boolean
+ * giftMessage:
+ * type: string
+ * responses:
+ * 200:
+ * description: Item added to cart successfully
  */
 // FIXED: Changed from '/' to '/items' to avoid conflict with GET /cart
 router.post('/items',
@@ -318,7 +318,7 @@ router.post('/items',
       const {
         productId,
         quantity,
-        selectedVariant,
+        selectedVariant = null,
         customizations = [],
         giftWrap = false,
         giftMessage = ''
@@ -349,26 +349,19 @@ router.post('/items',
           message: `Only ${product.stock} items available in stock`
         });
       }
-
-      // Check maximum quantity per order
-      const maxQuantity = product.maxQuantityPerOrder || 100;
-      if (quantity > maxQuantity) {
-        return res.status(400).json({
-          success: false,
-          message: `Maximum ${maxQuantity} items allowed per order`
-        });
-      }
-
-      // Find or create cart
+      
+      // FIXED: Use req.user.id consistently
       let cart = await Cart.findOne({ user: req.user.id });
       if (!cart) {
-        cart = new Cart({ user: req.user.id, items: [] });
+        cart = new Cart({ 
+          user: req.user.id, 
+          items: [] 
+        });
       }
 
       // Check if item already exists in cart
       const existingItemIndex = cart.items.findIndex(item => 
-        item.product.toString() === productId &&
-        JSON.stringify(item.selectedVariant) === JSON.stringify(selectedVariant)
+        item.product.toString() === productId
       );
 
       if (existingItemIndex > -1) {
@@ -376,7 +369,7 @@ router.post('/items',
         const existingItem = cart.items[existingItemIndex];
         const newQuantity = existingItem.quantity + quantity;
 
-        // Check total quantity doesn't exceed stock or max limit
+        // Check stock
         if (newQuantity > product.stock) {
           return res.status(400).json({
             success: false,
@@ -384,22 +377,13 @@ router.post('/items',
           });
         }
 
-        if (newQuantity > maxQuantity) {
-          return res.status(400).json({
-            success: false,
-            message: `Cannot add ${quantity} more. Maximum ${maxQuantity} items allowed per order`
-          });
-        }
-
-        // FIXED: Only update quantity and timestamp
         existingItem.quantity = newQuantity;
-        existingItem.updatedAt = new Date();
       } else {
-        // Add new item - FIXED: Use correct schema fields
+        // Add new item with all fields
         cart.items.push({
           product: productId,
           quantity,
-          priceAtAdd: product.price, // Use priceAtAdd as per schema
+          priceAtAdd: product.price,
           selectedVariant,
           customizations,
           giftWrap,
@@ -408,63 +392,27 @@ router.post('/items',
         });
       }
 
-      // Update cart totals
       cart.updatedAt = new Date();
       await cart.save();
 
-      // Populate for response
-      await cart.populate({
-        path: 'items.product',
-        select: 'name price images stock status discountPercentage',
-        populate: {
-          path: 'seller',
-          select: 'name rating verified'
-        }
-      });
-
-      // Calculate updated pricing
-      const pricing = await calculateCartPricing(cart.items, cart.appliedCoupons || []);
-
-      // Emit real-time event
-      // io.to(`user-${req.user.id}`).emit('cart-updated', {
-      //   action: 'item-added',
-      //   productId,
-      //   quantity,
-      //   itemCount: cart.items.reduce((sum, item) => sum + item.quantity, 0),
-      //   total: pricing.total
-      // });
-
-      // Track analytics
-      await trackCartEvent('item_added', req.user.id, productId, quantity);
-
-      logger.info(`Item added to cart: ${product.name}`, {
-        userId: req.user.id,
-        productId,
-        quantity,
-        cartItemCount: cart.items.length
-      });
+      // Calculate item count for response
+      const itemCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
 
       res.json({
         success: true,
         message: 'Item added to cart successfully',
         data: {
           id: cart._id,
-          itemCount: cart.items.reduce((sum, item) => sum + item.quantity, 0),
-          pricing
-        },
-        addedItem: {
-          productId,
-          name: product.name,
-          quantity,
-          price: product.price
+          itemCount: itemCount,
+          cartItemCount: cart.items.length
         }
       });
 
     } catch (error) {
-      logger.error('Add to cart error:', error);
+      console.error('Add to cart backend error:', error);
       res.status(500).json({
         success: false,
-        message: 'Error adding item to cart'
+        message: 'Error adding item to cart: ' + error.message
       });
     }
   }
@@ -473,33 +421,33 @@ router.post('/items',
 /**
  * @swagger
  * /cart/items/{productId}:
- *   patch:
- *     summary: Update cart item quantity
- *     tags: [Cart]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: productId
- *         required: true
- *         schema:
- *           type: string
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - quantity
- *             properties:
- *               quantity:
- *                 type: integer
- *                 minimum: 0
- *                 maximum: 100
- *     responses:
- *       200:
- *         description: Cart item updated successfully
+ * patch:
+ * summary: Update cart item quantity
+ * tags: [Cart]
+ * security:
+ * - bearerAuth: []
+ * parameters:
+ * - in: path
+ * name: productId
+ * required: true
+ * schema:
+ * type: string
+ * requestBody:
+ * required: true
+ * content:
+ * application/json:
+ * schema:
+ * type: object
+ * required:
+ * - quantity
+ * properties:
+ * quantity:
+ * type: integer
+ * minimum: 0
+ * maximum: 100
+ * responses:
+ * 200:
+ * description: Cart item updated successfully
  */
 // FIXED: Changed from '/:productId' to '/items/:productId' to avoid conflicts
 router.patch('/items/:productId',
@@ -627,20 +575,20 @@ router.patch('/items/:productId',
 /**
  * @swagger
  * /cart/items/{productId}:
- *   delete:
- *     summary: Remove item from cart
- *     tags: [Cart]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: productId
- *         required: true
- *         schema:
- *           type: string
- *     responses:
- *       200:
- *         description: Item removed from cart successfully
+ * delete:
+ * summary: Remove item from cart
+ * tags: [Cart]
+ * security:
+ * - bearerAuth: []
+ * parameters:
+ * - in: path
+ * name: productId
+ * required: true
+ * schema:
+ * type: string
+ * responses:
+ * 200:
+ * description: Item removed from cart successfully
  */
 // FIXED: Changed from '/:productId' to '/items/:productId' to avoid conflicts
 router.delete('/items/:productId',
@@ -727,14 +675,14 @@ router.delete('/items/:productId',
 /**
  * @swagger
  * /cart/clear:
- *   delete:
- *     summary: Clear entire cart
- *     tags: [Cart]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Cart cleared successfully
+ * delete:
+ * summary: Clear entire cart
+ * tags: [Cart]
+ * security:
+ * - bearerAuth: []
+ * responses:
+ * 200:
+ * description: Cart cleared successfully
  */
 // FIXED: Changed from '/' to '/clear' to avoid conflict with other DELETE routes
 router.delete('/clear',
@@ -804,32 +752,32 @@ router.delete('/clear',
 /**
  * @swagger
  * /cart/bulk:
- *   post:
- *     summary: Add multiple items to cart
- *     tags: [Cart]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - items
- *             properties:
- *               items:
- *                 type: array
- *                 items:
- *                   type: object
- *                   properties:
- *                     productId:
- *                       type: string
- *                     quantity:
- *                       type: integer
- *     responses:
- *       200:
- *         description: Items added to cart successfully
+ * post:
+ * summary: Add multiple items to cart
+ * tags: [Cart]
+ * security:
+ * - bearerAuth: []
+ * requestBody:
+ * required: true
+ * content:
+ * application/json:
+ * schema:
+ * type: object
+ * required:
+ * - items
+ * properties:
+ * items:
+ * type: array
+ * items:
+ * type: object
+ * properties:
+ * productId:
+ * type: string
+ * quantity:
+ * type: integer
+ * responses:
+ * 200:
+ * description: Items added to cart successfully
  */
 router.post('/bulk',
   hybridProtect,
@@ -981,25 +929,25 @@ router.post('/bulk',
 /**
  * @swagger
  * /cart/coupons:
- *   post:
- *     summary: Apply coupon to cart
- *     tags: [Cart]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - couponCode
- *             properties:
- *               couponCode:
- *                 type: string
- *     responses:
- *       200:
- *         description: Coupon applied successfully
+ * post:
+ * summary: Apply coupon to cart
+ * tags: [Cart]
+ * security:
+ * - bearerAuth: []
+ * requestBody:
+ * required: true
+ * content:
+ * application/json:
+ * schema:
+ * type: object
+ * required:
+ * - couponCode
+ * properties:
+ * couponCode:
+ * type: string
+ * responses:
+ * 200:
+ * description: Coupon applied successfully
  */
 // FIXED: Changed from '/coupon' to '/coupons' for better REST structure
 router.post('/coupons',
@@ -1080,537 +1028,3 @@ router.post('/coupons',
       //   discountAmount: couponResult.discountAmount,
       //   total: pricing.total
       // });
-
-      logger.info(`Coupon applied: ${couponCode}`, {
-        userId: req.user.id,
-        couponCode,
-        discountAmount: couponResult.discountAmount
-      });
-
-      res.json({
-        success: true,
-        message: `Coupon ${couponCode.toUpperCase()} applied successfully`,
-        coupon: {
-          code: couponCode.toUpperCase(),
-          discountAmount: couponResult.discountAmount,
-          type: couponResult.coupon.type,
-          value: couponResult.coupon.value
-        },
-        pricing
-      });
-
-    } catch (error) {
-      logger.error('Apply coupon error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error applying coupon'
-      });
-    }
-  }
-);
-
-/**
- * @swagger
- * /cart/coupons:
- *   delete:
- *     summary: Remove coupon from cart
- *     tags: [Cart]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - couponCode
- *             properties:
- *               couponCode:
- *                 type: string
- *     responses:
- *       200:
- *         description: Coupon removed successfully
- */
-// FIXED: Changed from '/coupon' to '/coupons' for consistency
-router.delete('/coupons',
-  hybridProtect,
-  cartLimiter,
-  validateCoupon,
-  async (req, res) => {
-    try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          success: false,
-          errors: errors.array()
-        });
-      }
-
-      const { couponCode } = req.body;
-
-      const cart = await Cart.findOne({ user: req.user.id });
-      if (!cart) {
-        return res.status(404).json({
-          success: false,
-          message: 'Cart not found'
-        });
-      }
-
-      if (!cart.appliedCoupons || cart.appliedCoupons.length === 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'No coupons applied to cart'
-        });
-      }
-
-      const couponIndex = cart.appliedCoupons.findIndex(coupon => 
-        coupon.code.toUpperCase() === couponCode.toUpperCase()
-      );
-
-      if (couponIndex === -1) {
-        return res.status(400).json({
-          success: false,
-          message: 'Coupon not found in cart'
-        });
-      }
-
-      const removedCoupon = cart.appliedCoupons[couponIndex];
-      cart.appliedCoupons.splice(couponIndex, 1);
-      cart.updatedAt = new Date();
-      await cart.save();
-
-      // Calculate updated pricing without coupon
-      const pricing = await calculateCartPricing(cart.items, cart.appliedCoupons);
-
-      // Emit real-time event
-      // io.to(`user-${req.user.id}`).emit('cart-updated', {
-      //   action: 'coupon-removed',
-      //   couponCode: couponCode.toUpperCase(),
-      //   total: pricing.total
-      // });
-
-      logger.info(`Coupon removed: ${couponCode}`, {
-        userId: req.user.id,
-        couponCode
-      });
-
-      res.json({
-        success: true,
-        message: `Coupon ${couponCode.toUpperCase()} removed successfully`,
-        removedCoupon: {
-          code: removedCoupon.code,
-          discountAmount: removedCoupon.discountAmount
-        },
-        pricing
-      });
-
-    } catch (error) {
-      logger.error('Remove coupon error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error removing coupon'
-      });
-    }
-  }
-);
-
-// ==================== CART ANALYSIS & RECOMMENDATIONS ====================
-
-/**
- * @swagger
- * /cart/analysis:
- *   get:
- *     summary: Get cart analysis and recommendations
- *     tags: [Cart]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Cart analysis with recommendations
- */
-router.get('/analysis',
-  hybridProtect,
-  cartLimiter,
-  async (req, res) => {
-    try {
-      const cart = await Cart.findOne({ user: req.user.id })
-        .populate('items.product', 'name price category seller tags averageRating');
-
-      if (!cart || cart.items.length === 0) {
-        return res.json({
-          success: true,
-          data: {
-            isEmpty: true,
-            message: 'Your cart is empty. Start shopping to see recommendations!'
-          }
-        });
-      }
-
-      // Analyze cart composition
-      const analysis = await analyzeCart(cart.items, req.user.id);
-
-      // Get personalized recommendations
-      const recommendations = await getCartRecommendations(cart.items, req.user.id);
-
-      // Check for potential savings
-      const savingsOpportunities = await findSavingsOpportunities(cart.items);
-
-      // Calculate delivery optimization suggestions
-      const deliveryOptimization = await getDeliveryOptimization(cart.items);
-
-      res.json({
-        success: true,
-        data: {
-          ...analysis,
-          recommendations,
-          savingsOpportunities,
-          deliveryOptimization
-        }
-      });
-
-    } catch (error) {
-      logger.error('Cart analysis error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error analyzing cart'
-      });
-    }
-  }
-);
-
-// ==================== HELPER FUNCTIONS ====================
-
-async function calculateCartPricing(items, appliedCoupons = [], deliveryPincode = null, userId = null) {
-  // FIXED: Calculate subtotal using priceAtAdd
-  const subtotal = items.reduce((sum, item) => {
-    const itemPrice = item.priceAtAdd || item.price || (item.product && item.product.price) || 0;
-    return sum + (itemPrice * item.quantity);
-  }, 0);
-  
-  // Calculate tax
-  const taxAmount = await calculateTax(subtotal, items);
-  
-  // Calculate delivery fee
-  let deliveryFee = 0;
-  if (deliveryPincode) {
-    deliveryFee = await calculateDeliveryFee({ pincode: deliveryPincode }, subtotal);
-  }
-  
-  // Apply coupons
-  const totalDiscount = appliedCoupons.reduce((sum, coupon) => sum + coupon.discountAmount, 0);
-  
-  const total = subtotal + taxAmount + deliveryFee - totalDiscount;
-  
-  return {
-    subtotal,
-    tax: taxAmount,
-    deliveryFee,
-    discount: totalDiscount,
-    total: Math.max(total, 0),
-    breakdown: {
-      itemsTotal: subtotal,
-      taxes: taxAmount,
-      delivery: deliveryFee,
-      coupons: -totalDiscount,
-      finalTotal: Math.max(total, 0)
-    }
-  };
-}
-
-function groupItemsBySeller(items) {
-  const grouped = {};
-  
-  items.forEach(item => {
-    const sellerId = item.product?.seller?._id || item.product?.seller || 'unknown';
-    const sellerName = item.product?.seller?.name || 'Unknown Seller';
-    
-    if (!grouped[sellerId]) {
-      grouped[sellerId] = {
-        sellerId,
-        sellerName,
-        items: [],
-        subtotal: 0,
-        itemCount: 0
-      };
-    }
-    
-    grouped[sellerId].items.push(item);
-    const itemPrice = item.priceAtAdd || item.price || (item.product && item.product.price) || 0;
-    grouped[sellerId].subtotal += itemPrice * item.quantity;
-    grouped[sellerId].itemCount += item.quantity;
-  });
-  
-  return Object.values(grouped);
-}
-
-async function getSellerOffers(items) {
-  // Mock implementation - replace with real offers logic
-  const offers = [];
-  
-  const sellerGroups = groupItemsBySeller(items);
-  
-  for (const group of sellerGroups) {
-    if (group.subtotal >= 500) {
-      offers.push({
-        sellerId: group.sellerId,
-        sellerName: group.sellerName,
-        type: 'free_delivery',
-        message: 'Free delivery on orders above ₹500',
-        savings: 25
-      });
-    }
-    
-    if (group.itemCount >= 5) {
-      offers.push({
-        sellerId: group.sellerId,
-        sellerName: group.sellerName,
-        type: 'bulk_discount',
-        message: '5% off on 5+ items',
-        savings: Math.round(group.subtotal * 0.05)
-      });
-    }
-  }
-  
-  return offers;
-}
-
-async function getCartRecommendations(items, userId) {
-  try {
-    // Get categories from cart items
-    const categories = [...new Set(items.map(item => item.product?.category).filter(Boolean))];
-    
-    // Find recommended products
-    const recommendations = await Product.find({
-      category: { $in: categories },
-      _id: { $nin: items.map(item => item.product?._id || item.product).filter(Boolean) },
-      status: 'active',
-      stock: { $gt: 0 }
-    })
-    .select('name price images averageRating discountPercentage')
-    .sort({ averageRating: -1, totalSales: -1 })
-    .limit(8)
-    .lean();
-    
-    return recommendations;
-  } catch (error) {
-    logger.error('Get cart recommendations error:', error);
-    return [];
-  }
-}
-
-async function estimateCartDeliveryTime(items, pincode) {
-  try {
-    // Group by seller and estimate delivery time
-    const sellerGroups = groupItemsBySeller(items);
-    let maxDeliveryTime = 0;
-    
-    for (const group of sellerGroups) {
-      const deliveryTime = await estimateDeliveryTime({ pincode }, group.sellerId);
-      maxDeliveryTime = Math.max(maxDeliveryTime, deliveryTime);
-    }
-    
-    const estimatedTime = new Date();
-    estimatedTime.setMinutes(estimatedTime.getMinutes() + maxDeliveryTime);
-    
-    return estimatedTime;
-  } catch (error) {
-    logger.error('Estimate cart delivery time error:', error);
-    return null;
-  }
-}
-
-async function validateAndApplyCoupon(couponCode, cartItems, userId) {
-  try {
-    // Mock coupon validation - replace with real coupon system
-    const mockCoupons = {
-      'SAVE10': { 
-        type: 'percentage', 
-        value: 10, 
-        minOrder: 100, 
-        maxDiscount: 100,
-        categories: [],
-        sellers: [],
-        usageLimit: 100,
-        userLimit: 5
-      },
-      'FLAT50': { 
-        type: 'fixed', 
-        value: 50, 
-        minOrder: 200,
-        categories: [],
-        sellers: [],
-        usageLimit: 50,
-        userLimit: 3
-      },
-      'FIRST20': { 
-        type: 'percentage', 
-        value: 20, 
-        minOrder: 0,
-        maxDiscount: 200,
-        categories: [],
-        sellers: [],
-        usageLimit: 1000,
-        userLimit: 1
-      }
-    };
-    
-    const coupon = mockCoupons[couponCode.toUpperCase()];
-    if (!coupon) {
-      return { success: false, message: 'Invalid coupon code' };
-    }
-    
-    // FIXED: Calculate subtotal using priceAtAdd
-    const subtotal = cartItems.reduce((sum, item) => {
-      const itemPrice = item.priceAtAdd || item.price || (item.product && item.product.price) || 0;
-      return sum + (itemPrice * item.quantity);
-    }, 0);
-    
-    if (subtotal < coupon.minOrder) {
-      return { 
-        success: false, 
-        message: `Minimum order amount ₹${coupon.minOrder} required` 
-      };
-    }
-    
-    let discountAmount = 0;
-    if (coupon.type === 'percentage') {
-      discountAmount = (subtotal * coupon.value) / 100;
-      if (coupon.maxDiscount) {
-        discountAmount = Math.min(discountAmount, coupon.maxDiscount);
-      }
-    } else {
-      discountAmount = coupon.value;
-    }
-    
-    discountAmount = Math.min(discountAmount, subtotal);
-    
-    return {
-      success: true,
-      coupon,
-      discountAmount
-    };
-  } catch (error) {
-    logger.error('Validate coupon error:', error);
-    return { success: false, message: 'Error validating coupon' };
-  }
-}
-
-async function analyzeCart(items, userId) {
-  const categories = {};
-  const sellers = {};
-  let totalItems = 0;
-  let totalValue = 0;
-  
-  items.forEach(item => {
-    const categoryName = item.product?.category?.name || 'Unknown';
-    const sellerName = item.product?.seller?.name || 'Unknown';
-    const itemPrice = item.priceAtAdd || item.price || (item.product && item.product.price) || 0;
-    const itemTotal = itemPrice * item.quantity;
-    
-    categories[categoryName] = (categories[categoryName] || 0) + item.quantity;
-    sellers[sellerName] = (sellers[sellerName] || 0) + itemTotal;
-    totalItems += item.quantity;
-    totalValue += itemTotal;
-  });
-  
-  const topCategory = Object.keys(categories).length > 0 
-    ? Object.keys(categories).reduce((a, b) => categories[a] > categories[b] ? a : b)
-    : 'None';
-  
-  const avgItemPrice = totalItems > 0 ? totalValue / totalItems : 0;
-  
-  return {
-    totalItems,
-    totalValue,
-    avgItemPrice,
-    categoryBreakdown: categories,
-    sellerBreakdown: sellers,
-    topCategory,
-    insights: {
-      isLargeOrder: totalItems > 10,
-      isHighValue: totalValue > 1000,
-      categoryDiversity: Object.keys(categories).length,
-      sellerDiversity: Object.keys(sellers).length
-    }
-  };
-}
-
-async function findSavingsOpportunities(items) {
-  const opportunities = [];
-  
-  // Check for bulk discount opportunities
-  const itemCounts = {};
-  items.forEach(item => {
-    const productId = item.product?._id || item.product;
-    if (productId) {
-      itemCounts[productId] = (itemCounts[productId] || 0) + item.quantity;
-    }
-  });
-  
-  Object.entries(itemCounts).forEach(([productId, count]) => {
-    if (count >= 5) {
-      opportunities.push({
-        type: 'bulk_discount',
-        message: `Buy 2 more of this item for 10% bulk discount`,
-        potentialSavings: 50
-      });
-    }
-  });
-  
-  // Check for free delivery threshold
-  const totalValue = items.reduce((sum, item) => {
-    const itemPrice = item.priceAtAdd || item.price || (item.product && item.product.price) || 0;
-    return sum + (itemPrice * item.quantity);
-  }, 0);
-  
-  if (totalValue >= 400 && totalValue < 500) {
-    opportunities.push({
-      type: 'free_delivery',
-      message: `Add ₹${500 - totalValue} more for free delivery`,
-      potentialSavings: 25
-    });
-  }
-  
-  return opportunities;
-}
-
-async function getDeliveryOptimization(items) {
-  const sellerGroups = groupItemsBySeller(items);
-  
-  if (sellerGroups.length > 3) {
-    return {
-      suggestion: 'consolidate_sellers',
-      message: `You have items from ${sellerGroups.length} sellers. Consider ordering from fewer sellers to reduce delivery time.`,
-      benefit: 'Faster delivery and lower delivery fees'
-    };
-  }
-  
-  return null;
-}
-
-async function trackCartEvent(eventType, userId, productId, quantity) {
-  try {
-    // Track cart analytics
-    const eventData = {
-      eventType,
-      userId,
-      productId,
-      quantity,
-      timestamp: new Date()
-    };
-    
-    // Save to analytics collection or send to analytics service
-    logger.info(`Cart event tracked: ${eventType}`, eventData);
-    
-    // Update Redis for real-time analytics
-    if (redis) {
-      await redis.lpush('cart_events', JSON.stringify(eventData));
-      await redis.ltrim('cart_events', 0, 999); // Keep last 1000 events
-    }
-  } catch (error) {
-    logger.error('Track cart event error:', error);
-  }
-}
-
-module.exports = router;

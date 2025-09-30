@@ -24,6 +24,23 @@ const cartItemSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  // ADDED NEW FIELDS:
+  selectedVariant: {
+    type: mongoose.Schema.Types.Mixed, // Flexible structure for variants
+    default: null
+  },
+  customizations: {
+    type: [mongoose.Schema.Types.Mixed], // Array of customization objects
+    default: []
+  },
+  giftWrap: {
+    type: Boolean,
+    default: false
+  },
+  giftMessage: {
+    type: String,
+    default: ''
+  },
   addedAt: {
     type: Date,
     default: Date.now
@@ -116,4 +133,3 @@ cartSchema.index({ status: 1, lastModified: -1, 'metadata.abandonedRemindersSent
 cartSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 }); // TTL index for auto-delete
 
 module.exports = mongoose.models.cart || mongoose.model('cart', cartSchema);
-
