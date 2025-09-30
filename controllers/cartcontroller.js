@@ -22,15 +22,21 @@ const CART_CONFIG = {
  */
 exports.getCart = asyncHandler(async (req, res) => {
   try {
+    // ✅ FIX: Get user ID properly
+    const userId = req.user?._id || req.user?.id;
+    if (!userId) {
+        return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+
     // Check cache first
-    const cacheKey = `cart:${req.user.id}`;
+    const cacheKey = `cart:${userId}`;
     const cachedCart = await getCachedData(cacheKey);
     
     if (cachedCart) {
       return res.status(200).json(cachedCart);
     }
 
-    const cart = await Cart.findOne({ user: req.user.id })
+    const cart = await Cart.findOne({ user: userId })
       .populate({
         path: 'items.product',
         select: 'name price images stock status seller discountPercentage',
@@ -112,7 +118,7 @@ exports.getCart = asyncHandler(async (req, res) => {
 
   } catch (error) {
     logger.error('Get cart error', {
-      userId: req.user.id,
+      userId: req.user?._id || req.user?.id,
       error: error.message
     });
     throw error;
@@ -136,6 +142,15 @@ exports.addToCart = asyncHandler(async (req, res, next) => {
     }
 
     const { productId, quantity = 1 } = req.body;
+
+    // ✅ FIX: Get user ID from auth middleware
+    const userId = req.user?._id || req.user?.id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'User authentication required'
+      });
+    }
 
     // Validate quantity
     if (quantity > CART_CONFIG.MAX_QUANTITY_PER_ITEM) {
@@ -167,9 +182,13 @@ exports.addToCart = asyncHandler(async (req, res, next) => {
     }
 
     // Find or create cart
-    let cart = await Cart.findOne({ user: req.user.id });
+    let cart = await Cart.findOne({ user: userId });
     if (!cart) {
-      cart = await Cart.create({ user: req.user.id, items: [] });
+      // ✅ FIX: Create cart with required user field
+      cart = await Cart.create({ 
+        user: userId, // REQUIRED by schema
+        items: [] 
+      });
     }
 
     // Check cart item limit
@@ -198,10 +217,11 @@ exports.addToCart = asyncHandler(async (req, res, next) => {
       cart.items[itemIndex].quantity = newQuantity;
       cart.items[itemIndex].updatedAt = new Date();
     } else {
+      // ✅ FIX: Use priceAtAdd instead of price, as required by schema
       cart.items.push({
         product: productId,
         quantity,
-        price: product.price,
+        priceAtAdd: product.price, // REQUIRED by schema
         addedAt: new Date()
       });
     }
@@ -210,13 +230,13 @@ exports.addToCart = asyncHandler(async (req, res, next) => {
     await cart.save();
 
     // Clear cache
-    await clearCartCache(req.user.id);
+    await clearCartCache(userId);
 
     // Track analytics
-    await trackCartEvent('item_added', req.user.id, productId, quantity);
+    await trackCartEvent('item_added', userId, productId, quantity);
 
     logger.info('Item added to cart', {
-      userId: req.user.id,
+      userId: userId,
       productId,
       quantity,
       productName: product.name
@@ -232,7 +252,7 @@ exports.addToCart = asyncHandler(async (req, res, next) => {
 
   } catch (error) {
     logger.error('Add to cart error', {
-      userId: req.user.id,
+      userId: req.user?._id || req.user?.id,
       productId: req.body.productId,
       error: error.message
     });
@@ -249,6 +269,12 @@ exports.updateCartItem = asyncHandler(async (req, res, next) => {
   try {
     const { quantity } = req.body;
     const { productId } = req.params;
+    
+    // ✅ FIX: Get user ID properly
+    const userId = req.user?._id || req.user?.id;
+    if (!userId) {
+        return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
 
     // Validate quantity
     if (quantity < 0 || quantity > CART_CONFIG.MAX_QUANTITY_PER_ITEM) {
@@ -258,7 +284,7 @@ exports.updateCartItem = asyncHandler(async (req, res, next) => {
       });
     }
 
-    const cart = await Cart.findOne({ user: req.user.id });
+    const cart = await Cart.findOne({ user: userId });
     if (!cart) {
       return next(new ErrorResponse('Cart not found', 404));
     }
@@ -299,13 +325,13 @@ exports.updateCartItem = asyncHandler(async (req, res, next) => {
     await cart.save();
 
     // Clear cache
-    await clearCartCache(req.user.id);
+    await clearCartCache(userId);
 
     // Track analytics
-    await trackCartEvent(quantity === 0 ? 'item_removed' : 'item_updated', req.user.id, productId, quantity);
+    await trackCartEvent(quantity === 0 ? 'item_removed' : 'item_updated', userId, productId, quantity);
 
     logger.info('Cart item updated', {
-      userId: req.user.id,
+      userId: userId,
       productId,
       quantity,
       action: quantity === 0 ? 'removed' : 'updated'
@@ -319,9 +345,10 @@ exports.updateCartItem = asyncHandler(async (req, res, next) => {
       }
     });
 
-  } catch (error) {
+  } catch (error)
+    {
     logger.error('Update cart item error', {
-      userId: req.user.id,
+      userId: req.user?._id || req.user?.id,
       productId: req.params.productId,
       error: error.message
     });
@@ -337,8 +364,14 @@ exports.updateCartItem = asyncHandler(async (req, res, next) => {
 exports.removeFromCart = asyncHandler(async (req, res, next) => {
   try {
     const { productId } = req.params;
+    
+    // ✅ FIX: Get user ID properly
+    const userId = req.user?._id || req.user?.id;
+    if (!userId) {
+        return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
 
-    const cart = await Cart.findOne({ user: req.user.id });
+    const cart = await Cart.findOne({ user: userId });
     if (!cart) {
       return next(new ErrorResponse('Cart not found', 404));
     }
@@ -356,13 +389,13 @@ exports.removeFromCart = asyncHandler(async (req, res, next) => {
     await cart.save();
 
     // Clear cache
-    await clearCartCache(req.user.id);
+    await clearCartCache(userId);
 
     // Track analytics
-    await trackCartEvent('item_removed', req.user.id, productId, 0);
+    await trackCartEvent('item_removed', userId, productId, 0);
 
     logger.info('Item removed from cart', {
-      userId: req.user.id,
+      userId: userId,
       productId
     });
 
@@ -376,7 +409,7 @@ exports.removeFromCart = asyncHandler(async (req, res, next) => {
 
   } catch (error) {
     logger.error('Remove from cart error', {
-      userId: req.user.id,
+      userId: req.user?._id || req.user?.id,
       productId: req.params.productId,
       error: error.message
     });
@@ -391,7 +424,13 @@ exports.removeFromCart = asyncHandler(async (req, res, next) => {
  */
 exports.clearCart = asyncHandler(async (req, res) => {
   try {
-    const cart = await Cart.findOne({ user: req.user.id });
+    // ✅ FIX: Get user ID properly
+    const userId = req.user?._id || req.user?.id;
+    if (!userId) {
+        return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+
+    const cart = await Cart.findOne({ user: userId });
     
     if (!cart) {
       return res.status(200).json({
@@ -403,16 +442,16 @@ exports.clearCart = asyncHandler(async (req, res) => {
 
     const itemCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
     
-    await Cart.findOneAndDelete({ user: req.user.id });
+    await Cart.findOneAndDelete({ user: userId });
 
     // Clear cache
-    await clearCartCache(req.user.id);
+    await clearCartCache(userId);
 
     // Track analytics
-    await trackCartEvent('cart_cleared', req.user.id, null, itemCount);
+    await trackCartEvent('cart_cleared', userId, null, itemCount);
 
     logger.info('Cart cleared', {
-      userId: req.user.id,
+      userId: userId,
       itemsCleared: itemCount
     });
 
@@ -424,7 +463,7 @@ exports.clearCart = asyncHandler(async (req, res) => {
 
   } catch (error) {
     logger.error('Clear cart error', {
-      userId: req.user.id,
+      userId: req.user?._id || req.user?.id,
       error: error.message
     });
     throw error;
