@@ -176,13 +176,6 @@ router.get('/',
                            product.stock >= item.quantity;
 
         if (isAvailable) {
-          // Update price if changed
-          if (item.price !== product.price) {
-            item.price = product.price;
-            item.totalPrice = product.price * item.quantity;
-            hasChanges = true;
-          }
-
           // Apply current discount
           const discountAmount = product.discountPercentage > 0 
             ? (product.price * product.discountPercentage / 100) * item.quantity
@@ -199,7 +192,8 @@ router.get('/',
             },
             isAvailable: true,
             availableStock: product.stock,
-            maxQuantityAllowed: Math.min(product.stock, product.maxQuantityPerOrder || 100)
+            maxQuantityAllowed: Math.min(product.stock, product.maxQuantityPerOrder || 100),
+            totalPrice: item.priceAtAdd * item.quantity // Calculate dynamically
           });
         } else {
           unavailableItems.push({
@@ -208,16 +202,10 @@ router.get('/',
             isAvailable: false,
             unavailableReason: !product ? 'Product removed' :
                              product.status !== 'active' ? 'Product inactive' :
-                             'Out of stock'
+                             'Out of stock',
+            totalPrice: item.priceAtAdd * item.quantity // Calculate dynamically
           });
         }
-      }
-
-      // Update cart in database if prices changed
-      if (hasChanges) {
-        await Cart.findByIdAndUpdate(cart._id, {
-          items: availableItems.concat(unavailableItems)
-        });
       }
 
       // Calculate pricing for available items
@@ -403,17 +391,15 @@ router.post('/items',
           });
         }
 
+        // FIXED: Only update quantity and timestamp
         existingItem.quantity = newQuantity;
-        existingItem.totalPrice = product.price * newQuantity;
         existingItem.updatedAt = new Date();
       } else {
-        // Add new item
+        // Add new item - FIXED: Use correct schema fields
         cart.items.push({
           product: productId,
-          name: product.name,
-          price: product.price,
           quantity,
-          totalPrice: product.price * quantity,
+          priceAtAdd: product.price, // Use priceAtAdd as per schema
           selectedVariant,
           customizations,
           giftWrap,
@@ -470,7 +456,7 @@ router.post('/items',
           productId,
           name: product.name,
           quantity,
-          totalPrice: product.price * quantity
+          price: product.price
         }
       });
 
@@ -563,7 +549,7 @@ router.patch('/items/:productId',
         // Track removal
         await trackCartEvent('item_removed', req.user.id, productId, removedItem.quantity);
         
-        logger.info(`Item removed from cart: ${removedItem.name}`, {
+        logger.info(`Item removed from cart`, {
           userId: req.user.id,
           productId
         });
@@ -593,11 +579,10 @@ router.patch('/items/:productId',
           });
         }
 
-        // Update item
+        // Update item - FIXED: Don't store totalPrice
         const item = cart.items[itemIndex];
         const oldQuantity = item.quantity;
         item.quantity = quantity;
-        item.totalPrice = item.price * quantity;
         item.updatedAt = new Date();
 
         // Track update
@@ -710,7 +695,7 @@ router.delete('/items/:productId',
       // Track analytics
       await trackCartEvent('item_removed', req.user.id, productId, removedItem.quantity);
 
-      logger.info(`Item removed from cart: ${removedItem.name}`, {
+      logger.info(`Item removed from cart`, {
         userId: req.user.id,
         productId
       });
@@ -725,7 +710,6 @@ router.delete('/items/:productId',
         },
         removedItem: {
           productId,
-          name: removedItem.name,
           quantity: removedItem.quantity
         }
       });
@@ -917,16 +901,15 @@ router.post('/bulk',
               continue;
             }
 
+            // FIXED: Only update quantity
             existingItem.quantity = newQuantity;
-            existingItem.totalPrice = product.price * newQuantity;
             existingItem.updatedAt = new Date();
           } else {
+            // FIXED: Use correct schema fields
             cart.items.push({
               product: item.productId,
-              name: product.name,
-              price: product.price,
               quantity: item.quantity,
-              totalPrice: product.price * item.quantity,
+              priceAtAdd: product.price,
               addedAt: new Date()
             });
           }
@@ -935,7 +918,7 @@ router.post('/bulk',
             productId: item.productId,
             name: product.name,
             quantity: item.quantity,
-            totalPrice: product.price * item.quantity
+            price: product.price
           });
 
         } catch (itemError) {
@@ -1299,7 +1282,11 @@ router.get('/analysis',
 // ==================== HELPER FUNCTIONS ====================
 
 async function calculateCartPricing(items, appliedCoupons = [], deliveryPincode = null, userId = null) {
-  const subtotal = items.reduce((sum, item) => sum + item.totalPrice, 0);
+  // FIXED: Calculate subtotal using priceAtAdd
+  const subtotal = items.reduce((sum, item) => {
+    const itemPrice = item.priceAtAdd || item.price || (item.product && item.product.price) || 0;
+    return sum + (itemPrice * item.quantity);
+  }, 0);
   
   // Calculate tax
   const taxAmount = await calculateTax(subtotal, items);
@@ -1335,8 +1322,8 @@ function groupItemsBySeller(items) {
   const grouped = {};
   
   items.forEach(item => {
-    const sellerId = item.product.seller._id || item.product.seller;
-    const sellerName = item.product.seller.name || 'Unknown Seller';
+    const sellerId = item.product?.seller?._id || item.product?.seller || 'unknown';
+    const sellerName = item.product?.seller?.name || 'Unknown Seller';
     
     if (!grouped[sellerId]) {
       grouped[sellerId] = {
@@ -1349,7 +1336,8 @@ function groupItemsBySeller(items) {
     }
     
     grouped[sellerId].items.push(item);
-    grouped[sellerId].subtotal += item.totalPrice;
+    const itemPrice = item.priceAtAdd || item.price || (item.product && item.product.price) || 0;
+    grouped[sellerId].subtotal += itemPrice * item.quantity;
     grouped[sellerId].itemCount += item.quantity;
   });
   
@@ -1390,12 +1378,12 @@ async function getSellerOffers(items) {
 async function getCartRecommendations(items, userId) {
   try {
     // Get categories from cart items
-    const categories = [...new Set(items.map(item => item.product.category))];
+    const categories = [...new Set(items.map(item => item.product?.category).filter(Boolean))];
     
     // Find recommended products
     const recommendations = await Product.find({
       category: { $in: categories },
-      _id: { $nin: items.map(item => item.product._id || item.product) },
+      _id: { $nin: items.map(item => item.product?._id || item.product).filter(Boolean) },
       status: 'active',
       stock: { $gt: 0 }
     })
@@ -1472,7 +1460,11 @@ async function validateAndApplyCoupon(couponCode, cartItems, userId) {
       return { success: false, message: 'Invalid coupon code' };
     }
     
-    const subtotal = cartItems.reduce((sum, item) => sum + item.totalPrice, 0);
+    // FIXED: Calculate subtotal using priceAtAdd
+    const subtotal = cartItems.reduce((sum, item) => {
+      const itemPrice = item.priceAtAdd || item.price || (item.product && item.product.price) || 0;
+      return sum + (itemPrice * item.quantity);
+    }, 0);
     
     if (subtotal < coupon.minOrder) {
       return { 
@@ -1511,20 +1503,22 @@ async function analyzeCart(items, userId) {
   let totalValue = 0;
   
   items.forEach(item => {
-    const categoryName = item.product.category?.name || 'Unknown';
-    const sellerName = item.product.seller?.name || 'Unknown';
+    const categoryName = item.product?.category?.name || 'Unknown';
+    const sellerName = item.product?.seller?.name || 'Unknown';
+    const itemPrice = item.priceAtAdd || item.price || (item.product && item.product.price) || 0;
+    const itemTotal = itemPrice * item.quantity;
     
     categories[categoryName] = (categories[categoryName] || 0) + item.quantity;
-    sellers[sellerName] = (sellers[sellerName] || 0) + item.totalPrice;
+    sellers[sellerName] = (sellers[sellerName] || 0) + itemTotal;
     totalItems += item.quantity;
-    totalValue += item.totalPrice;
+    totalValue += itemTotal;
   });
   
-  const topCategory = Object.keys(categories).reduce((a, b) => 
-    categories[a] > categories[b] ? a : b
-  );
+  const topCategory = Object.keys(categories).length > 0 
+    ? Object.keys(categories).reduce((a, b) => categories[a] > categories[b] ? a : b)
+    : 'None';
   
-  const avgItemPrice = totalValue / totalItems;
+  const avgItemPrice = totalItems > 0 ? totalValue / totalItems : 0;
   
   return {
     totalItems,
@@ -1548,8 +1542,10 @@ async function findSavingsOpportunities(items) {
   // Check for bulk discount opportunities
   const itemCounts = {};
   items.forEach(item => {
-    const productId = item.product._id || item.product;
-    itemCounts[productId] = (itemCounts[productId] || 0) + item.quantity;
+    const productId = item.product?._id || item.product;
+    if (productId) {
+      itemCounts[productId] = (itemCounts[productId] || 0) + item.quantity;
+    }
   });
   
   Object.entries(itemCounts).forEach(([productId, count]) => {
@@ -1563,7 +1559,11 @@ async function findSavingsOpportunities(items) {
   });
   
   // Check for free delivery threshold
-  const totalValue = items.reduce((sum, item) => sum + item.totalPrice, 0);
+  const totalValue = items.reduce((sum, item) => {
+    const itemPrice = item.priceAtAdd || item.price || (item.product && item.product.price) || 0;
+    return sum + (itemPrice * item.quantity);
+  }, 0);
+  
   if (totalValue >= 400 && totalValue < 500) {
     opportunities.push({
       type: 'free_delivery',
