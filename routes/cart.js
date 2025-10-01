@@ -451,27 +451,43 @@ itemsRouter.patch('/:productId',
       }
 
       cart.updatedAt = new Date();
-      
-      // Save without triggering problematic virtuals
-      await cart.save({ validateBeforeSave: false });
+      await cart.save();
 
-      // Calculate pricing separately
-      const populatedCart = await Cart.findOne({ user: userId })
-        .populate('items.product', 'price')
+      // ✅ CRITICAL FIX: Get fresh cart data with populated products for accurate pricing
+      const updatedCart = await Cart.findOne({ user: userId })
+        .populate({
+          path: 'items.product',
+          select: 'name price images stock status seller category discountPercentage',
+          populate: {
+            path: 'seller',
+            select: 'name rating verified shopName'
+          }
+        })
         .lean();
-      
+
+      if (!updatedCart) {
+        return res.status(404).json({ success: false, message: 'Cart not found after update' });
+      }
+
+      // ✅ Calculate fresh pricing with the updated cart
       const pricing = await calculateCartPricing(
-        populatedCart?.items || [], 
-        populatedCart?.appliedCoupons || []
+        updatedCart.items || [],
+        updatedCart.appliedCoupons || [],
+        req.query.deliveryPincode,
+        userId
       );
+
+      const itemCount = updatedCart.items.reduce((sum, item) => sum + (item.quantity || 0), 0);
 
       res.json({
         success: true,
         message: quantity === 0 ? 'Item removed from cart' : 'Cart updated successfully',
         data: {
-          id: cart._id,
-          itemCount: cart.items.reduce((sum, item) => sum + item.quantity, 0),
-          pricing
+          id: updatedCart._id,
+          itemCount,
+          pricing, // ✅ This ensures fresh pricing is returned
+          items: updatedCart.items,
+          lastUpdated: updatedCart.updatedAt
         }
       });
 
@@ -876,9 +892,13 @@ router.use('/items', itemsRouter);
 const calculateCartPricing = async (items, coupons, deliveryPincode, userId) => {
   let subtotal = 0;
 
+  // ✅ Safe calculation with null checks
   items.forEach(item => {
-    if (item.product && item.product.price) {
-      subtotal += item.product.price * item.quantity;
+    if (item && item.product && item.product.price) {
+      subtotal += item.product.price * (item.quantity || 1);
+    } else if (item && item.priceAtAdd) {
+      // Fallback to priceAtAdd if product is not populated
+      subtotal += item.priceAtAdd * (item.quantity || 1);
     }
   });
 
@@ -898,13 +918,16 @@ const calculateCartPricing = async (items, coupons, deliveryPincode, userId) => 
 
   const total = Math.max(0, subtotal + deliveryFee + tax - discount);
 
-  return {
+  const pricing = {
     subtotal: Math.round(subtotal * 100) / 100,
     tax: Math.round(tax * 100) / 100,
     deliveryFee: Math.round(deliveryFee * 100) / 100,
     discount: Math.round(discount * 100) / 100,
     total: Math.round(total * 100) / 100
   };
+
+  console.log('💰 Pricing calculated:', pricing);
+  return pricing;
 };
 
 const estimateCartDeliveryTime = async (items, deliveryPincode) => {
