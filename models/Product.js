@@ -360,6 +360,19 @@ productSchema.virtual('primaryImage').get(function () {
   return primary || this.images[0];
 });
 
+// Fix the virtual property that's causing the 'find' error
+productSchema.virtual('similarProducts').get(function() {
+  // Add null check for this.category
+  if (!this.category) return [];
+  
+  // Return a query instead of executing it directly in the virtual
+  return mongoose.model('Product').find({
+    category: this.category,
+    _id: { $ne: this._id },
+    status: 'active'
+  }).limit(5).lean();
+});
+
 // 📐 Enhanced Middleware
 productSchema.pre('save', async function (next) {
   // Generate slug from name

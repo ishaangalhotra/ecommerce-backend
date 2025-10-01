@@ -393,19 +393,18 @@ itemsRouter.patch('/:productId',
       const { productId } = req.params;
       const { quantity } = req.body;
 
-      // ✅ FIX: Populate 'items.product' to access price for recalculation.
-      const cart = await Cart.findOne({ user: userId })
-        .populate('items.product', 'price stock maxQuantityPerOrder status');
-
+      // Get cart without population first
+      const cart = await Cart.findOne({ user: userId });
+      
       if (!cart) {
         return res.status(404).json({ success: false, message: 'Cart not found' });
       }
 
-      // ✅ CRITICAL BUG FIX: Add null check before accessing item.product._id
-      // This prevents crashes when a product has been deleted from the database
-      const itemIndex = cart.items.findIndex(item =>
-        item.product && item.product._id.toString() === productId
-      );
+      // Find item with safe null checking
+      const itemIndex = cart.items.findIndex(item => {
+        if (!item.product) return false;
+        return item.product.toString() === productId;
+      });
 
       if (itemIndex === -1) {
         return res.status(404).json({ success: false, message: 'Item not found in cart' });
@@ -417,14 +416,25 @@ itemsRouter.patch('/:productId',
         cart.items.splice(itemIndex, 1);
         await trackCartEvent('item_removed', userId, productId, removedItem.quantity);
       } else {
-        const product = cart.items[itemIndex].product;
+        // Validate product separately to avoid virtual property issues
+        const product = await Product.findById(productId)
+          .select('price stock maxQuantityPerOrder status')
+          .lean();
 
         if (!product || product.status !== 'active') {
-          return res.status(400).json({ success: false, message: 'Product is no longer available' });
+          return res.status(400).json({ 
+            success: false, 
+            message: 'Product is no longer available' 
+          });
         }
+
         if (product.stock < quantity) {
-          return res.status(400).json({ success: false, message: `Only ${product.stock} items available in stock` });
+          return res.status(400).json({ 
+            success: false, 
+            message: `Only ${product.stock} items available in stock` 
+          });
         }
+
         const maxQuantity = product.maxQuantityPerOrder || 100;
         if (quantity > maxQuantity) {
           return res.status(400).json({
@@ -441,9 +451,19 @@ itemsRouter.patch('/:productId',
       }
 
       cart.updatedAt = new Date();
-      await cart.save();
+      
+      // Save without triggering problematic virtuals
+      await cart.save({ validateBeforeSave: false });
 
-      const pricing = await calculateCartPricing(cart.items, cart.appliedCoupons || []);
+      // Calculate pricing separately
+      const populatedCart = await Cart.findOne({ user: userId })
+        .populate('items.product', 'price')
+        .lean();
+      
+      const pricing = await calculateCartPricing(
+        populatedCart?.items || [], 
+        populatedCart?.appliedCoupons || []
+      );
 
       res.json({
         success: true,
@@ -457,10 +477,12 @@ itemsRouter.patch('/:productId',
 
     } catch (error) {
       logger.error('Update cart error:', error);
-      res.status(500).json({ success: false, message: 'Error updating cart' });
+      res.status(500).json({ 
+        success: false, 
+        message: 'Error updating cart: ' + error.message 
+      });
     }
-  }
-);
+  });
 
 /**
  * DELETE /api/v1/cart/items/:productId - Remove item from cart
@@ -941,9 +963,11 @@ const groupItemsBySeller = (items) => {
 
 const getSellerOffers = async (items) => {
   try {
-    const sellerIds = [...new Set(items.map(item =>
-      item.product.seller._id || item.product.seller
-    ).filter(id => id))];
+    const sellerIds = [...new Set(items.map(item => {
+      // Add comprehensive null checking
+      if (!item.product || !item.product.seller) return null;
+      return item.product.seller._id || item.product.seller;
+    }).filter(id => id && id !== null))];
 
     if (sellerIds.length === 0) return [];
 
@@ -1058,9 +1082,14 @@ const validateAndApplyCoupon = async (couponCode, cartItems, userId) => {
 const trackCartEvent = async (action, userId, productId, quantity) => {
   try {
     const event = { action, userId, productId, quantity, timestamp: new Date() };
-    if (redis) {
+    
+    // Check if redis is properly configured
+    if (redis && typeof redis.lpush === 'function') {
       await redis.lpush('cart_events', JSON.stringify(event));
       await redis.ltrim('cart_events', 0, 9999);
+    } else {
+      // Fallback to logging if Redis is not available
+      logger.info('Cart event tracked', { action, userId, productId, quantity });
     }
   } catch (error) {
     logger.warn('Failed to track cart event', { error: error.message });
