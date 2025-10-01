@@ -73,6 +73,7 @@ router.get('/', hybridProtect, cartLimiter, async (req, res) => {
   try {
     const { includeUnavailable = false, deliveryPincode } = req.query;
 
+    // ✅ FIX: Get user ID with proper fallbacks and an explicit auth check.
     const userId = req.user?.id || req.user?._id;
     if (!userId) {
       return res.status(401).json({
@@ -81,6 +82,7 @@ router.get('/', hybridProtect, cartLimiter, async (req, res) => {
       });
     }
 
+    // ✅ FIX: Use the validated userId.
     let cart = await Cart.findOne({ user: userId })
       .populate({
         path: 'items.product',
@@ -154,6 +156,7 @@ router.get('/', hybridProtect, cartLimiter, async (req, res) => {
       }
     }
 
+    // ✅ FIX: Use the validated userId.
     const pricing = await calculateCartPricing(
       availableItems,
       cart.appliedCoupons || [],
@@ -177,6 +180,7 @@ router.get('/', hybridProtect, cartLimiter, async (req, res) => {
     const sellerOffers = await getSellerOffers(availableItems);
 
     // Get recommended products
+    // ✅ FIX: Use the validated userId.
     const recommendations = await getCartRecommendations(availableItems, userId);
 
     res.json({
@@ -210,6 +214,7 @@ router.get('/', hybridProtect, cartLimiter, async (req, res) => {
  */
 router.delete('/clear', hybridProtect, cartLimiter, async (req, res) => {
   try {
+    // ✅ FIX: Get user ID with proper fallbacks and an explicit auth check.
     const userId = req.user?.id || req.user?._id;
     if (!userId) {
       return res.status(401).json({
@@ -218,6 +223,7 @@ router.delete('/clear', hybridProtect, cartLimiter, async (req, res) => {
       });
     }
 
+    // ✅ FIX: Use the validated userId.
     const cart = await Cart.findOne({ user: userId });
 
     if (!cart || cart.items.length === 0) {
@@ -231,6 +237,7 @@ router.delete('/clear', hybridProtect, cartLimiter, async (req, res) => {
     cart.updatedAt = new Date();
     await cart.save();
 
+    // ✅ FIX: Use the validated userId.
     await trackCartEvent('cart_cleared', userId, null, itemCount);
 
     logger.info('Cart cleared', { userId: userId, previousItemCount: itemCount });
@@ -265,6 +272,7 @@ itemsRouter.post('/', hybridProtect, addItemLimiter, validateCartItem, async (re
 
     const { productId, quantity, selectedVariant = null, customizations = [], giftWrap = false, giftMessage = '' } = req.body;
 
+    // ✅ FIX: Get user ID with proper fallbacks and an explicit auth check.
     const userId = req.user?.id || req.user?._id;
     if (!userId) {
       return res.status(401).json({
@@ -287,6 +295,7 @@ itemsRouter.post('/', hybridProtect, addItemLimiter, validateCartItem, async (re
       return res.status(400).json({ success: false, message: `Only ${product.stock} items available in stock` });
     }
 
+    // ✅ FIX: Use the validated userId.
     let cart = await Cart.findOne({ user: userId });
     if (!cart) {
       cart = new Cart({
@@ -444,38 +453,41 @@ itemsRouter.patch('/:productId',
       cart.updatedAt = new Date();
       await cart.save();
 
-      // Populate the saved cart to get fresh product data
-      await cart.populate({
-        path: 'items.product',
-        select: 'name price images stock status seller category discountPercentage',
-        populate: {
-          path: 'seller',
-          select: 'name rating verified shopName'
-        }
-      });
+      // ✅ CRITICAL FIX: Get fresh cart data with populated products for accurate pricing
+      const updatedCart = await Cart.findOne({ user: userId })
+        .populate({
+          path: 'items.product',
+          select: 'name price images stock status seller category discountPercentage',
+          populate: {
+            path: 'seller',
+            select: 'name rating verified shopName'
+          }
+        })
+        .lean();
 
-      // Convert to plain object for pricing calculation
-      const cartObject = cart.toObject();
+      if (!updatedCart) {
+        return res.status(404).json({ success: false, message: 'Cart not found after update' });
+      }
 
-      // Calculate fresh pricing with the populated cart items
+      // ✅ Calculate fresh pricing with the updated cart
       const pricing = await calculateCartPricing(
-        cartObject.items || [],
-        cartObject.appliedCoupons || [],
+        updatedCart.items || [],
+        updatedCart.appliedCoupons || [],
         req.query.deliveryPincode,
         userId
       );
 
-      const itemCount = cartObject.items.reduce((sum, item) => sum + (item.quantity || 0), 0);
+      const itemCount = updatedCart.items.reduce((sum, item) => sum + (item.quantity || 0), 0);
 
       res.json({
         success: true,
         message: quantity === 0 ? 'Item removed from cart' : 'Cart updated successfully',
         data: {
-          id: cartObject._id,
+          id: updatedCart._id,
           itemCount,
-          pricing,
-          items: cartObject.items,
-          lastUpdated: cartObject.updatedAt
+          pricing, // ✅ This ensures fresh pricing is returned
+          items: updatedCart.items,
+          lastUpdated: updatedCart.updatedAt
         }
       });
 
@@ -499,6 +511,7 @@ itemsRouter.delete('/:productId', hybridProtect, cartLimiter, async (req, res) =
       return res.status(400).json({ success: false, message: 'Invalid product ID' });
     }
 
+    // ✅ FIX: Get user ID with proper fallbacks and an explicit auth check.
     const userId = req.user?.id || req.user?._id;
     if (!userId) {
       return res.status(401).json({
@@ -507,6 +520,7 @@ itemsRouter.delete('/:productId', hybridProtect, cartLimiter, async (req, res) =
       });
     }
 
+    // ✅ FIX: Use the validated userId.
     const cart = await Cart.findOne({ user: userId });
     if (!cart) {
       return res.status(404).json({ success: false, message: 'Cart not found' });
@@ -525,6 +539,7 @@ itemsRouter.delete('/:productId', hybridProtect, cartLimiter, async (req, res) =
 
     const pricing = await calculateCartPricing(cart.items, cart.appliedCoupons || []);
 
+    // ✅ FIX: Use the validated userId.
     await trackCartEvent('item_removed', userId, productId, removedItem.quantity);
 
     res.json({
@@ -560,6 +575,7 @@ router.post('/bulk',
         return res.status(400).json({ success: false, errors: errors.array() });
       }
 
+      // ✅ FIX: Get user ID with proper fallbacks and an explicit auth check.
       const userId = req.user?.id || req.user?._id;
       if (!userId) {
         return res.status(401).json({
@@ -583,6 +599,7 @@ router.post('/bulk',
         });
       }
 
+      // ✅ FIX: Use the validated userId.
       let cart = await Cart.findOne({ user: userId });
       if (!cart) {
         cart = new Cart({
@@ -708,6 +725,7 @@ router.post('/coupons',
         return res.status(400).json({ success: false, errors: errors.array() });
       }
 
+      // ✅ FIX: Get user ID with proper fallbacks and an explicit auth check.
       const userId = req.user?.id || req.user?._id;
       if (!userId) {
         return res.status(401).json({
@@ -718,6 +736,7 @@ router.post('/coupons',
 
       const { couponCode } = req.body;
 
+      // ✅ FIX: Use the validated userId.
       const cart = await Cart.findOne({ user: userId })
         .populate('items.product', 'price category seller');
 
@@ -739,6 +758,7 @@ router.post('/coupons',
         });
       }
 
+      // ✅ FIX: Use the validated userId.
       const couponResult = await validateAndApplyCoupon(
         couponCode,
         cart.items,
@@ -804,6 +824,7 @@ router.delete('/coupons/:couponCode',
     try {
       const { couponCode } = req.params;
 
+      // ✅ FIX: Get user ID with proper fallbacks and an explicit auth check.
       const userId = req.user?.id || req.user?._id;
       if (!userId) {
         return res.status(401).json({
@@ -812,6 +833,7 @@ router.delete('/coupons/:couponCode',
         });
       }
 
+      // ✅ FIX: Use the validated userId.
       const cart = await Cart.findOne({ user: userId });
       if (!cart) {
         return res.status(404).json({
@@ -870,10 +892,12 @@ router.use('/items', itemsRouter);
 const calculateCartPricing = async (items, coupons, deliveryPincode, userId) => {
   let subtotal = 0;
 
+  // ✅ Safe calculation with null checks
   items.forEach(item => {
     if (item && item.product && item.product.price) {
       subtotal += item.product.price * (item.quantity || 1);
     } else if (item && item.priceAtAdd) {
+      // Fallback to priceAtAdd if product is not populated
       subtotal += item.priceAtAdd * (item.quantity || 1);
     }
   });
@@ -902,7 +926,7 @@ const calculateCartPricing = async (items, coupons, deliveryPincode, userId) => 
     total: Math.round(total * 100) / 100
   };
 
-  console.log('Pricing calculated:', pricing);
+  console.log('💰 Pricing calculated:', pricing);
   return pricing;
 };
 
@@ -942,7 +966,7 @@ const groupItemsBySeller = (items) => {
 
       if (!grouped[sellerId]) {
         grouped[sellerId] = {
-      seller: {
+          seller: {
             id: sellerId,
             name: sellerName,
             rating: item.product.seller.rating,
@@ -963,6 +987,7 @@ const groupItemsBySeller = (items) => {
 const getSellerOffers = async (items) => {
   try {
     const sellerIds = [...new Set(items.map(item => {
+      // Add comprehensive null checking
       if (!item.product || !item.product.seller) return null;
       return item.product.seller._id || item.product.seller;
     }).filter(id => id && id !== null))];
@@ -1081,10 +1106,12 @@ const trackCartEvent = async (action, userId, productId, quantity) => {
   try {
     const event = { action, userId, productId, quantity, timestamp: new Date() };
     
+    // Check if redis is properly configured
     if (redis && typeof redis.lpush === 'function') {
       await redis.lpush('cart_events', JSON.stringify(event));
       await redis.ltrim('cart_events', 0, 9999);
     } else {
+      // Fallback to logging if Redis is not available
       logger.info('Cart event tracked', { action, userId, productId, quantity });
     }
   } catch (error) {
