@@ -299,7 +299,7 @@ itemsRouter.post('/', hybridProtect, addItemLimiter, validateCartItem, async (re
     let cart = await Cart.findOne({ user: userId });
     if (!cart) {
       cart = new Cart({
-        user: userId, // This is the critical fix
+        user: userId,
         items: []
       });
     }
@@ -394,7 +394,6 @@ itemsRouter.patch('/:productId',
       const { quantity } = req.body;
 
       // ✅ FIX: Populate 'items.product' to access price for recalculation.
-      // This ensures that when calculateCartPricing is called, it has the price.
       const cart = await Cart.findOne({ user: userId })
         .populate('items.product', 'price stock maxQuantityPerOrder status');
 
@@ -402,8 +401,11 @@ itemsRouter.patch('/:productId',
         return res.status(404).json({ success: false, message: 'Cart not found' });
       }
 
-      // Note: Mongoose findIndex on a subdocument array works with the _id property.
-      const itemIndex = cart.items.findIndex(item => item.product._id.toString() === productId);
+      // ✅ CRITICAL BUG FIX: Add null check before accessing item.product._id
+      // This prevents crashes when a product has been deleted from the database
+      const itemIndex = cart.items.findIndex(item =>
+        item.product && item.product._id.toString() === productId
+      );
 
       if (itemIndex === -1) {
         return res.status(404).json({ success: false, message: 'Item not found in cart' });
@@ -415,7 +417,6 @@ itemsRouter.patch('/:productId',
         cart.items.splice(itemIndex, 1);
         await trackCartEvent('item_removed', userId, productId, removedItem.quantity);
       } else {
-        // Since we populated, we can access the product directly
         const product = cart.items[itemIndex].product;
 
         if (!product || product.status !== 'active') {
@@ -442,7 +443,6 @@ itemsRouter.patch('/:productId',
       cart.updatedAt = new Date();
       await cart.save();
 
-      // Because we populated the cart items earlier, this calculation will now work correctly.
       const pricing = await calculateCartPricing(cart.items, cart.appliedCoupons || []);
 
       res.json({
@@ -451,7 +451,7 @@ itemsRouter.patch('/:productId',
         data: {
           id: cart._id,
           itemCount: cart.items.reduce((sum, item) => sum + item.quantity, 0),
-          pricing // Send back the newly calculated pricing.
+          pricing
         }
       });
 
@@ -565,7 +565,7 @@ router.post('/bulk',
       let cart = await Cart.findOne({ user: userId });
       if (!cart) {
         cart = new Cart({
-          user: userId, // This is the critical fix
+          user: userId,
           items: []
         });
       }
