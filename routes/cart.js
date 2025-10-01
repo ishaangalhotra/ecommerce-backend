@@ -22,11 +22,11 @@ const itemsRouter = express.Router({ mergeParams: true });
 const cartLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 200,
-  keyGenerator: (req) => `cart:${req.ip}:${req.user?.id || 'guest'}`,
+  keyGenerator: (req) => `cart:${req.ip}:${req.user?.id || req.user?._id || 'guest'}`,
   handler: (req, res) => {
     logger.warn(`Cart rate limit exceeded for ${req.ip}`);
-    res.status(429).json({ 
-      success: false, 
+    res.status(429).json({
+      success: false,
       error: 'Too many cart requests, please try again later',
       retryAfter: 15 * 60
     });
@@ -73,7 +73,17 @@ router.get('/', hybridProtect, cartLimiter, async (req, res) => {
   try {
     const { includeUnavailable = false, deliveryPincode } = req.query;
 
-    let cart = await Cart.findOne({ user: req.user.id })
+    // ✅ FIX: Get user ID with proper fallbacks and an explicit auth check.
+    const userId = req.user?.id || req.user?._id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'User authentication required'
+      });
+    }
+
+    // ✅ FIX: Use the validated userId.
+    let cart = await Cart.findOne({ user: userId })
       .populate({
         path: 'items.product',
         select: 'name price images stock status seller category discountPercentage maxQuantityPerOrder',
@@ -104,19 +114,18 @@ router.get('/', hybridProtect, cartLimiter, async (req, res) => {
     // Process cart items
     const availableItems = [];
     const unavailableItems = [];
-    let hasChanges = false;
 
     for (const item of cart.items) {
       const product = item.product;
-      
+
       // Check product availability
-      const isAvailable = product && 
-                         product.status === 'active' && 
+      const isAvailable = product &&
+                         product.status === 'active' &&
                          product.stock >= item.quantity;
 
       if (isAvailable) {
         // Apply current discount
-        const discountAmount = product.discountPercentage > 0 
+        const discountAmount = product.discountPercentage > 0
           ? (product.price * product.discountPercentage / 100) * item.quantity
           : 0;
 
@@ -147,12 +156,12 @@ router.get('/', hybridProtect, cartLimiter, async (req, res) => {
       }
     }
 
-    // Calculate pricing for available items
+    // ✅ FIX: Use the validated userId.
     const pricing = await calculateCartPricing(
-      availableItems, 
+      availableItems,
       cart.appliedCoupons || [],
       deliveryPincode,
-      req.user.id
+      userId
     );
 
     // Calculate delivery estimation
@@ -171,7 +180,8 @@ router.get('/', hybridProtect, cartLimiter, async (req, res) => {
     const sellerOffers = await getSellerOffers(availableItems);
 
     // Get recommended products
-    const recommendations = await getCartRecommendations(availableItems, req.user.id);
+    // ✅ FIX: Use the validated userId.
+    const recommendations = await getCartRecommendations(availableItems, userId);
 
     res.json({
       success: true,
@@ -204,22 +214,33 @@ router.get('/', hybridProtect, cartLimiter, async (req, res) => {
  */
 router.delete('/clear', hybridProtect, cartLimiter, async (req, res) => {
   try {
-    const cart = await Cart.findOne({ user: req.user.id });
-    
+    // ✅ FIX: Get user ID with proper fallbacks and an explicit auth check.
+    const userId = req.user?.id || req.user?._id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'User authentication required'
+      });
+    }
+
+    // ✅ FIX: Use the validated userId.
+    const cart = await Cart.findOne({ user: userId });
+
     if (!cart || cart.items.length === 0) {
       return res.json({ success: true, message: 'Cart is already empty' });
     }
 
     const itemCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
-    
+
     cart.items = [];
     cart.appliedCoupons = [];
     cart.updatedAt = new Date();
     await cart.save();
 
-    await trackCartEvent('cart_cleared', req.user.id, null, itemCount);
+    // ✅ FIX: Use the validated userId.
+    await trackCartEvent('cart_cleared', userId, null, itemCount);
 
-    logger.info('Cart cleared', { userId: req.user.id, previousItemCount: itemCount });
+    logger.info('Cart cleared', { userId: userId, previousItemCount: itemCount });
 
     res.json({
       success: true,
@@ -251,6 +272,15 @@ itemsRouter.post('/', hybridProtect, addItemLimiter, validateCartItem, async (re
 
     const { productId, quantity, selectedVariant = null, customizations = [], giftWrap = false, giftMessage = '' } = req.body;
 
+    // ✅ FIX: Get user ID with proper fallbacks and an explicit auth check.
+    const userId = req.user?.id || req.user?._id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'User authentication required'
+      });
+    }
+
     const product = await Product.findById(productId).populate('seller', 'name rating verified').lean();
 
     if (!product) {
@@ -265,9 +295,13 @@ itemsRouter.post('/', hybridProtect, addItemLimiter, validateCartItem, async (re
       return res.status(400).json({ success: false, message: `Only ${product.stock} items available in stock` });
     }
 
-    let cart = await Cart.findOne({ user: req.user.id });
+    // ✅ FIX: Use the validated userId.
+    let cart = await Cart.findOne({ user: userId });
     if (!cart) {
-      cart = new Cart({ user: req.user.id, items: [] });
+      cart = new Cart({
+        user: userId, // This is the critical fix
+        items: []
+      });
     }
 
     const existingItemIndex = cart.items.findIndex(item => item.product.toString() === productId);
@@ -286,11 +320,10 @@ itemsRouter.post('/', hybridProtect, addItemLimiter, validateCartItem, async (re
       existingItem.quantity = newQuantity;
       existingItem.updatedAt = new Date();
     } else {
-      // Map productId to product field (backend schema uses 'product')
       cart.items.push({
-        product: productId, // This matches the Cart schema's 'product' field
+        product: productId,
         quantity,
-        priceAtAdd: product.price, // Store current price at time of adding
+        priceAtAdd: product.price,
         selectedVariant: selectedVariant || null,
         customizations: customizations || [],
         giftWrap: giftWrap || false,
@@ -302,7 +335,6 @@ itemsRouter.post('/', hybridProtect, addItemLimiter, validateCartItem, async (re
     cart.updatedAt = new Date();
     await cart.save();
 
-    // Populate the cart to get product details for response
     await cart.populate({
       path: 'items.product',
       select: 'name price images stock status'
@@ -313,11 +345,10 @@ itemsRouter.post('/', hybridProtect, addItemLimiter, validateCartItem, async (re
     res.json({
       success: true,
       message: 'Item added to cart successfully',
-      data: { 
-        id: cart._id, 
-        itemCount, 
+      data: {
+        id: cart._id,
+        itemCount,
         cartItemCount: cart.items.length,
-        // Return the added/updated item details
         updatedItem: existingItemIndex > -1 ? {
           product: cart.items[existingItemIndex].product,
           quantity: cart.items[existingItemIndex].quantity
@@ -351,10 +382,20 @@ itemsRouter.patch('/:productId',
         return res.status(400).json({ success: false, errors: errors.array() });
       }
 
+      // ✅ FIX: Get user ID with proper fallbacks and an explicit auth check.
+      const userId = req.user?.id || req.user?._id;
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          message: 'User authentication required'
+        });
+      }
+
       const { productId } = req.params;
       const { quantity } = req.body;
 
-      const cart = await Cart.findOne({ user: req.user.id });
+      // ✅ FIX: Use the validated userId.
+      const cart = await Cart.findOne({ user: userId });
       if (!cart) {
         return res.status(404).json({ success: false, message: 'Cart not found' });
       }
@@ -368,10 +409,11 @@ itemsRouter.patch('/:productId',
       if (quantity === 0) {
         const removedItem = cart.items[itemIndex];
         cart.items.splice(itemIndex, 1);
-        await trackCartEvent('item_removed', req.user.id, productId, removedItem.quantity);
+        // ✅ FIX: Use the validated userId.
+        await trackCartEvent('item_removed', userId, productId, removedItem.quantity);
       } else {
         const product = await Product.findById(productId).select('stock maxQuantityPerOrder status');
-        
+
         if (!product || product.status !== 'active') {
           return res.status(400).json({ success: false, message: 'Product is no longer available' });
         }
@@ -392,7 +434,8 @@ itemsRouter.patch('/:productId',
         const oldQuantity = item.quantity;
         item.quantity = quantity;
         item.updatedAt = new Date();
-        await trackCartEvent('item_updated', req.user.id, productId, quantity - oldQuantity);
+        // ✅ FIX: Use the validated userId.
+        await trackCartEvent('item_updated', userId, productId, quantity - oldQuantity);
       }
 
       cart.updatedAt = new Date();
@@ -428,7 +471,17 @@ itemsRouter.delete('/:productId', hybridProtect, cartLimiter, async (req, res) =
       return res.status(400).json({ success: false, message: 'Invalid product ID' });
     }
 
-    const cart = await Cart.findOne({ user: req.user.id });
+    // ✅ FIX: Get user ID with proper fallbacks and an explicit auth check.
+    const userId = req.user?.id || req.user?._id;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'User authentication required'
+      });
+    }
+
+    // ✅ FIX: Use the validated userId.
+    const cart = await Cart.findOne({ user: userId });
     if (!cart) {
       return res.status(404).json({ success: false, message: 'Cart not found' });
     }
@@ -446,7 +499,8 @@ itemsRouter.delete('/:productId', hybridProtect, cartLimiter, async (req, res) =
 
     const pricing = await calculateCartPricing(cart.items, cart.appliedCoupons || []);
 
-    await trackCartEvent('item_removed', req.user.id, productId, removedItem.quantity);
+    // ✅ FIX: Use the validated userId.
+    await trackCartEvent('item_removed', userId, productId, removedItem.quantity);
 
     res.json({
       success: true,
@@ -481,9 +535,17 @@ router.post('/bulk',
         return res.status(400).json({ success: false, errors: errors.array() });
       }
 
+      // ✅ FIX: Get user ID with proper fallbacks and an explicit auth check.
+      const userId = req.user?.id || req.user?._id;
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          message: 'User authentication required'
+        });
+      }
+
       const { items } = req.body;
-      
-      // Validate all products exist and are available
+
       const productIds = items.map(item => item.productId);
       const products = await Product.find({
         _id: { $in: productIds },
@@ -497,10 +559,13 @@ router.post('/bulk',
         });
       }
 
-      // Find or create cart
-      let cart = await Cart.findOne({ user: req.user.id });
+      // ✅ FIX: Use the validated userId.
+      let cart = await Cart.findOne({ user: userId });
       if (!cart) {
-        cart = new Cart({ user: req.user.id, items: [] });
+        cart = new Cart({
+          user: userId, // This is the critical fix
+          items: []
+        });
       }
 
       const addedItems = [];
@@ -509,7 +574,7 @@ router.post('/bulk',
       for (const item of items) {
         try {
           const product = products.find(p => p._id.toString() === item.productId);
-          
+
           if (!product) {
             failedItems.push({ ...item, reason: 'Product not found' });
             continue;
@@ -520,8 +585,7 @@ router.post('/bulk',
             continue;
           }
 
-          // Check if item already exists
-          const existingItemIndex = cart.items.findIndex(cartItem => 
+          const existingItemIndex = cart.items.findIndex(cartItem =>
             cartItem.product.toString() === item.productId
           );
 
@@ -530,9 +594,9 @@ router.post('/bulk',
             const newQuantity = existingItem.quantity + item.quantity;
 
             if (newQuantity > product.stock) {
-              failedItems.push({ 
-                ...item, 
-                reason: `Cannot add ${item.quantity}. Only ${product.stock - existingItem.quantity} more available` 
+              failedItems.push({
+                ...item,
+                reason: `Cannot add ${item.quantity}. Only ${product.stock - existingItem.quantity} more available`
               });
               continue;
             }
@@ -540,9 +604,8 @@ router.post('/bulk',
             existingItem.quantity = newQuantity;
             existingItem.updatedAt = new Date();
           } else {
-            // Map productId to product field consistently
             cart.items.push({
-              product: item.productId, // Backend schema uses 'product', not 'productId'
+              product: item.productId,
               quantity: item.quantity,
               priceAtAdd: product.price,
               selectedVariant: item.selectedVariant || null,
@@ -579,7 +642,7 @@ router.post('/bulk',
       const pricing = await calculateCartPricing(cart.items, cart.appliedCoupons || []);
 
       logger.info(`Bulk add to cart completed`, {
-        userId: req.user.id,
+        userId: userId,
         addedCount: addedItems.length,
         failedCount: failedItems.length
       });
@@ -622,9 +685,19 @@ router.post('/coupons',
         return res.status(400).json({ success: false, errors: errors.array() });
       }
 
+      // ✅ FIX: Get user ID with proper fallbacks and an explicit auth check.
+      const userId = req.user?.id || req.user?._id;
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          message: 'User authentication required'
+        });
+      }
+
       const { couponCode } = req.body;
 
-      const cart = await Cart.findOne({ user: req.user.id })
+      // ✅ FIX: Use the validated userId.
+      const cart = await Cart.findOne({ user: userId })
         .populate('items.product', 'price category seller');
 
       if (!cart || cart.items.length === 0) {
@@ -634,8 +707,7 @@ router.post('/coupons',
         });
       }
 
-      // Check if coupon is already applied
-      const alreadyApplied = cart.appliedCoupons?.some(coupon => 
+      const alreadyApplied = cart.appliedCoupons?.some(coupon =>
         coupon.code.toUpperCase() === couponCode.toUpperCase()
       );
 
@@ -646,11 +718,11 @@ router.post('/coupons',
         });
       }
 
-      // Validate and apply coupon
+      // ✅ FIX: Use the validated userId.
       const couponResult = await validateAndApplyCoupon(
         couponCode,
         cart.items,
-        req.user.id
+        userId
       );
 
       if (!couponResult.success) {
@@ -660,7 +732,6 @@ router.post('/coupons',
         });
       }
 
-      // Add coupon to cart
       if (!cart.appliedCoupons) {
         cart.appliedCoupons = [];
       }
@@ -713,7 +784,17 @@ router.delete('/coupons/:couponCode',
     try {
       const { couponCode } = req.params;
 
-      const cart = await Cart.findOne({ user: req.user.id });
+      // ✅ FIX: Get user ID with proper fallbacks and an explicit auth check.
+      const userId = req.user?.id || req.user?._id;
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          message: 'User authentication required'
+        });
+      }
+
+      // ✅ FIX: Use the validated userId.
+      const cart = await Cart.findOne({ user: userId });
       if (!cart) {
         return res.status(404).json({
           success: false,
@@ -728,7 +809,7 @@ router.delete('/coupons/:couponCode',
         });
       }
 
-      const couponIndex = cart.appliedCoupons.findIndex(coupon => 
+      const couponIndex = cart.appliedCoupons.findIndex(coupon =>
         coupon.code.toUpperCase() === couponCode.toUpperCase()
       );
 
@@ -770,22 +851,18 @@ router.use('/items', itemsRouter);
 // ==================== HELPER FUNCTIONS ====================
 const calculateCartPricing = async (items, coupons, deliveryPincode, userId) => {
   let subtotal = 0;
-  
-  // Calculate subtotal from available items
+
   items.forEach(item => {
     if (item.product && item.product.price) {
       subtotal += item.product.price * item.quantity;
     }
   });
 
-  // Calculate delivery fee
-  const deliveryFee = await calculateDeliveryFee(items, deliveryPincode, userId) || 
+  const deliveryFee = await calculateDeliveryFee(items, deliveryPincode, userId) ||
                      (subtotal >= 500 ? 0 : 25);
 
-  // Calculate tax
   const tax = calculateTax(subtotal, items);
 
-  // Calculate discount from coupons
   let discount = 0;
   if (coupons && coupons.length > 0) {
     coupons.forEach(coupon => {
@@ -793,7 +870,6 @@ const calculateCartPricing = async (items, coupons, deliveryPincode, userId) => 
     });
   }
 
-  // Ensure discount doesn't exceed subtotal
   discount = Math.min(discount, subtotal);
 
   const total = Math.max(0, subtotal + deliveryFee + tax - discount);
@@ -810,7 +886,7 @@ const calculateCartPricing = async (items, coupons, deliveryPincode, userId) => 
 const estimateCartDeliveryTime = async (items, deliveryPincode) => {
   try {
     if (!items || items.length === 0) return null;
-    
+
     const deliveryTimes = await Promise.all(
       items.map(async (item) => {
         if (item.product && item.product.seller) {
@@ -826,7 +902,6 @@ const estimateCartDeliveryTime = async (items, deliveryPincode) => {
     const validTimes = deliveryTimes.filter(time => time !== null);
     if (validTimes.length === 0) return null;
 
-    // Return the maximum delivery time (most conservative estimate)
     return Math.max(...validTimes);
   } catch (error) {
     logger.warn('Error estimating delivery time:', error);
@@ -836,12 +911,12 @@ const estimateCartDeliveryTime = async (items, deliveryPincode) => {
 
 const groupItemsBySeller = (items) => {
   const grouped = {};
-  
+
   items.forEach(item => {
     if (item.product && item.product.seller) {
       const sellerId = item.product.seller._id || item.product.seller;
       const sellerName = item.product.seller.name || 'Unknown Seller';
-      
+
       if (!grouped[sellerId]) {
         grouped[sellerId] = {
           seller: {
@@ -854,24 +929,22 @@ const groupItemsBySeller = (items) => {
           items: []
         };
       }
-      
+
       grouped[sellerId].items.push(item);
     }
   });
-  
+
   return Object.values(grouped);
 };
 
 const getSellerOffers = async (items) => {
   try {
-    const sellerIds = [...new Set(items.map(item => 
+    const sellerIds = [...new Set(items.map(item =>
       item.product.seller._id || item.product.seller
     ).filter(id => id))];
 
     if (sellerIds.length === 0) return [];
 
-    // In a real implementation, you would query your offers/discounts database
-    // This is a simplified version
     return sellerIds.map(sellerId => ({
       sellerId,
       offer: 'Free shipping on orders above ₹499',
@@ -888,13 +961,12 @@ const getCartRecommendations = async (items, userId) => {
   try {
     if (!items || items.length === 0) return [];
 
-    const categories = [...new Set(items.map(item => 
+    const categories = [...new Set(items.map(item =>
       item.product.category
     ).filter(cat => cat))];
 
     if (categories.length === 0) return [];
 
-    // Get recommended products based on cart categories
     const recommendations = await Product.find({
       category: { $in: categories },
       status: 'active',
@@ -929,24 +1001,21 @@ const validateAndApplyCoupon = async (couponCode, cartItems, userId) => {
       return { success: false, message: 'Invalid or expired coupon' };
     }
 
-    // Check usage limits
     if (coupon.usageLimit && coupon.usedCount >= coupon.usageLimit) {
       return { success: false, message: 'Coupon usage limit reached' };
     }
 
-    // Check if user has already used this coupon
     if (coupon.onePerUser) {
       const userUsage = await Cart.findOne({
         user: userId,
         'appliedCoupons.code': couponCode.toUpperCase()
       });
-      
+
       if (userUsage) {
         return { success: false, message: 'You have already used this coupon' };
       }
     }
 
-    // Calculate cart subtotal for minimum amount check
     const subtotal = cartItems.reduce((sum, item) => {
       if (item.product && item.product.price) {
         return sum + (item.product.price * item.quantity);
@@ -955,15 +1024,14 @@ const validateAndApplyCoupon = async (couponCode, cartItems, userId) => {
     }, 0);
 
     if (coupon.minOrderValue && subtotal < coupon.minOrderValue) {
-      return { 
-        success: false, 
-        message: `Minimum order value of ₹${coupon.minOrderValue} required` 
+      return {
+        success: false,
+        message: `Minimum order value of ₹${coupon.minOrderValue} required`
       };
     }
 
-    // Calculate discount amount
     let discountAmount = 0;
-    
+
     if (coupon.type === 'percentage') {
       discountAmount = (subtotal * coupon.value) / 100;
       if (coupon.maxDiscount) {

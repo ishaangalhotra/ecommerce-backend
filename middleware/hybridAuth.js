@@ -32,6 +32,23 @@ const extractToken = (req) => {
 };
 
 /**
+ * Normalize user object to ensure consistent ID properties
+ */
+const normalizeUser = (user, authMethod) => {
+  if (!user) return null;
+  
+  // Ensure both id and _id are present for compatibility
+  const userId = user._id || user.id;
+  
+  return {
+    ...user,
+    id: userId,
+    _id: userId,
+    authMethod
+  };
+};
+
+/**
  * Verify traditional JWT token
  */
 const verifyJWT = async (token) => {
@@ -47,15 +64,20 @@ const verifyJWT = async (token) => {
 
     // Check token version for security
     if (decoded.tokenVersion !== (user.tokenVersion || 0)) {
+      logger.warn('Token version mismatch', { 
+        userId: decoded.id, 
+        expectedVersion: user.tokenVersion || 0, 
+        actualVersion: decoded.tokenVersion 
+      });
       return null;
     }
 
-    return {
-      ...user,
-      authMethod: 'jwt'
-    };
+    return normalizeUser(user, 'jwt');
   } catch (error) {
-    logger.error('JWT verification failed', error);
+    // Only log errors that aren't expected token expirations
+    if (error.name !== 'TokenExpiredError') {
+      logger.error('JWT verification failed', { error: error.message });
+    }
     return null;
   }
 };
@@ -83,17 +105,18 @@ const verifySupabaseToken = async (token) => {
           name: supabaseUser.user_metadata?.name || supabaseUser.email.split('@')[0],
           email: supabaseUser.email,
           supabaseId: supabaseUser.id,
-          isVerified: true,
+          isVerified: supabaseUser.email_confirmed_at ? true : false,
           role: supabaseUser.user_metadata?.role || 'customer',
           authProvider: 'supabase',
           profilePicture: supabaseUser.user_metadata?.profilePicture,
-          phone: supabaseUser.user_metadata?.phone,
+          phone: supabaseUser.user_metadata?.phone || supabaseUser.phone,
           // Generate a random password for MongoDB compatibility
           password: require('crypto').randomBytes(32).toString('hex')
         });
 
         mongoUser = await newUser.save();
         mongoUser = mongoUser.toObject();
+        delete mongoUser.password; // Remove password from response
 
         logger.info('Auto-created MongoDB user from Supabase', {
           userId: mongoUser._id,
@@ -101,30 +124,71 @@ const verifySupabaseToken = async (token) => {
           email: supabaseUser.email
         });
       } catch (error) {
-        logger.error('Failed to auto-create MongoDB user', error);
+        logger.error('Failed to auto-create MongoDB user', { 
+          error: error.message,
+          supabaseId: supabaseUser.id,
+          email: supabaseUser.email 
+        });
         return null;
       }
     }
 
-    // Update supabaseId if missing
+    // Update supabaseId if missing (for existing users)
     if (mongoUser && !mongoUser.supabaseId) {
-      await User.findByIdAndUpdate(mongoUser._id, { supabaseId: supabaseUser.id });
+      await User.findByIdAndUpdate(
+        mongoUser._id, 
+        { 
+          supabaseId: supabaseUser.id,
+          lastAuthMethod: 'supabase',
+          lastAuthAt: new Date()
+        }
+      );
       mongoUser.supabaseId = supabaseUser.id;
     }
 
-    return {
+    // Merge Supabase metadata with MongoDB user data
+    const mergedUser = {
       ...mongoUser,
-      authMethod: 'supabase',
-      supabaseUser
+      supabaseUser,
+      // Prefer Supabase metadata if more recent
+      email: supabaseUser.email || mongoUser.email,
+      isVerified: supabaseUser.email_confirmed_at ? true : mongoUser.isVerified
     };
+
+    return normalizeUser(mergedUser, 'supabase');
   } catch (error) {
-    logger.error('Supabase verification failed', error);
+    logger.error('Supabase verification failed', { error: error.message });
     return null;
   }
 };
 
 /**
- * Main hybrid authentication middleware
+ * Determine token type based on characteristics
+ */
+const getTokenType = (token) => {
+  if (!token) return null;
+  
+  // Supabase tokens are typically JWT with specific structure
+  if (token.length > 100) {
+    try {
+      const parts = token.split('.');
+      if (parts.length === 3) {
+        const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
+        // Check for Supabase-specific claims
+        if (payload.sub && payload.aud && payload.role) {
+          return 'supabase';
+        }
+      }
+    } catch (e) {
+      // Not a valid JWT, fall through
+    }
+  }
+  
+  return 'jwt';
+};
+
+/**
+ * Main hybrid authentication middleware - FIXED VERSION
  */
 const hybridProtect = async (req, res, next) => {
   try {
@@ -138,39 +202,68 @@ const hybridProtect = async (req, res, next) => {
     }
 
     let user = null;
+    const tokenType = getTokenType(token);
 
-    // Try Supabase authentication first (for new users)
-    if (token.length > 100) { // Supabase tokens are typically longer
+    // Try authentication based on detected token type
+    if (tokenType === 'supabase') {
       user = await verifySupabaseToken(token);
-    }
-
-    // Fallback to JWT authentication (for existing users)
-    if (!user) {
+      // If Supabase verification fails, try JWT as fallback
+      if (!user) {
+        user = await verifyJWT(token);
+      }
+    } else {
+      // Try JWT first for shorter tokens
       user = await verifyJWT(token);
+      // If JWT fails, try Supabase as fallback
+      if (!user) {
+        user = await verifySupabaseToken(token);
+      }
     }
 
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: 'Access denied. Invalid token.'
+        message: 'Access denied. Invalid or expired token.'
       });
     }
 
-    // Add user to request object
+    // Attach normalized user to request
     req.user = user;
     req.authMethod = user.authMethod;
+    req.userId = user.id; // Convenience property
+
+    // Update last activity
+    setImmediate(async () => {
+      try {
+        await User.findByIdAndUpdate(
+          user.id,
+          { 
+            lastActiveAt: new Date(),
+            lastAuthMethod: user.authMethod 
+          },
+          { timestamps: false }
+        );
+      } catch (error) {
+        logger.error('Failed to update user activity', { userId: user.id });
+      }
+    });
 
     // Log authentication for monitoring
     logger.info('User authenticated', {
-      userId: user._id || user.id,
+      userId: user.id,
       email: user.email,
       authMethod: user.authMethod,
-      ip: req.ip
+      tokenType,
+      ip: req.ip,
+      userAgent: req.get('user-agent')
     });
 
     next();
   } catch (error) {
-    logger.error('Hybrid authentication error', error);
+    logger.error('Hybrid authentication error', { 
+      error: error.message,
+      stack: error.stack 
+    });
     return res.status(500).json({
       success: false,
       message: 'Authentication service error'
@@ -190,7 +283,17 @@ const requireRole = (...roles) => {
       });
     }
 
-    if (!roles.includes(req.user.role)) {
+    // Support both single role and array of roles
+    const userRoles = Array.isArray(req.user.role) ? req.user.role : [req.user.role];
+    const hasRequiredRole = roles.some(role => userRoles.includes(role));
+
+    if (!hasRequiredRole) {
+      logger.warn('Access denied - insufficient permissions', {
+        userId: req.user.id,
+        userRoles,
+        requiredRoles: roles
+      });
+      
       return res.status(403).json({
         success: false,
         message: 'Insufficient permissions'
@@ -210,12 +313,13 @@ const optionalAuth = async (req, res, next) => {
 
     if (token) {
       let user = null;
+      const tokenType = getTokenType(token);
 
-      // Try both authentication methods
-      if (token.length > 100) {
+      // Try authentication based on token type
+      if (tokenType === 'supabase') {
         user = await verifySupabaseToken(token);
       }
-
+      
       if (!user) {
         user = await verifyJWT(token);
       }
@@ -223,13 +327,14 @@ const optionalAuth = async (req, res, next) => {
       if (user) {
         req.user = user;
         req.authMethod = user.authMethod;
+        req.userId = user.id;
       }
     }
 
     next();
   } catch (error) {
     // Don't fail on optional auth errors
-    logger.warn('Optional auth failed', error);
+    logger.warn('Optional auth failed', { error: error.message });
     next();
   }
 };
@@ -243,20 +348,97 @@ const ensureSupabaseSync = async (req, res, next) => {
       // Background sync to Supabase for JWT users
       setImmediate(async () => {
         try {
-          const fullUser = await User.findById(req.user._id);
+          const fullUser = await User.findById(req.user.id).select('+password');
           if (fullUser && fullUser.email && !fullUser.supabaseId) {
-            await SupabaseHelpers.syncUserToSupabase(fullUser);
+            const supabaseUser = await SupabaseHelpers.syncUserToSupabase(fullUser);
+            if (supabaseUser) {
+              await User.findByIdAndUpdate(
+                fullUser._id,
+                { 
+                  supabaseId: supabaseUser.id,
+                  lastSyncedAt: new Date()
+                }
+              );
+              logger.info('User synced to Supabase', {
+                userId: fullUser._id,
+                supabaseId: supabaseUser.id
+              });
+            }
           }
         } catch (syncError) {
-          logger.error('Background Supabase sync failed', syncError);
+          logger.error('Background Supabase sync failed', { 
+            error: syncError.message,
+            userId: req.user.id 
+          });
         }
       });
     }
 
     next();
   } catch (error) {
-    logger.error('Supabase sync middleware error', error);
+    logger.error('Supabase sync middleware error', { error: error.message });
     next(); // Continue even if sync fails
+  }
+};
+
+/**
+ * Refresh token middleware for expired tokens
+ */
+const refreshTokenIfNeeded = async (req, res, next) => {
+  try {
+    const token = extractToken(req);
+    
+    if (!token) {
+      return next();
+    }
+
+    // Check if token is expired
+    try {
+      jwt.verify(token, process.env.JWT_SECRET);
+      next(); // Token is valid, continue
+    } catch (error) {
+      if (error.name === 'TokenExpiredError' && req.cookies?.refreshToken) {
+        // Attempt to refresh the token
+        try {
+          const decoded = jwt.decode(token);
+          const user = await User.findById(decoded.id).select('+refreshToken');
+          
+          if (user && user.refreshToken === req.cookies.refreshToken) {
+            // Generate new tokens
+            const newAccessToken = jwt.sign(
+              { 
+                id: user._id,
+                email: user.email,
+                role: user.role,
+                tokenVersion: user.tokenVersion || 0
+              },
+              process.env.JWT_SECRET,
+              { expiresIn: '15m' }
+            );
+            
+            // Set new token in cookie
+            res.cookie('accessToken', newAccessToken, {
+              httpOnly: true,
+              secure: process.env.NODE_ENV === 'production',
+              sameSite: 'strict',
+              maxAge: 15 * 60 * 1000 // 15 minutes
+            });
+            
+            // Update request with new token
+            req.headers.authorization = `Bearer ${newAccessToken}`;
+            
+            logger.info('Token refreshed', { userId: user._id });
+          }
+        } catch (refreshError) {
+          logger.error('Token refresh failed', { error: refreshError.message });
+        }
+      }
+      
+      next();
+    }
+  } catch (error) {
+    logger.error('Refresh token middleware error', { error: error.message });
+    next();
   }
 };
 
@@ -265,7 +447,9 @@ module.exports = {
   requireRole,
   optionalAuth,
   ensureSupabaseSync,
+  refreshTokenIfNeeded,
   extractToken,
   verifyJWT,
-  verifySupabaseToken
+  verifySupabaseToken,
+  normalizeUser
 };
