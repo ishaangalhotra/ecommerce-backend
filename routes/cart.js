@@ -382,7 +382,6 @@ itemsRouter.patch('/:productId',
         return res.status(400).json({ success: false, errors: errors.array() });
       }
 
-      // ✅ FIX: Get user ID with proper fallbacks and an explicit auth check.
       const userId = req.user?.id || req.user?._id;
       if (!userId) {
         return res.status(401).json({
@@ -394,34 +393,37 @@ itemsRouter.patch('/:productId',
       const { productId } = req.params;
       const { quantity } = req.body;
 
-      // ✅ FIX: Use the validated userId.
-      const cart = await Cart.findOne({ user: userId });
+      // ✅ FIX: Populate 'items.product' to access price for recalculation.
+      // This ensures that when calculateCartPricing is called, it has the price.
+      const cart = await Cart.findOne({ user: userId })
+        .populate('items.product', 'price stock maxQuantityPerOrder status');
+
       if (!cart) {
         return res.status(404).json({ success: false, message: 'Cart not found' });
       }
 
-      const itemIndex = cart.items.findIndex(item => item.product.toString() === productId);
+      // Note: Mongoose findIndex on a subdocument array works with the _id property.
+      const itemIndex = cart.items.findIndex(item => item.product._id.toString() === productId);
 
       if (itemIndex === -1) {
         return res.status(404).json({ success: false, message: 'Item not found in cart' });
       }
 
+      // Handle item removal if quantity is 0
       if (quantity === 0) {
         const removedItem = cart.items[itemIndex];
         cart.items.splice(itemIndex, 1);
-        // ✅ FIX: Use the validated userId.
         await trackCartEvent('item_removed', userId, productId, removedItem.quantity);
       } else {
-        const product = await Product.findById(productId).select('stock maxQuantityPerOrder status');
+        // Since we populated, we can access the product directly
+        const product = cart.items[itemIndex].product;
 
         if (!product || product.status !== 'active') {
           return res.status(400).json({ success: false, message: 'Product is no longer available' });
         }
-
         if (product.stock < quantity) {
           return res.status(400).json({ success: false, message: `Only ${product.stock} items available in stock` });
         }
-
         const maxQuantity = product.maxQuantityPerOrder || 100;
         if (quantity > maxQuantity) {
           return res.status(400).json({
@@ -434,13 +436,13 @@ itemsRouter.patch('/:productId',
         const oldQuantity = item.quantity;
         item.quantity = quantity;
         item.updatedAt = new Date();
-        // ✅ FIX: Use the validated userId.
         await trackCartEvent('item_updated', userId, productId, quantity - oldQuantity);
       }
 
       cart.updatedAt = new Date();
       await cart.save();
 
+      // Because we populated the cart items earlier, this calculation will now work correctly.
       const pricing = await calculateCartPricing(cart.items, cart.appliedCoupons || []);
 
       res.json({
@@ -449,7 +451,7 @@ itemsRouter.patch('/:productId',
         data: {
           id: cart._id,
           itemCount: cart.items.reduce((sum, item) => sum + item.quantity, 0),
-          pricing
+          pricing // Send back the newly calculated pricing.
         }
       });
 
