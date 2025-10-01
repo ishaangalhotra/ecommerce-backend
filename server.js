@@ -1534,7 +1534,7 @@ class QuickLocalServer {
     return result;
   }
 
-  setupEndpoints() {
+  async setupEndpoints() {
     console.log('🚀 Configuring API-only server (frontend is deployed separately on Vercel)');
     
     // Root endpoint - API server info
@@ -1590,6 +1590,14 @@ class QuickLocalServer {
     
     console.log('✅ API-only server configuration completed');
     console.log(`🌐 Frontend URL: ${frontendUrl}`);
+
+    // FIX: Manually register the cart routes to ensure they are available.
+    try {
+        this.app.use('/api/v1/cart', require('./routes/cart'));
+        console.log('✅ Cart API routes mounted at /api/v1/cart');
+    } catch(err) {
+        console.error('❌ Failed to mount cart API routes directly:', err);
+    }
     
     // CRITICAL: Mount main API routes
     try {
