@@ -220,7 +220,7 @@ router.use(rateLimiter);
 // Create product - using spread operator for validateProduct array
 const createProductMiddleware = [
   systemHealthCheck,
-  hybridProtect(),
+  hybridProtect, // CORRECTED
   requireRole(['seller', 'admin']),
   upload.fields([{ name: 'images', maxCount: 8 }]),
   validateFileUpload,
@@ -235,7 +235,7 @@ router.post('/products', ...createProductMiddleware);
 router.get(
   '/products',
   systemHealthCheck,
-  hybridProtect(),
+  hybridProtect, // CORRECTED
   requireRole(['seller', 'admin']),
   logRequest('Product retrieval'),
   asyncHandler(sellerCtrl.getMyProducts)
@@ -245,7 +245,7 @@ router.get(
 router.get(
   '/products/export',
   systemHealthCheck,
-  hybridProtect(),
+  hybridProtect, // CORRECTED
   requireRole(['seller', 'admin']),
   validateExportFormat,
   logRequest('Export products'),
@@ -256,7 +256,7 @@ router.get(
 router.patch(
   '/products/bulk',
   systemHealthCheck,
-  hybridProtect(),
+  hybridProtect, // CORRECTED
   requireRole(['seller', 'admin']),
   validateBulkOperation,
   logRequest('Bulk product update'),
@@ -267,7 +267,7 @@ router.patch(
 router.get(
   '/categories',
   systemHealthCheck,
-  hybridProtect(),
+  hybridProtect, // CORRECTED
   requireRole(['seller', 'admin']),
   asyncHandler(async (req, res) => {
     try {
@@ -292,7 +292,7 @@ router.get(
 // Update product middleware stack
 const updateProductMiddleware = [
   systemHealthCheck,
-  hybridProtect(),
+  hybridProtect, // CORRECTED
   requireRole(['seller', 'admin']),
   validateObjectId('productId'),
   upload.fields([{ name: 'images', maxCount: 8 }]),
@@ -309,7 +309,7 @@ router.patch('/products/:productId', ...updateProductMiddleware, asyncHandler(se
 router.delete(
   '/products/:productId',
   systemHealthCheck,
-  hybridProtect(),
+  hybridProtect, // CORRECTED
   requireRole(['seller', 'admin']),
   validateObjectId('productId'),
   logRequest('Product deletion'),
@@ -320,7 +320,7 @@ router.delete(
 router.get(
   '/dashboard',
   systemHealthCheck,
-  hybridProtect(),
+  hybridProtect, // CORRECTED
   requireRole(['seller', 'admin']),
   logRequest('Dashboard access'),
   asyncHandler(sellerCtrl.getSellerDashboard)
@@ -330,7 +330,7 @@ router.get(
 router.get(
   '/products/:productId/analytics',
   systemHealthCheck,
-  hybridProtect(),
+  hybridProtect, // CORRECTED
   requireRole(['seller', 'admin']),
   validateObjectId('productId'),
   logRequest('Product analytics'),
@@ -341,7 +341,7 @@ router.get(
 router.get(
   '/orders',
   systemHealthCheck,
-  hybridProtect(),
+  hybridProtect, // CORRECTED
   requireRole(['seller', 'admin']),
   logRequest('Seller orders'),
   asyncHandler(sellerOrders.listSellerOrders)
@@ -350,7 +350,7 @@ router.get(
 router.patch(
   '/orders/:id/status',
   systemHealthCheck,
-  hybridProtect(),
+  hybridProtect, // CORRECTED
   requireRole(['seller', 'admin']),
   validateObjectId('id'),
   logRequest('Update order status'),
@@ -360,7 +360,7 @@ router.patch(
 router.get(
   '/customers',
   systemHealthCheck,
-  hybridProtect(),
+  hybridProtect, // CORRECTED
   requireRole(['seller', 'admin']),
   logRequest('Seller customers'),
   asyncHandler(sellerOrders.listSellerCustomers)
