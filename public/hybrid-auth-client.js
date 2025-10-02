@@ -1,5 +1,5 @@
 /**
- * Hybrid Authentication Client for Frontend - SECURE PRODUCTION VERSION
+ * Hybrid Authentication Client for Frontend - SECURE PRODUCTION VERSION (FIXED)
  * Supports both Supabase Auth and legacy JWT with enhanced security
  */
 class HybridAuthClient {
@@ -73,7 +73,7 @@ class HybridAuthClient {
   }
 
   /**
-   * Validate token structure and expiry
+   * Validate token structure and expiry (FIXED: Added clock skew tolerance)
    */
   validateToken(token) {
     if (!token || token === 'undefined' || token === 'null' || token === '') {
@@ -88,9 +88,9 @@ class HybridAuthClient {
         return false;
       }
       
-      // Check if token is expired
+      // Check if token is expired (with 10-second buffer for clock skew)
       const payload = JSON.parse(atob(parts[1]));
-      if (payload.exp && payload.exp < Date.now() / 1000) {
+      if (payload.exp && payload.exp < (Date.now() / 1000 - 10)) {
         console.warn('[Auth] Token expired');
         return false;
       }
@@ -98,6 +98,28 @@ class HybridAuthClient {
       return true;
     } catch (error) {
       console.warn('[Auth] Token validation failed:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Check if token needs refresh (NEW: Proactive refresh)
+   */
+  needsRefresh() {
+    try {
+      const token = this.getSecureToken('supabase_access_token');
+      if (!token) return false;
+      
+      const parts = token.split('.');
+      if (parts.length !== 3) return false;
+      
+      const payload = JSON.parse(atob(parts[1]));
+      if (!payload.exp) return false;
+      
+      // Refresh if token expires in less than 5 minutes
+      const expiresIn = payload.exp - (Date.now() / 1000);
+      return expiresIn < 300; // 5 minutes
+    } catch {
       return false;
     }
   }
@@ -418,7 +440,7 @@ class HybridAuthClient {
       this.authMethod = null;
       this.authStateCallback?.(null);
 
-      console.log('✅ User logged out successfully');
+      console.log('User logged out successfully');
       return { success: true };
       
     } catch (error) {
@@ -450,18 +472,17 @@ class HybridAuthClient {
     }
   }
 
+  /**
+   * Get secure token (FIXED: Removed 24-hour auto-expiry)
+   */
   getSecureToken(key) {
     try {
       const encoded = localStorage.getItem(key);
       if (!encoded) return null;
       
       const decoded = JSON.parse(atob(encoded));
-      // Optional: Check token age and auto-expire (24 hours max)
-      if (Date.now() - decoded.timestamp > 24 * 60 * 60 * 1000) {
-        this.removeSecureToken(key);
-        return null;
-      }
-      
+      // REMOVED: 24-hour auto-expiry check
+      // Token expiry is now handled by validateToken() only
       return decoded.value;
     } catch {
       return localStorage.getItem(key);
@@ -508,10 +529,16 @@ class HybridAuthClient {
   }
 
   /**
-   * Make authenticated API call - IMPROVED VERSION
+   * Make authenticated API call (FIXED: Added proactive refresh)
    */
   async apiCall(endpoint, options = {}) {
     try {
+      // Proactively refresh if token is expiring soon
+      if (this.needsRefresh()) {
+        console.log('[API] Token expiring soon, refreshing proactively...');
+        await this.refreshToken();
+      }
+
       const authHeader = this.getAuthHeader();
           
       if (!authHeader) {
@@ -523,7 +550,7 @@ class HybridAuthClient {
         'Authorization': authHeader
       };
 
-      // ✅ FIXED: Simpler, more reliable endpoint normalization
+      // Simpler, more reliable endpoint normalization
       let finalEndpoint = endpoint;
           
       // Remove leading slash if present
@@ -538,8 +565,6 @@ class HybridAuthClient {
           
       // Add back the leading slash
       finalEndpoint = `/${finalEndpoint}`;
-          
-      console.log(`[API] 🔍 Normalized: ${endpoint} → ${finalEndpoint}`);
       
       let response = await fetch(`${this.backendUrl}${finalEndpoint}`, {
         ...options,
@@ -553,14 +578,14 @@ class HybridAuthClient {
         const refreshed = await this.refreshToken();
         
         if (refreshed) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-          console.log('[API] Retrying request with new token...');
-          // Retry with original endpoint (will be normalized again)
+          await new Promise(resolve => setTimeout(resolve, 200));
+          console.log('[API] Retrying request with refreshed token...');
           return this.apiCall(endpoint, { 
             ...options, 
             _retryCount: retryCount + 1 
           });
         } else {
+          console.error('[API] Token refresh failed, logging out...');
           await this.logout();
           throw new Error('Session expired. Please log in again.');
         }
@@ -575,19 +600,30 @@ class HybridAuthClient {
   }
 
   /**
-   * Session management and monitoring
+   * Session management and monitoring (FIXED: Less aggressive, with proactive refresh)
    */
   startSessionWatcher() {
-    // Check every 5 minutes for session validity
+    // Check every 10 minutes (reduced from 5)
     this.sessionInterval = setInterval(async () => {
       if (this.currentUser) {
+        // Proactive refresh before expiry
+        if (this.needsRefresh()) {
+          console.log('[Auth] Token expiring soon, refreshing proactively...');
+          await this.refreshToken();
+        }
+        
+        // Validate session
         const isValid = await this.validateCurrentSession();
         if (!isValid) {
-          console.warn('[Auth] Session invalid, logging out...');
-          await this.logout();
+          console.warn('[Auth] Session validation failed, attempting refresh...');
+          const refreshed = await this.refreshToken();
+          if (!refreshed) {
+            console.error('[Auth] Refresh failed, logging out...');
+            await this.logout();
+          }
         }
       }
-    }, 5 * 60 * 1000); // 5 minutes
+    }, 10 * 60 * 1000); // 10 minutes
   }
 
   stopSessionWatcher() {
@@ -724,7 +760,7 @@ const hybridAuthClient = new HybridAuthClient({
 window.HybridAuthClient = hybridAuthClient;
 window.HybridAuthClientClass = HybridAuthClient;
 
-console.log('✅ HybridAuthClient (SECURE PRODUCTION VERSION) loaded and available globally');
+console.log('HybridAuthClient (FIXED VERSION) loaded and available globally');
 
 // Export for module systems
 if (typeof module !== 'undefined' && module.exports) {
