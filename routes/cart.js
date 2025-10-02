@@ -258,6 +258,55 @@ router.delete('/clear', hybridProtect, cartLimiter, async (req, res) => {
   }
 });
 
+/**
+ * GET /api/v1/cart/debug - Debug cart data
+ */
+router.get('/debug', hybridProtect, async (req, res) => {
+    try {
+        const userId = req.user?.id || req.user?._id;
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'User authentication required' });
+        }
+
+        const cart = await Cart.findOne({ user: userId })
+            .populate({
+                path: 'items.product',
+                select: 'name price images stock status'
+            })
+            .lean();
+
+        if (!cart) {
+            return res.json({ success: true, data: { message: 'No cart found', items: [] } });
+        }
+
+        // Debug information
+        const debugInfo = {
+            cartId: cart._id,
+            totalItems: cart.items.length,
+            items: cart.items.map((item, index) => ({
+                index,
+                itemId: item._id,
+                quantity: item.quantity,
+                priceAtAdd: item.priceAtAdd,
+                product: item.product ? {
+                    _id: item.product._id,
+                    name: item.product.name,
+                    price: item.product.price,
+                    hasImages: !!item.product.images,
+                    imageCount: item.product.images ? item.product.images.length : 0,
+                    status: item.product.status
+                } : 'NO PRODUCT DATA'
+            })),
+            populated: cart.items.every(item => item.product && item.product.name)
+        };
+
+        res.json({ success: true, data: debugInfo });
+    } catch (error) {
+        console.error('Cart debug error:', error);
+        res.status(500).json({ success: false, message: 'Debug failed' });
+    }
+});
+
 // ==================== CART ITEMS SUB-ROUTES ====================
 
 /**
@@ -890,44 +939,54 @@ router.use('/items', itemsRouter);
 
 // ==================== HELPER FUNCTIONS ====================
 const calculateCartPricing = async (items, coupons, deliveryPincode, userId) => {
-  let subtotal = 0;
+    let subtotal = 0;
 
-  // ✅ Safe calculation with null checks
-  items.forEach(item => {
-    if (item && item.product && item.product.price) {
-      subtotal += item.product.price * (item.quantity || 1);
-    } else if (item && item.priceAtAdd) {
-      // Fallback to priceAtAdd if product is not populated
-      subtotal += item.priceAtAdd * (item.quantity || 1);
-    }
-  });
-
-  const deliveryFee = await calculateDeliveryFee(items, deliveryPincode, userId) ||
-                     (subtotal >= 500 ? 0 : 25);
-
-  const tax = calculateTax(subtotal, items);
-
-  let discount = 0;
-  if (coupons && coupons.length > 0) {
-    coupons.forEach(coupon => {
-      discount += coupon.discountAmount || 0;
+    // ✅ Safe calculation with null checks
+    items.forEach(item => {
+        if (item && item.product && item.product.price) {
+            subtotal += item.product.price * (item.quantity || 1);
+        } else if (item && item.priceAtAdd) {
+            // Fallback to priceAtAdd if product is not populated
+            subtotal += item.priceAtAdd * (item.quantity || 1);
+        }
     });
-  }
 
-  discount = Math.min(discount, subtotal);
+    const deliveryFee = await calculateDeliveryFee(items, deliveryPincode, userId) ||
+                       (subtotal >= 500 ? 0 : 25);
 
-  const total = Math.max(0, subtotal + deliveryFee + tax - discount);
+    // ✅ FIXED: Proper tax calculation with fallback
+    let tax = 0;
+    try {
+        tax = calculateTax(subtotal, items);
+        if (isNaN(tax) || !isFinite(tax)) {
+            tax = Math.round(subtotal * 0.05 * 100) / 100; // 5% fallback tax
+        }
+    } catch (error) {
+        console.warn('Tax calculation failed, using fallback:', error);
+        tax = Math.round(subtotal * 0.05 * 100) / 100; // 5% fallback tax
+    }
 
-  const pricing = {
-    subtotal: Math.round(subtotal * 100) / 100,
-    tax: Math.round(tax * 100) / 100,
-    deliveryFee: Math.round(deliveryFee * 100) / 100,
-    discount: Math.round(discount * 100) / 100,
-    total: Math.round(total * 100) / 100
-  };
+    let discount = 0;
+    if (coupons && coupons.length > 0) {
+        coupons.forEach(coupon => {
+            discount += coupon.discountAmount || 0;
+        });
+    }
 
-  console.log('💰 Pricing calculated:', pricing);
-  return pricing;
+    discount = Math.min(discount, subtotal);
+
+    const total = Math.max(0, subtotal + deliveryFee + tax - discount);
+
+    const pricing = {
+        subtotal: Math.round(subtotal * 100) / 100,
+        tax: Math.round(tax * 100) / 100,
+        deliveryFee: Math.round(deliveryFee * 100) / 100,
+        discount: Math.round(discount * 100) / 100,
+        total: Math.round(total * 100) / 100
+    };
+
+    console.log('💰 Pricing calculated:', pricing);
+    return pricing;
 };
 
 const estimateCartDeliveryTime = async (items, deliveryPincode) => {
