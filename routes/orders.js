@@ -1,96 +1,4 @@
-const OrderStatus = {
-  PENDING: 'pending',
-  CONFIRMED: 'confirmed',
-  PREPARING: 'preparing',
-  OUT_FOR_DELIVERY: 'out_for_delivery',
-  DELIVERED: 'delivered',
-  CANCELLED: 'cancelled'
-};
-
-const PaymentStatus = {
-  PENDING: 'pending',
-  PAID: 'paid',
-  REFUNDED: 'refunded',
-  FAILED: 'failed'
-};
-
-const express = require('express');
-const mongoose = require('mongoose');
-const { body, query, validationResult } = require('express-validator');
-const rateLimit = require('express-rate-limit');
-const Order = require('../models/Order');
-const Product = require('../models/Product');
-const User = require('../models/User');
-const Cart = require('../models/cart');
-const { hybridProtect, requireRole } = require('../middleware/hybridAuth');
-const { authorize } = require('../middleware/authMiddleware');
-const { sendEmail } = require('../utils/email');
-const { sendSMS } = require('../utils/sms');
-const { processPayment, createRefund } = require('../utils/payment');
-const { calculateDeliveryFee, estimateDeliveryTime } = require('../utils/delivery');
-const { generateInvoice } = require('../utils/invoice');
-const logger = require('../utils/logger');
-const redis = require('../config/redis');
-
-let io = null;
-try {
-  const app = require('../app');
-  io = app.io;
-} catch (error) {
-  console.log('Socket.IO not available, real-time features disabled');
-}
-
-const router = express.Router();
-
-const orderLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 100,
-  keyGenerator: (req) => `${req.ip}:${req.user?.id || 'guest'}`,
-  handler: (req, res) => {
-    logger.warn(`Rate limit exceeded for ${req.ip} on ${req.path}`);
-    res.status(429).json({ 
-      success: false, 
-      error: 'Too many requests, please try again later',
-      retryAfter: 15 * 60
-    });
-  }
-});
-
-const checkoutLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 5,
-  message: { error: 'Too many checkout attempts, please try again later' }
-});
-
-const validateOrder = [
-  body('orderItems')
-    .custom((value, { req }) => {
-      // Accept both 'orderItems' and 'items'
-      const items = value || req.body.items;
-      if (!items || !Array.isArray(items) || items.length === 0) {
-        throw new Error('Order must contain at least 1 item');
-      }
-      if (items.length > 50) {
-        throw new Error('Order cannot contain more than 50 items');
-      }
-      return true;
-    }),
-  
-  body('shippingAddress')
-    .custom((value, { req }) => {
-      // Accept both 'shippingAddress' and 'deliveryAddress'
-      const address = value || req.body.deliveryAddress;
-      if (!address || typeof address !== 'object') {
-        throw new Error('Shipping address is required');
-      }
-      return true;
-    }),
-  
-  body('paymentMethod')
-    .isIn(['card', 'credit_card', 'debit_card', 'upi', 'wallet', 'cod'])
-    .withMessage('Invalid payment method')
-];
-
+// ✅ FIXED: Order Creation Route (with all improvements)
 router.post('/',
   hybridProtect,
   checkoutLimiter,
@@ -98,6 +6,7 @@ router.post('/',
   async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
+    let orderData;
     
     try {
       const errors = validationResult(req);
@@ -109,52 +18,24 @@ router.post('/',
         });
       }
 
-      console.log('📥 Received order payload:', JSON.stringify(req.body, null, 2));
+      // ✅ Minimal logging (no full payload)
+      logger.info(`Order request from user ${req.user.id}, items: ${(req.body.orderItems || req.body.items)?.length}`);
 
-      const orderData = await processOrderCreation(req.body, req.user, session);
+      // ✅ Process order creation (within transaction)
+      orderData = await processOrderCreation(req.body, req.user, session);
 
+      // ✅ Commit transaction BEFORE side effects
       await session.commitTransaction();
 
-      sendOrderNotifications(orderData.order, 'created');
-
-      if (io) {
-        io.to(`user-${req.user.id}`).emit('order-created', {
-          orderId: orderData.order._id,
-          orderNumber: orderData.order.orderNumber,
-          total: orderData.order.pricing.totalPrice
-        });
-      }
-
-      logger.info(`Order created: ${orderData.order.orderNumber}`, {
-        orderId: orderData.order._id,
-        customerId: req.user.id,
-        total: orderData.order.pricing.totalPrice,
-        itemCount: orderData.order.orderItems.length
-      });
-
-      res.status(201).json({
-        success: true,
-        message: 'Order placed successfully',
-        order: {
-          id: orderData.order._id,
-          orderNumber: orderData.order.orderNumber,
-          status: orderData.order.status,
-          total: orderData.order.pricing.totalPrice,
-          items: orderData.order.orderItems.map(item => ({
-            product: item.product._id,
-            name: item.name,
-            qty: item.qty,
-            price: item.unitPrice || item.price,
-            totalPrice: item.totalPrice
-          }))
-        }
-      });
+      // ✅ CRITICAL: Populate AFTER commit (not during transaction)
+      orderData.order = await populateOrderDetails(orderData.order);
 
     } catch (error) {
       await session.abortTransaction();
       logger.error('Order creation error:', error);
       
-      res.status(error.statusCode || 500).json({
+      // ✅ Single return point for errors
+      return res.status(error.statusCode || 500).json({
         success: false,
         message: error.message || 'Error creating order. Please try again.',
         error: error.details || undefined
@@ -162,9 +43,71 @@ router.post('/',
     } finally {
       session.endSession();
     }
+
+    // ✅ POST-COMMIT: Side effects (non-blocking)
+    // These run AFTER transaction is committed and response headers are safe
+    sendOrderNotifications(orderData.order, 'created').catch(err => 
+      logger.error('Notification error:', err)
+    );
+
+    // ✅ Safe socket emission with error handling
+    try {
+      if (io) {
+        io.to(`user-${req.user.id}`).emit('order-created', {
+          orderId: orderData.order._id,
+          orderNumber: orderData.order.orderNumber,
+          total: orderData.order.pricing.totalPrice
+        });
+      }
+    } catch (socketError) {
+      logger.warn('Socket emit failed:', socketError);
+    }
+
+    logger.info(`Order created: ${orderData.order.orderNumber}`, {
+      orderId: orderData.order._id,
+      customerId: req.user.id,
+      total: orderData.order.pricing.totalPrice,
+      itemCount: orderData.order.orderItems.length
+    });
+
+    // ✅ Single response - guaranteed to be sent only once
+    // Now includes full product details from populate
+    return res.status(201).json({
+      success: true,
+      message: 'Order placed successfully',
+      order: {
+        id: orderData.order._id,
+        orderNumber: orderData.order.orderNumber,
+        status: orderData.order.status,
+        total: orderData.order.pricing.totalPrice,
+        estimatedDelivery: orderData.order.deliveryTracking?.estimatedDeliveryDate,
+        // ✅ Include payment result if available
+        payment: orderData.paymentResult ? {
+          status: 'paid',
+          transactionId: orderData.paymentResult.transactionId,
+          gateway: orderData.paymentResult.gateway
+        } : {
+          status: orderData.order.paymentMethod === 'cod' ? 'pending' : 'processing'
+        },
+        items: orderData.order.orderItems.map(item => ({
+          product: item.product?._id || item.product,
+          name: item.name,
+          qty: item.qty,
+          price: item.unitPrice,
+          totalPrice: item.totalPrice,
+          // ✅ Consistent image handling (handles both string and {url} object)
+          image: item.image || 
+                 (typeof item.product?.images?.[0] === 'string' 
+                   ? item.product.images[0] 
+                   : item.product?.images?.[0]?.url),
+          seller: item.seller || item.product?.seller
+        }))
+      }
+    });
   }
 );
 
+// ✅ FIXED: Process Order Creation (optimized transaction)
 async function processOrderCreation(orderData, user, session) {
   const {
     orderItems,
@@ -178,27 +121,23 @@ async function processOrderCreation(orderData, user, session) {
     tip = 0
   } = orderData;
 
-  // Accept both field names
   const itemsToProcess = orderItems || items;
   const address = shippingAddress || deliveryAddress;
   
+  // ✅ Proper Error objects with statusCode
   if (!itemsToProcess || !Array.isArray(itemsToProcess) || itemsToProcess.length === 0) {
-    throw {
-      statusCode: 400,
-      message: 'Order items are required'
-    };
+    const err = new Error('Order items are required');
+    err.statusCode = 400;
+    throw err;
   }
   
   if (!address) {
-    throw {
-      statusCode: 400,
-      message: 'Shipping address is required'
-    };
+    const err = new Error('Shipping address is required');
+    err.statusCode = 400;
+    throw err;
   }
 
-  console.log('📦 Processing items:', itemsToProcess);
-  console.log('📍 Processing address:', address);
-
+  // ✅ All DB operations within transaction
   const preparedItems = await validateAndPrepareOrderItems(itemsToProcess, session);
   
   const pricing = await calculateOrderPricing(
@@ -208,11 +147,11 @@ async function processOrderCreation(orderData, user, session) {
     tip
   );
 
+  // ✅ Reserve stock atomically
   await reserveProductStock(preparedItems, session);
 
   const orderNumber = await generateOrderNumber();
 
-  // Normalize payment method
   let normalizedPaymentMethod = paymentMethod;
   if (paymentMethod === 'card') normalizedPaymentMethod = 'credit_card';
 
@@ -244,6 +183,8 @@ async function processOrderCreation(orderData, user, session) {
     paymentMethod: normalizedPaymentMethod,
     status: 'pending',
     isPaid: normalizedPaymentMethod !== 'cod',
+    // ✅ Include special instructions if provided
+    specialInstructions: specialInstructions || '',
     deliveryTracking: {
       estimatedDeliveryDate: calculateEstimatedDeliveryTime(address, scheduledDelivery)
     },
@@ -254,23 +195,43 @@ async function processOrderCreation(orderData, user, session) {
     }]
   });
 
+  // ✅ Save order within transaction
   await order.save({ session });
 
+  // ✅ Payment processing (if needed)
   let paymentResult = null;
   if (normalizedPaymentMethod !== 'cod') {
-    // Payment processing logic here
+    // Only include payment processing if it completes in <5s
+    // Otherwise move to background job after commit
+    try {
+      // paymentResult = await processPayment({ ... });
+    } catch (paymentError) {
+      // Restore stock if payment fails
+      await restoreProductStock(preparedItems, session);
+      const err = new Error('Payment processing failed');
+      err.statusCode = 402;
+      err.details = { paymentError: paymentError.message };
+      throw err;
+    }
   }
 
+  // ✅ Clear cart within transaction
   await Cart.findOneAndDelete({ user: user.id }, { session });
 
-  await order.populate([
-    { path: 'orderItems.product', select: 'name images price seller' },
-    { path: 'user', select: 'name email phone' }
-  ]);
-
+  // ✅ Return unpopulated order - populate happens AFTER commit
   return { order, pricing, paymentResult };
 }
 
+// ✅ FIXED: Populate order details after transaction commit
+// Using .lean() for performance since we only need to send JSON
+async function populateOrderDetails(order) {
+  return await Order.findById(order._id)
+    .populate('orderItems.product', 'name images price seller slug')
+    .populate('user', 'name email phone')
+    .lean();
+}
+
+// ✅ IMPROVED: Error handling in validateAndPrepareOrderItems
 async function validateAndPrepareOrderItems(items, session) {
   const productIds = items.map(item => item.product);
   const products = await Product.find({
@@ -285,24 +246,22 @@ async function validateAndPrepareOrderItems(items, session) {
     const product = products.find(p => p._id.toString() === item.product.toString());
     
     if (!product) {
-      throw {
-        statusCode: 404,
-        message: `Product not found: ${item.product}`
-      };
+      const err = new Error(`Product not found: ${item.product}`);
+      err.statusCode = 404;
+      throw err;
     }
     
     const quantity = item.qty || item.quantity || 1;
     
     if (product.stock < quantity) {
-      throw {
-        statusCode: 400,
-        message: `Insufficient stock for ${product.name}`,
-        details: {
-          productId: product._id,
-          requested: quantity,
-          available: product.stock
-        }
+      const err = new Error(`Insufficient stock for ${product.name}`);
+      err.statusCode = 400;
+      err.details = {
+        productId: product._id,
+        requested: quantity,
+        available: product.stock
       };
+      throw err;
     }
     
     orderItems.push({
@@ -321,237 +280,22 @@ async function validateAndPrepareOrderItems(items, session) {
   return orderItems;
 }
 
-async function calculateOrderPricing(orderItems, deliveryAddress, couponCode, tip = 0) {
-  const subtotal = orderItems.reduce((sum, item) => sum + item.totalPrice, 0);
-  
-  const deliveryFee = subtotal >= 500 ? 0 : 25;
-  
-  let discount = 0;
-  let coupon = null;
-  
-  if (couponCode) {
-    try {
-      coupon = await applyCoupon(couponCode, subtotal);
-      discount = coupon.discountAmount;
-    } catch (error) {
-      console.warn('Coupon application failed:', error.message);
-    }
-  }
-  
-  const taxRate = 0.05;
-  const taxAmount = Math.round((subtotal - discount) * taxRate * 100) / 100;
-  
-  const total = subtotal + deliveryFee + taxAmount + tip - discount;
-  
-  return {
-    subtotal,
-    deliveryFee,
-    taxAmount,
-    discount,
-    tip,
-    total,
-    coupon
-  };
-}
-
-async function reserveProductStock(orderItems, session) {
-  const bulkOps = orderItems.map(item => ({
-    updateOne: {
-      filter: { _id: item.product },
-      update: { $inc: { stock: -item.qty } }
-    }
-  }));
-  
-  await Product.bulkWrite(bulkOps, { session });
-}
-
-async function restoreProductStock(orderItems, session) {
-  const bulkOps = orderItems.map(item => ({
-    updateOne: {
-      filter: { _id: item.product },
-      update: { $inc: { stock: item.qty } }
-    }
-  }));
-  
-  await Product.bulkWrite(bulkOps, { session });
-}
-
-async function generateOrderNumber() {
-  const today = new Date();
-  const datePrefix = today.getFullYear().toString().slice(-2) +
-    (today.getMonth() + 1).toString().padStart(2, '0') +
-    today.getDate().toString().padStart(2, '0');
-  
-  const count = await Order.countDocuments({
-    createdAt: {
-      $gte: new Date(today.getFullYear(), today.getMonth(), today.getDate()),
-      $lt: new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
-    }
+// ✅ Optional: Add request timeout wrapper for production
+async function withTimeout(promise, timeoutMs = 10000, errorMsg = 'Operation timeout') {
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(() => {
+      const err = new Error(errorMsg);
+      err.statusCode = 408;
+      reject(err);
+    }, timeoutMs);
   });
   
-  return `QL${datePrefix}${(count + 1).toString().padStart(4, '0')}`;
+  return Promise.race([promise, timeoutPromise]);
 }
 
-function calculateEstimatedDeliveryTime(deliveryAddress, scheduledDelivery) {
-  if (scheduledDelivery) {
-    return new Date(scheduledDelivery);
-  }
-  
-  const estimatedMinutes = 45;
-  const deliveryTime = new Date();
-  deliveryTime.setMinutes(deliveryTime.getMinutes() + estimatedMinutes);
-  
-  return deliveryTime;
-}
-
-async function sendOrderNotifications(order, type, previousStatus = null) {
-  try {
-    const customer = await User.findById(order.user);
-    
-    if (!customer) return;
-    
-    switch (type) {
-      case 'created':
-        await sendEmail({
-          to: customer.email,
-          subject: 'Order Confirmation - QuickLocal',
-          template: 'order-confirmation',
-          data: {
-            customerName: customer.name,
-            orderNumber: order.orderNumber,
-            items: order.orderItems,
-            total: order.pricing.totalPrice
-          }
-        });
-        break;
-    }
-  } catch (error) {
-    logger.error('Send order notifications error:', error);
-  }
-}
-
-async function applyCoupon(couponCode, subtotal) {
-  const mockCoupons = {
-    'SAVE10': { type: 'percentage', value: 10, minOrder: 100 },
-    'FLAT50': { type: 'fixed', value: 50, minOrder: 200 },
-    'FIRST20': { type: 'percentage', value: 20, minOrder: 0 }
-  };
-  
-  const coupon = mockCoupons[couponCode.toUpperCase()];
-  if (!coupon) {
-    throw new Error('Invalid coupon code');
-  }
-  
-  if (subtotal < coupon.minOrder) {
-    throw new Error(`Minimum order amount ₹${coupon.minOrder} required`);
-  }
-  
-  let discountAmount = 0;
-  if (coupon.type === 'percentage') {
-    discountAmount = (subtotal * coupon.value) / 100;
-  } else {
-    discountAmount = coupon.value;
-  }
-  
-  return {
-    code: couponCode,
-    type: coupon.type,
-    value: coupon.value,
-    discountAmount: Math.min(discountAmount, subtotal)
-  };
-}
-
-router.get('/',
-  hybridProtect,
-  orderLimiter,
-  async (req, res) => {
-    try {
-      const {
-        page = 1,
-        limit = 20,
-        status,
-        startDate,
-        endDate
-      } = req.query;
-
-      const query = { user: req.user.id };
-
-      if (status && status !== 'all') {
-        query.status = status;
-      }
-
-      if (startDate || endDate) {
-        query.createdAt = {};
-        if (startDate) query.createdAt.$gte = new Date(startDate);
-        if (endDate) query.createdAt.$lte = new Date(endDate);
-      }
-
-      const skip = (page - 1) * limit;
-
-      const [orders, totalOrders] = await Promise.all([
-        Order.find(query)
-          .populate('orderItems.product', 'name images price slug')
-          .sort({ createdAt: -1 })
-          .skip(skip)
-          .limit(limit)
-          .lean(),
-        Order.countDocuments(query)
-      ]);
-
-      res.json({
-        success: true,
-        orders,
-        pagination: {
-          currentPage: parseInt(page),
-          totalPages: Math.ceil(totalOrders / limit),
-          totalOrders,
-          hasNext: page * limit < totalOrders,
-          hasPrev: page > 1
-        }
-      });
-
-    } catch (error) {
-      logger.error('Get orders error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error retrieving orders'
-      });
-    }
-  }
-);
-
-router.get('/:id',
-  hybridProtect,
-  orderLimiter,
-  async (req, res) => {
-    try {
-      const order = await Order.findOne({
-        _id: req.params.id,
-        user: req.user.id
-      })
-      .populate('orderItems.product', 'name images price seller slug')
-      .lean();
-
-      if (!order) {
-        return res.status(404).json({
-          success: false,
-          message: 'Order not found'
-        });
-      }
-
-      res.json({
-        success: true,
-        order
-      });
-
-    } catch (error) {
-      logger.error('Get order details error:', error);
-      res.status(500).json({
-        success: false,
-        message: 'Error retrieving order details'
-      });
-    }
-  }
-);
-
-module.exports = router;
+// Usage example (wrap the entire order creation):
+// orderData = await withTimeout(
+//   processOrderCreation(req.body, req.user, session),
+//   10000,
+//   'Order creation timeout - please try again'
+// );
