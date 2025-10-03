@@ -1,5 +1,5 @@
 const express = require('express');
-const { body, validationResult } = require('express-validator');
+const { body, check, validationResult } = require('express-validator');
 const { rateLimit } = require('express-rate-limit');
 const crypto = require('crypto');
 const validator = require('validator');
@@ -77,7 +77,6 @@ router.post(
           name,
           role
         },
-        // THIS IS THE CHANGE
         email_confirm: true // Auto-confirm all new users
       });
 
@@ -345,6 +344,87 @@ router.get('/me', hybridProtect, async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to get profile' });
   }
 });
+
+/**
+ * UPDATE USER PROFILE (ADDRESS) - PUT/PATCH /api/v1/auth/profile
+ * Handles address updates for authenticated users
+ */
+const profileValidators = [
+  check('address')
+    .exists()
+    .withMessage('address is required')
+    .custom(val => val && typeof val === 'object')
+    .withMessage('address must be an object')
+];
+
+async function handleProfileUpdate(req, res) {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ 
+        success: false, 
+        message: errors.array()[0].msg, 
+        errors: errors.array() 
+      });
+    }
+
+    const userId = req.user && (req.user._id || req.user.id);
+    if (!userId) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Unauthorized' 
+      });
+    }
+
+    const address = req.body.address;
+    if (!address || typeof address !== 'object') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Address object is required' 
+      });
+    }
+
+    // Normalize address fields (trim strings)
+    const normalizedAddress = {};
+    for (const k of Object.keys(address)) {
+      const val = address[k];
+      normalizedAddress[k] = typeof val === 'string' ? val.trim() : val;
+    }
+
+    // Update user with normalized address
+    const updated = await User.findByIdAndUpdate(
+      userId,
+      { $set: { address: normalizedAddress } },
+      { new: true, runValidators: true, context: 'query' }
+    ).select('-password -refreshToken').lean();
+
+    if (!updated) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'User not found' 
+      });
+    }
+
+    logger.info('Profile updated', { userId });
+
+    return res.json({ 
+      success: true, 
+      message: 'Profile updated successfully', 
+      user: updated 
+    });
+
+  } catch (err) {
+    logger.error('Profile update error', err);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Failed to update profile' 
+    });
+  }
+}
+
+// Register both PUT and PATCH routes for profile updates
+router.put('/profile', hybridProtect, profileValidators, handleProfileUpdate);
+router.patch('/profile', hybridProtect, profileValidators, handleProfileUpdate);
 
 /**
  * REFRESH TOKEN - Supabase handles this automatically
