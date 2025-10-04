@@ -1599,6 +1599,15 @@ class QuickLocalServer {
         console.error('❌ Failed to mount cart API routes directly:', err);
     }
     
+    // FIX: Manually register the order routes to ensure they are available.
+    try {
+        const orderRoutes = require('./routes/orders');
+        this.app.use('/api/v1/orders', orderRoutes);
+        console.log('✅ Order API routes mounted at /api/v1/orders');
+    } catch(err) {
+        console.error('❌ Failed to mount order API routes directly:', err);
+    }
+
     // CRITICAL: Mount main API routes
     try {
       const mainRoutes = require('./routes');

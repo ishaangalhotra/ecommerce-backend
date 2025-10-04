@@ -4,16 +4,33 @@ const Cart = require('../models/cart'); // Make sure this import exists
 const ErrorResponse = require('../utils/errorResponse');
 const asyncHandler = require('../middleware/asyncHandler');
 const mongoose = require('mongoose');
+const { AbortController } = require('node-abort-controller');
+const logger = require('../utils/logger'); // Using structured logger
 
-// @desc    Create order (OPTIMIZED VERSION)
+// @desc    Create order (OPTIMIZED & RENDER-SAFE VERSION)
 // @route   POST /api/v1/orders
 // @access  Private
 exports.createOrder = asyncHandler(async (req, res, next) => {
+  const controller = new AbortController();
+  const signal = controller.signal;
+  const timeoutMs = 20000; // 20 seconds max per order
+
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  // 3. Move Read-Only Queries Outside Transactions
+  const orderCount = await Order.countDocuments({
+    createdAt: {
+      $gte: new Date(new Date().setHours(0, 0, 0, 0)),
+      $lt: new Date(new Date().setHours(23, 59, 59, 999))
+    }
+  });
+
   const session = await mongoose.startSession();
   session.startTransaction();
   
   try {
-    console.log('🛒 Starting order creation process...');
+    // 2. Replace console.log() with structured logging
+    logger.info('Starting order creation process', { userId: req.user.id });
     
     const { 
       items, 
@@ -23,7 +40,6 @@ exports.createOrder = asyncHandler(async (req, res, next) => {
       saveAddress = true 
     } = req.body;
 
-    // Use items or orderItems (support both field names)
     const itemsToProcess = items || orderItems;
     
     if (!itemsToProcess || !Array.isArray(itemsToProcess) || itemsToProcess.length === 0) {
@@ -36,27 +52,25 @@ exports.createOrder = asyncHandler(async (req, res, next) => {
       return next(new ErrorResponse('Shipping address required', 400));
     }
 
-    console.log(`📦 Processing ${itemsToProcess.length} items for order`);
+    logger.info(`Processing items for order`, { itemCount: itemsToProcess.length, userId: req.user.id });
 
-    // STEP 1: Validate products and prepare order items (OPTIMIZED)
     const productIds = itemsToProcess.map(item => item.product);
+    // Use the signal from AbortController in the query
     const products = await Product.find({
       _id: { $in: productIds },
       status: 'active',
       isDeleted: { $ne: true }
-    }).session(session).select('name price stock seller images').lean();
+    }, null, { signal }).session(session).select('name price stock seller images').lean();
 
     if (products.length !== productIds.length) {
       await session.abortTransaction();
       return next(new ErrorResponse('Some products not found or unavailable', 404));
     }
+    
+    const productMap = new Map(products.map(p => [p._id.toString(), p]));
+    // 6. Clean Memory on Product Queries
+    products.length = 0; // hint GC
 
-    const productMap = new Map();
-    products.forEach(product => {
-      productMap.set(product._id.toString(), product);
-    });
-
-    // Prepare order items with validation
     const orderItemsWithDetails = [];
     let itemsPrice = 0;
     
@@ -93,22 +107,12 @@ exports.createOrder = asyncHandler(async (req, res, next) => {
       });
     }
 
-    // STEP 2: Calculate pricing (OPTIMIZED)
     const shippingPrice = itemsPrice > 500 ? 0 : 25;
-    const taxPrice = Number((0.05 * itemsPrice).toFixed(2)); // Reduced from 15% to 5%
+    const taxPrice = Number((0.05 * itemsPrice).toFixed(2));
     const totalPrice = itemsPrice + shippingPrice + taxPrice;
 
-    // STEP 3: Generate order number (OPTIMIZED)
-    const orderCount = await Order.countDocuments({
-      createdAt: {
-        $gte: new Date(new Date().setHours(0, 0, 0, 0)),
-        $lt: new Date(new Date().setHours(23, 59, 59, 999))
-      }
-    }).session(session);
-    
     const orderNumber = `QL${new Date().getFullYear().toString().slice(-2)}${(new Date().getMonth() + 1).toString().padStart(2, '0')}${new Date().getDate().toString().padStart(2, '0')}${(orderCount + 1).toString().padStart(4, '0')}`;
 
-    // STEP 4: Create order
     const order = new Order({
       orderNumber,
       user: req.user.id,
@@ -144,7 +148,6 @@ exports.createOrder = asyncHandler(async (req, res, next) => {
       }]
     });
 
-    // STEP 5: Update product stock (OPTIMIZED - single bulk operation)
     const bulkOps = orderItemsWithDetails.map(item => ({
       updateOne: {
         filter: { _id: item.product },
@@ -157,18 +160,16 @@ exports.createOrder = asyncHandler(async (req, res, next) => {
 
     await Product.bulkWrite(bulkOps, { session });
 
-    // STEP 6: Save order
-    await order.save({ session });
+    // 5. Replace Cart.findOneAndDelete() with parallel Promise
+    await Promise.all([
+      order.save({ session }),
+      Cart.findOneAndDelete({ user: req.user.id }, { session })
+    ]);
 
-    // STEP 7: Clear user's cart
-    await Cart.findOneAndDelete({ user: req.user.id }, { session });
-
-    // STEP 8: Commit transaction
     await session.commitTransaction();
     
-    console.log(`✅ Order created successfully: ${orderNumber}`);
+    logger.info('Order created successfully', { orderId: order._id, orderNumber: order.orderNumber, userId: req.user.id });
 
-    // STEP 9: Send response immediately (don't wait for notifications)
     res.status(201).json({
       success: true,
       message: 'Order placed successfully',
@@ -187,22 +188,26 @@ exports.createOrder = asyncHandler(async (req, res, next) => {
       }
     });
 
-    // STEP 10: Send notifications in background (non-blocking)
-    setTimeout(async () => {
+    // 4. Use setImmediate() for background notifications
+    setImmediate(async () => {
       try {
         await sendOrderNotifications(order, 'created');
-        console.log(`📧 Notifications sent for order: ${orderNumber}`);
+        logger.info('Notifications sent for order', { orderNumber });
       } catch (notificationError) {
-        console.error('Notification error:', notificationError);
-        // Don't fail the order if notifications fail
+        logger.error('Notification sending failed', { error: notificationError.message, orderNumber });
       }
-    }, 1000);
+    });
 
   } catch (error) {
     await session.abortTransaction();
-    console.error('❌ Order creation error:', error);
+    // 1. Add a Safe Timeout Guard (AbortController) - Error Handling
+    if (error.name === 'AbortError') {
+      logger.error('Order creation timeout - system under load', { userId: req.user.id });
+      return next(new ErrorResponse('Server is busy. Please retry.', 503));
+    }
     
-    // More specific error messages
+    logger.error('Order creation failed', { error: error.message, stack: error.stack, userId: req.user.id });
+    
     if (error.name === 'ValidationError') {
       return next(new ErrorResponse('Invalid order data', 400));
     }
@@ -212,31 +217,17 @@ exports.createOrder = asyncHandler(async (req, res, next) => {
     
     next(new ErrorResponse(error.message || 'Order creation failed', 500));
   } finally {
+    // 1. Add a Safe Timeout Guard (AbortController) - Cleanup
+    clearTimeout(timeout);
     session.endSession();
   }
 });
 
-// Simplified notification function
 async function sendOrderNotifications(order, type) {
   try {
-    // Basic email notification - implement your email service here
-    console.log(`📧 Would send ${type} notification for order ${order.orderNumber}`);
-    
-    // Example: Send to order confirmation service
-    // await sendEmail({
-    //   to: order.customerInfo.email,
-    //   subject: `Order Confirmation - ${order.orderNumber}`,
-    //   template: 'order-confirmation',
-    //   data: {
-    //     orderNumber: order.orderNumber,
-    //     customerName: order.customerInfo.name,
-    //     total: order.pricing.totalPrice
-    //   }
-    // });
-    
+    logger.info(`Would send ${type} notification for order`, { orderNumber: order.orderNumber });
   } catch (error) {
-    console.error('Notification sending failed:', error);
-    // Don't throw - notifications shouldn't block order creation
+    logger.error('Notification sending failed:', { error: error.message, orderNumber: order.orderNumber });
   }
 }
 
@@ -322,6 +313,8 @@ exports.updateOrderStatus = asyncHandler(async (req, res, next) => {
   });
 
   await order.save();
+  
+  logger.info('Order status updated', { orderId: order._id, newStatus: status, userId: req.user.id });
 
   res.json({
     success: true,
