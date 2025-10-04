@@ -112,14 +112,17 @@ couponSchema.methods.canUserUse = async function(userId) {
   
   // Check user restrictions
   if (this.userRestrictions.type === 'specific') {
-    return this.userRestrictions.specificUsers.includes(userId);
+    // Normalize types to avoid ObjectId vs string mismatches
+    return this.userRestrictions.specificUsers
+      .map(id => id.toString())
+      .includes(userId.toString());
   }
   
   // Check user usage limit
   const Order = mongoose.model('Order');
   const userUsageCount = await Order.countDocuments({
     user: userId,
-    'coupon.code': this.code,
+    'appliedCoupons.code': this.code, // ✅ FIXED: correct field
     status: { $nin: ['cancelled', 'failed'] }
   });
   
