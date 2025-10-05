@@ -8,19 +8,19 @@ const {
   updateOrderStatus
 } = require('../controllers/ordercontroller');
 
-// 🔐 Auth middleware
-const { protect } = require('../middlewares/authMiddleware');
+// 🔐 Auth middleware - CHANGED to use the modern hybridAuth file
+const { hybridProtect } = require('../middleware/hybridAuth');
 
-// 🧾 Create a new order
-router.post('/', protect, createOrder);
+// 🧾 Create a new order - CHANGED to use hybridProtect
+router.post('/', hybridProtect, createOrder);
 
-// 📋 Get all orders of logged-in user (with pagination)
-router.get('/', protect, getUserOrders);
+// 📋 Get all orders of logged-in user (with pagination) - CHANGED
+router.get('/', hybridProtect, getUserOrders);
 
-// 🔍 Get a specific order by ID
-router.get('/:id', protect, getOrder);
+// 🔍 Get a specific order by ID - CHANGED
+router.get('/:id', hybridProtect, getOrder);
 
-// ⚙️ Update order status (for sellers/admins)
-router.put('/:id/status', protect, updateOrderStatus);
+// ⚙️ Update order status (for sellers/admins) - CHANGED
+router.put('/:id/status', hybridProtect, updateOrderStatus);
 
 module.exports = router;

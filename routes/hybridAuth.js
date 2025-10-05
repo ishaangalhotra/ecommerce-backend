@@ -182,7 +182,7 @@ router.post(
         isActive: true 
       }).lean(); // Use .lean() for faster, plain object read
 
-      if (!user || !user.supabaseId) {
+      if (!user) {
         return res.status(401).json({
           success: false,
           message: 'Invalid credentials or account not found.'
@@ -193,7 +193,6 @@ router.post(
 
       // If user has Supabase ID, authenticate via Supabase
       if (user.supabaseId) {
-        // Supabase only supports email login, so use user's email
         const { data, error } = await supabase.auth.signInWithPassword({
           email: user.email.toLowerCase(),
           password
@@ -247,13 +246,21 @@ router.post(
       }
 
       // For Supabase users, return the session token
-      await SupabaseHelpers.logAnalyticsEvent('user_login', {
-        identifier,
-        email: user.email,
-        method: 'supabase_hybrid',
-        loginType: isEmail ? 'email' : 'phone',
-        ip: req.ip
-      }, user.supabaseId);
+      try {
+          await SupabaseHelpers.logAnalyticsEvent('user_login', {
+            identifier,
+            email: user.email,
+            method: 'supabase_hybrid',
+            loginType: isEmail ? 'email' : 'phone',
+            ip: req.ip
+          }, user.supabaseId);
+      } catch (e) {
+          logger.error('Failed to log analytics event due to Supabase RLS policy', {
+              message: e.message,
+              userId: user.supabaseId
+          });
+      }
+
 
       logger.info(`Hybrid login successful: ${identifier}`, {
         userId: user._id,
@@ -506,3 +513,4 @@ router.post('/forgot-password',
 );
 
 module.exports = router;
+
