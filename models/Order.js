@@ -99,7 +99,6 @@ const orderSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
     required: [true, 'User reference is required']
-    // removed index: true here to avoid duplicate index when declared below
   },
   customerInfo: {
     name: String,
@@ -194,12 +193,12 @@ const orderSchema = new mongoose.Schema({
   }],
   
   // Payment status
-  isPaid: { type: Boolean, default: false }, // removed index:true from field
+  isPaid: { type: Boolean, default: false },
   paidAt: Date,
   
   // Delivery tracking
   deliveryTracking: {
-    isDelivered: { type: Boolean, default: false }, // removed index:true from field
+    isDelivered: { type: Boolean, default: false },
     deliveredAt: Date,
     estimatedDeliveryDate: Date,
     actualDeliveryTime: Number, // minutes
@@ -227,7 +226,6 @@ const orderSchema = new mongoose.Schema({
       'cancelled', 'returned', 'refunded', 'failed'
     ],
     default: 'pending'
-    // removed index:true here to avoid duplicate index defined below
   },
   
   // Status timeline
@@ -348,7 +346,6 @@ const orderSchema = new mongoose.Schema({
 
 // 🔍 Indexes for better performance
 orderSchema.index({ user: 1, createdAt: -1 });
-// removed orderSchema.index({ orderNumber: 1 }); because orderNumber has unique: true on the field
 orderSchema.index({ status: 1, createdAt: -1 });
 orderSchema.index({ 'paymentResult.status': 1 });
 orderSchema.index({ 'deliveryTracking.isDelivered': 1 });
@@ -399,7 +396,7 @@ orderSchema.virtual('uniqueSellers').get(function() {
   return [...new Set(this.orderItems.map(item => item.seller.toString()))];
 });
 
-// 📐 Enhanced Middleware
+// 🔧 Enhanced Middleware - OPTIMIZED (No inventory loop)
 orderSchema.pre('save', async function(next) {
   try {
     // Generate order number for new orders
@@ -425,30 +422,9 @@ orderSchema.pre('save', async function(next) {
       total + (item.totalPrice || item.unitPrice * item.qty), 0
     );
     
-    // Update product inventory only for new orders or quantity changes
-    if (this.isNew || this.isModified('orderItems')) {
-      for (const item of this.orderItems) {
-        const Product = mongoose.model('Product');
-        const product = await Product.findById(item.product);
-        
-        if (!product) {
-          throw new Error(`Product not found: ${item.product}`);
-        }
-        
-        // Check stock availability
-        if (product.stock < item.qty) {
-          throw new Error(`Insufficient stock for ${product.name}. Available: ${product.stock}, Requested: ${item.qty}`);
-        }
-        
-        // Update product metrics only for new orders
-        if (this.isNew) {
-          product.stock -= item.qty;
-          product.totalSales = (product.totalSales || 0) + item.qty;
-          product.totalRevenue = (product.totalRevenue || 0) + (item.totalPrice || (item.unitPrice * item.qty));
-          await product.save();
-        }
-      }
-    }
+    // ⚡ REMOVED: Product inventory update loop
+    // Inventory updates are now handled in the controller using bulkWrite
+    // This eliminates the N+1 query problem and dramatically improves performance
     
     // Add status to history
     if (this.isModified('status')) {
@@ -467,8 +443,6 @@ orderSchema.pre('save', async function(next) {
 
 // Post-save middleware for notifications
 orderSchema.post('save', async function(doc) {
-  // Send notifications for status changes
-  // (kept as in your original; adapt to your notification service)
   if (this.wasModified && this.wasModified('status')) {
     console.log(`Order ${doc.orderNumber} status changed to ${doc.status}`);
   }

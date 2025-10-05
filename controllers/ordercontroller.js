@@ -1,11 +1,11 @@
 const Order = require('../models/Order');
 const Product = require('../models/Product');
-const Cart = require('../models/cart'); // Make sure this import exists
+const Cart = require('../models/cart');
 const ErrorResponse = require('../utils/errorResponse');
 const asyncHandler = require('../middleware/asyncHandler');
 const mongoose = require('mongoose');
 const { AbortController } = require('node-abort-controller');
-const logger = require('../utils/logger'); // Using structured logger
+const logger = require('../utils/logger');
 
 // @desc    Create order (OPTIMIZED & RENDER-SAFE VERSION)
 // @route   POST /api/v1/orders
@@ -17,7 +17,7 @@ exports.createOrder = asyncHandler(async (req, res, next) => {
 
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-  // 3. Move Read-Only Queries Outside Transactions
+  // Move Read-Only Queries Outside Transactions
   const orderCount = await Order.countDocuments({
     createdAt: {
       $gte: new Date(new Date().setHours(0, 0, 0, 0)),
@@ -29,7 +29,6 @@ exports.createOrder = asyncHandler(async (req, res, next) => {
   session.startTransaction();
   
   try {
-    // 2. Replace console.log() with structured logging
     logger.info('Starting order creation process', { userId: req.user.id });
     
     const { 
@@ -55,7 +54,6 @@ exports.createOrder = asyncHandler(async (req, res, next) => {
     logger.info(`Processing items for order`, { itemCount: itemsToProcess.length, userId: req.user.id });
 
     const productIds = itemsToProcess.map(item => item.product);
-    // Use the signal from AbortController in the query
     const products = await Product.find({
       _id: { $in: productIds },
       status: 'active',
@@ -68,8 +66,7 @@ exports.createOrder = asyncHandler(async (req, res, next) => {
     }
     
     const productMap = new Map(products.map(p => [p._id.toString(), p]));
-    // 6. Clean Memory on Product Queries
-    products.length = 0; // hint GC
+    products.length = 0; // Clean memory
 
     const orderItemsWithDetails = [];
     let itemsPrice = 0;
@@ -148,19 +145,36 @@ exports.createOrder = asyncHandler(async (req, res, next) => {
       }]
     });
 
+    // ⚡ CRITICAL FIX: Single bulkWrite with atomic stock validation
     const bulkOps = orderItemsWithDetails.map(item => ({
       updateOne: {
-        filter: { _id: item.product },
+        filter: { 
+          _id: item.product, 
+          stock: { $gte: item.qty } // ✅ Atomic stock check
+        },
         update: { 
-          $inc: { stock: -item.qty },
+          $inc: { 
+            stock: -item.qty,
+            totalSales: item.qty,
+            totalRevenue: item.totalPrice
+          },
           $set: { updatedAt: new Date() }
         }
       }
     }));
 
-    await Product.bulkWrite(bulkOps, { session });
+    const bulkResult = await Product.bulkWrite(bulkOps, { session });
 
-    // 5. Replace Cart.findOneAndDelete() with parallel Promise
+    // ✅ Verify all products were updated (none went out of stock)
+    if (bulkResult.modifiedCount !== orderItemsWithDetails.length) {
+      await session.abortTransaction();
+      return next(new ErrorResponse(
+        'One or more items went out of stock. Please refresh and try again.', 
+        409
+      ));
+    }
+
+    // Save order and clear cart in parallel
     await Promise.all([
       order.save({ session }),
       Cart.findOneAndDelete({ user: req.user.id }, { session })
@@ -188,7 +202,7 @@ exports.createOrder = asyncHandler(async (req, res, next) => {
       }
     });
 
-    // 4. Use setImmediate() for background notifications
+    // Use setImmediate() for background notifications
     setImmediate(async () => {
       try {
         await sendOrderNotifications(order, 'created');
@@ -200,7 +214,7 @@ exports.createOrder = asyncHandler(async (req, res, next) => {
 
   } catch (error) {
     await session.abortTransaction();
-    // 1. Add a Safe Timeout Guard (AbortController) - Error Handling
+    
     if (error.name === 'AbortError') {
       logger.error('Order creation timeout - system under load', { userId: req.user.id });
       return next(new ErrorResponse('Server is busy. Please retry.', 503));
@@ -217,7 +231,6 @@ exports.createOrder = asyncHandler(async (req, res, next) => {
     
     next(new ErrorResponse(error.message || 'Order creation failed', 500));
   } finally {
-    // 1. Add a Safe Timeout Guard (AbortController) - Cleanup
     clearTimeout(timeout);
     session.endSession();
   }
