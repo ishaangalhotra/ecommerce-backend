@@ -43,14 +43,35 @@ router.post('/', upload.array('images', 5), async (req, res) => {
       });
     }
 
-    // Validate category exists
-    const categoryDoc = await Category.findById(category);
-    if (!categoryDoc) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid category ID',
-        requestId: req.requestId
+    // 🔥 FIX: Handle category - if it's not a valid ObjectId, try to find by name
+    let categoryId = category;
+    let categoryDoc; // 🚨 CRITICAL FIX: Define categoryDoc here
+    
+    if (!mongoose.Types.ObjectId.isValid(category)) {
+      console.log('Category is not a valid ObjectId, searching by name:', category);
+      
+      categoryDoc = await Category.findOne({ 
+        name: { $regex: new RegExp(`^${category}$`, 'i') } 
       });
+      
+      if (!categoryDoc) {
+        return res.status(400).json({
+          success: false,
+          message: `Category "${category}" not found. Available categories must be selected from the dropdown.`
+        });
+      }
+      
+      categoryId = categoryDoc._id;
+      console.log('Found category by name:', categoryDoc);
+    } else {
+      // 🚨 CRITICAL FIX: Get category document for later use
+      categoryDoc = await Category.findById(categoryId);
+      if (!categoryDoc) {
+        return res.status(400).json({
+          success: false,
+          message: 'Category not found'
+        });
+      }
     }
 
     let imageUrls = [];
@@ -64,16 +85,19 @@ router.post('/', upload.array('images', 5), async (req, res) => {
           // Generate a unique filename
           const fileName = `products/${Date.now()}_${index}_${name.replace(/[^a-zA-Z0-9]/g, '_')}.${file.mimetype.split('/')[1]}`;
           
+          // 🚨 CRITICAL FIX: Use file.buffer fallback for Render compatibility
           const uploadResponse = await imagekit.upload({
-            file: fs.createReadStream(file.path),  // ✅ stream from disk
+            file: file.buffer ? file.buffer.toString('base64') : fs.createReadStream(file.path),  // ✅ FIXED: Works with memory & disk storage
             fileName: fileName,
             folder: '/products/',
             useUniqueFileName: true,
-            tags: ['product', brand || 'unknown', categoryDoc.name.toLowerCase()].filter(Boolean)
+            tags: ['product', brand || 'unknown', categoryDoc.name.toLowerCase()].filter(Boolean) // ✅ FIXED: categoryDoc now defined
           });
 
-          // Delete temp file after successful upload
-          try { if (file && file.path) await fs.promises.unlink(file.path); } catch (e) {}
+          // Delete temp file after successful upload (if using disk storage)
+          if (!file.buffer && file.path) {
+            try { await fs.promises.unlink(file.path); } catch (e) {}
+          }
 
           return {
             url: uploadResponse.url,
@@ -83,8 +107,10 @@ router.post('/', upload.array('images', 5), async (req, res) => {
           };
         } catch (uploadError) {
           console.error(`Failed to upload image ${index}:`, uploadError);
-          // Clean up temp file on error too
-          try { if (file && file.path) await fs.promises.unlink(file.path); } catch (e) {}
+          // Clean up temp file on error too (if using disk storage)
+          if (!file.buffer && file.path) {
+            try { await fs.promises.unlink(file.path); } catch (e) {}
+          }
           throw new Error(`Image upload failed: ${uploadError.message}`);
         }
       });
@@ -93,10 +119,12 @@ router.post('/', upload.array('images', 5), async (req, res) => {
         imageUrls = await Promise.all(uploadPromises);
         console.log(`✅ Successfully uploaded ${imageUrls.length} images to ImageKit`);
       } catch (uploadError) {
-        // Clean up any remaining temp files
+        // Clean up any remaining temp files (if using disk storage)
         if (req.files) {
           req.files.forEach(async (file) => {
-            try { if (file && file.path) await fs.promises.unlink(file.path); } catch (e) {}
+            if (!file.buffer && file.path) {
+              try { await fs.promises.unlink(file.path); } catch (e) {}
+            }
           });
         }
         return res.status(400).json({
@@ -129,14 +157,14 @@ router.post('/', upload.array('images', 5), async (req, res) => {
       }
     }
 
-    // Create product
+    // Create product - USE THE VALIDATED CATEGORY ID
     const productData = {
       name: name.trim(),
       description: description.trim(),
       price: parseFloat(price),
       discountPercentage: parseFloat(discountPercentage) || 0,
       images: imageUrls,
-      category: category,
+      category: categoryId, // 🔥 USE THE VALIDATED CATEGORY ID
       seller: seller || new mongoose.Types.ObjectId(), // Use provided seller or generate one
       stock: parseInt(stock),
       unit: unit,
@@ -192,10 +220,12 @@ router.post('/', upload.array('images', 5), async (req, res) => {
 
   } catch (error) {
     console.error('Create product error:', error);
-    // Clean up any remaining temp files on error
+    // Clean up any remaining temp files on error (if using disk storage)
     if (req.files) {
       req.files.forEach(async (file) => {
-        try { if (file && file.path) await fs.promises.unlink(file.path); } catch (e) {}
+        if (!file.buffer && file.path) {
+          try { await fs.promises.unlink(file.path); } catch (e) {}
+        }
       });
     }
     res.status(500).json({
@@ -232,16 +262,19 @@ router.put('/:productId', upload.array('newImages', 5), async (req, res) => {
         try {
           const fileName = `products/${Date.now()}_${index}_${existingProduct.name.replace(/[^a-zA-Z0-9]/g, '_')}.${file.mimetype.split('/')[1]}`;
           
+          // 🚨 CRITICAL FIX: Use file.buffer fallback for Render compatibility
           const uploadResponse = await imagekit.upload({
-            file: fs.createReadStream(file.path),  // ✅ stream from disk
+            file: file.buffer ? file.buffer.toString('base64') : fs.createReadStream(file.path),  // ✅ FIXED: Works with memory & disk storage
             fileName: fileName,
             folder: '/products/',
             useUniqueFileName: true,
             tags: ['product', existingProduct.brand || 'unknown', 'updated'].filter(Boolean)
           });
 
-          // Delete temp file after successful upload
-          try { if (file && file.path) await fs.promises.unlink(file.path); } catch (e) {}
+          // Delete temp file after successful upload (if using disk storage)
+          if (!file.buffer && file.path) {
+            try { await fs.promises.unlink(file.path); } catch (e) {}
+          }
 
           return {
             url: uploadResponse.url,
@@ -251,8 +284,10 @@ router.put('/:productId', upload.array('newImages', 5), async (req, res) => {
           };
         } catch (uploadError) {
           console.error(`Failed to upload image ${index}:`, uploadError);
-          // Clean up temp file on error too
-          try { if (file && file.path) await fs.promises.unlink(file.path); } catch (e) {}
+          // Clean up temp file on error too (if using disk storage)
+          if (!file.buffer && file.path) {
+            try { await fs.promises.unlink(file.path); } catch (e) {}
+          }
           throw uploadError;
         }
       });
@@ -264,10 +299,12 @@ router.put('/:productId', upload.array('newImages', 5), async (req, res) => {
         updateData.images = [...(existingProduct.images || []), ...newImageUrls];
         console.log(`✅ Successfully uploaded ${newImageUrls.length} new images`);
       } catch (uploadError) {
-        // Clean up any remaining temp files
+        // Clean up any remaining temp files (if using disk storage)
         if (req.files) {
           req.files.forEach(async (file) => {
-            try { if (file && file.path) await fs.promises.unlink(file.path); } catch (e) {}
+            if (!file.buffer && file.path) {
+              try { await fs.promises.unlink(file.path); } catch (e) {}
+            }
           });
         }
         return res.status(400).json({
@@ -338,10 +375,12 @@ router.put('/:productId', upload.array('newImages', 5), async (req, res) => {
 
   } catch (error) {
     console.error('Update product error:', error);
-    // Clean up any remaining temp files on error
+    // Clean up any remaining temp files on error (if using disk storage)
     if (req.files) {
       req.files.forEach(async (file) => {
-        try { if (file && file.path) await fs.promises.unlink(file.path); } catch (e) {}
+        if (!file.buffer && file.path) {
+          try { await fs.promises.unlink(file.path); } catch (e) {}
+        }
       });
     }
     res.status(500).json({
