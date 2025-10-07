@@ -2,11 +2,12 @@ const express = require('express');
 const router = express.Router();
 
 // Import all route modules
-const authRoutes = require('./hybridAuth'); // Fixed: Use hybridAuth instead of missing auth.js
+const authRoutes = require('./hybridAuth');
 const testAuthRoutes = require('./testAuth');
 const authBypassRoutes = require('./authBypass');
 const userRoutes = require('./users');
 const productRoutes = require('./products');
+const categoryRoutes = require('./categories'); // ✅ ADD THIS LINE
 const orderRoutes = require('./orders');
 const deliveryRoutes = require('./delivery');
 const cartRoutes = require('./cart');
@@ -20,6 +21,7 @@ router.use('/test', testAuthRoutes);
 router.use('/bypass', authBypassRoutes);
 router.use('/users', userRoutes);
 router.use('/products', productRoutes);
+router.use('/categories', categoryRoutes); // ✅ AND ADD THIS LINE
 router.use('/orders', orderRoutes);
 router.use('/delivery', deliveryRoutes);
 router.use('/cart', cartRoutes);
