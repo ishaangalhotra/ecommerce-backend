@@ -456,6 +456,64 @@ router.delete('/:productId/images/:imageIndex', async (req, res) => {
   }
 });
 
+// ==================== DELETE PRODUCT ====================
+// ✅ FIXED: Added route to delete a product by its ID
+router.delete('/:productId', async (req, res) => {
+  try {
+    const { productId } = req.params;
+
+    // Validate productId
+    if (!mongoose.Types.ObjectId.isValid(productId)) {
+      return res.status(400).json({ success: false, message: 'Invalid product ID format' });
+    }
+
+    // Find the product to get image details before deleting
+    const productToDelete = await Product.findById(productId);
+
+    if (!productToDelete) {
+      return res.status(404).json({ success: false, message: 'Product not found' });
+    }
+
+    // Delete images from ImageKit
+    if (productToDelete.images && productToDelete.images.length > 0) {
+      const fileIdsToDelete = productToDelete.images
+        .map(img => img.imagekitFileId)
+        .filter(Boolean); // Filter out any images without a fileId
+
+      if (fileIdsToDelete.length > 0) {
+        console.log(`🗑️ Deleting ${fileIdsToDelete.length} images from ImageKit...`);
+        try {
+          // ImageKit's bulk delete can take an array of file_ids
+          await imagekit.bulkDeleteFiles(fileIdsToDelete);
+          console.log('✅ Images deleted from ImageKit');
+        } catch (imageError) {
+          // Log the error but don't block the product deletion
+          console.warn('⚠️ Could not delete all images from ImageKit:', imageError.message);
+        }
+      }
+    }
+
+    // Delete the product from the database
+    await Product.findByIdAndDelete(productId);
+
+    res.status(200).json({
+      success: true,
+      message: 'Product and associated images deleted successfully',
+      data: {
+        productId: productId
+      }
+    });
+
+  } catch (error) {
+    console.error('Delete product error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error deleting product',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
+    });
+  }
+});
+
 // ==================== CREATE SAMPLE DATA WITH IMAGEKIT URLS ====================
 
 router.post('/create-sample-data-with-imagekit', async (req, res) => {
@@ -664,9 +722,8 @@ router.post('/create-sample-data-with-imagekit', async (req, res) => {
 });
 
 // ==================== KEEP YOUR EXISTING ROUTES ====================
-// (Add all your existing GET routes here - I'll keep them as they are good)
 
-// GET all products route (keep your existing implementation)
+// GET all products route
 router.get('/', async (req, res) => {
   try {
     const {
@@ -680,7 +737,6 @@ router.get('/', async (req, res) => {
       inStock
     } = req.query;
 
-    // Build query filters
     const filters = { status: 'active' };
     
     if (category) {
@@ -704,7 +760,6 @@ router.get('/', async (req, res) => {
       filters.stock = { $gt: 0 };
     }
 
-    // Build sort query
     let sortQuery = {};
     switch (sort) {
       case 'price_low': sortQuery = { price: 1 }; break;
@@ -742,7 +797,6 @@ router.get('/', async (req, res) => {
       message: 'Products retrieved successfully',
       data: {
         products: products.map(product => ({
-          // Essential fields for product list/cards (memory optimized)
           id: product._id,
           name: product.name,
           shortDescription: product.shortDescription,
@@ -762,19 +816,12 @@ router.get('/', async (req, res) => {
           seller: product.seller,
           slug: product.slug,
           brand: product.brand,
-          
-          // Key features for display (minimal)
           isFeatured: product.isFeatured,
           isNewArrival: product.isNewArrival,
           isBestSeller: product.isBestSeller,
-          
-          // Essential delivery info
           deliveryTime: product.deliveryConfig?.preparationTime || 10,
           deliveryFee: product.deliveryConfig?.deliveryFee || 0,
-          
-          // Location (minimal)
           city: product.sellerLocation?.city,
-          
           createdAt: product.createdAt
         })),
         pagination: {
@@ -801,9 +848,6 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Keep all your other existing GET routes (search, category, individual product, etc.)
-// ... (add your existing routes here)
-
 // Enhanced product search route
 router.get('/search', async (req, res) => {
   try {
@@ -819,7 +863,6 @@ router.get('/search', async (req, res) => {
 
     let query = { status: 'active' };
     
-    // Text search
     if (q && q.trim()) {
       query.$or = [
         { name: { $regex: q.trim(), $options: 'i' } },
@@ -829,7 +872,6 @@ router.get('/search', async (req, res) => {
       ];
     }
 
-    // Category filter
     if (category && category !== '') {
       const categoryDoc = await Category.findOne({ 
         $or: [
@@ -842,7 +884,6 @@ router.get('/search', async (req, res) => {
       }
     }
 
-    // Price range filter
     if (priceRange && priceRange !== '') {
       if (priceRange === '500+') {
         query.price = { $gte: 500 };
@@ -852,7 +893,6 @@ router.get('/search', async (req, res) => {
       }
     }
 
-    // Availability filter
     if (availability && availability !== '') {
       if (availability === 'instock') {
         query.stock = { $gt: 0 };
@@ -861,7 +901,6 @@ router.get('/search', async (req, res) => {
       }
     }
 
-    // Sorting
     let sortOptions = {};
     switch (sortBy) {
       case 'price-low':
@@ -883,7 +922,6 @@ router.get('/search', async (req, res) => {
         sortOptions.createdAt = -1;
     }
 
-    // Execute search with pagination
     const skip = (page - 1) * limit;
     
     const products = await Product.find(query)
@@ -894,7 +932,6 @@ router.get('/search', async (req, res) => {
       .populate('seller', 'name storeName rating')
       .lean();
 
-    // Get total count for pagination
     const totalProducts = await Product.countDocuments(query);
 
     res.json({
@@ -926,7 +963,7 @@ router.get('/search', async (req, res) => {
   }
 });
 
-// Quick search suggestions route (for autocomplete)
+// Quick search suggestions route
 router.get('/suggestions', async (req, res) => {
   try {
     const { q } = req.query;
