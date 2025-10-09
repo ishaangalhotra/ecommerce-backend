@@ -514,26 +514,39 @@ router.delete('/:productId', async (req, res) => {
   }
 });
 
+
 // ==================== CREATE SAMPLE DATA WITH IMAGEKIT URLS ====================
 
 router.post('/create-sample-data-with-imagekit', async (req, res) => {
   try {
-    const existingProducts = await Product.countDocuments();
-    if (existingProducts > 5) {
-      return res.json({
-        success: true,
-        message: 'Sample data already exists',
-        count: existingProducts
-      });
-    }
+    await Product.deleteMany({});
+    await Category.deleteMany({});
 
-    const categories = await Category.insertMany([
+    // Step 1: Create parent categories
+    const parentCategoriesData = [
       { name: 'Electronics', description: 'Electronic devices and gadgets' },
       { name: 'Clothing', description: 'Fashion and apparel' },
       { name: 'Home & Garden', description: 'Home and garden essentials' },
       { name: 'Sports & Fitness', description: 'Sports equipment and fitness gear' }
-    ]);
+    ];
+    const parentCategories = await Category.insertMany(parentCategoriesData);
 
+    // Step 2: Find the 'Home & Garden' category to use as a parent
+    const homeAndGardenCat = parentCategories.find(c => c.name === 'Home & Garden');
+
+    // Step 3: Create child categories ("Bedsheets" and "Sofa")
+    let childCategories = [];
+    if (homeAndGardenCat) {
+      const childCategoriesData = [
+        { name: 'Bedsheets', description: 'Comfortable and stylish bedsheets', parentCategory: homeAndGardenCat._id },
+        { name: 'Sofa', description: 'Sofas and couches for your living room', parentCategory: homeAndGardenCat._id }
+      ];
+      childCategories = await Category.insertMany(childCategoriesData);
+    }
+
+    const allCategories = [...parentCategories, ...childCategories];
+    const electronicsCat = allCategories.find(c => c.name === 'Electronics');
+    const clothingCat = allCategories.find(c => c.name === 'Clothing');
     const sampleSellerId = new mongoose.Types.ObjectId();
 
     // Sample products with realistic ImageKit URLs
@@ -555,7 +568,7 @@ router.post('/create-sample-data-with-imagekit', async (req, res) => {
             thumbnail: 'https://ik.imagekit.io/phea4zmjs/products/iphone-15-pro-max-back.jpg?tr=w-300,h-300'
           }
         ],
-        category: categories[0]._id,
+        category: electronicsCat._id,
         seller: sampleSellerId,
         stock: 25,
         unit: 'piece',
@@ -594,7 +607,7 @@ router.post('/create-sample-data-with-imagekit', async (req, res) => {
             thumbnail: 'https://ik.imagekit.io/phea4zmjs/products/galaxy-s24-ultra.jpg?tr=w-300,h-300'
           }
         ],
-        category: categories[0]._id,
+        category: electronicsCat._id,
         seller: sampleSellerId,
         stock: 30,
         unit: 'piece',
@@ -626,7 +639,7 @@ router.post('/create-sample-data-with-imagekit', async (req, res) => {
             thumbnail: 'https://ik.imagekit.io/phea4zmjs/products/jordan-1-high.jpg?tr=w-300,h-300'
           }
         ],
-        category: categories[1]._id,
+        category: clothingCat._id,
         seller: sampleSellerId,
         stock: 50,
         unit: 'pair',
@@ -656,7 +669,7 @@ router.post('/create-sample-data-with-imagekit', async (req, res) => {
             thumbnail: 'https://ik.imagekit.io/phea4zmjs/products/macbook-air-m2.jpg?tr=w-300,h-300'
           }
         ],
-        category: categories[0]._id,
+        category: electronicsCat._id,
         seller: sampleSellerId,
         stock: 15,
         unit: 'piece',
@@ -684,9 +697,9 @@ router.post('/create-sample-data-with-imagekit', async (req, res) => {
       success: true,
       message: 'Enhanced sample data created with ImageKit URLs!',
       data: {
-        categoriesCreated: categories.length,
+        categoriesCreated: allCategories.length,
         productsCreated: products.length,
-        categories: categories.map(c => ({ 
+        categories: allCategories.map(c => ({ 
           id: c._id, 
           name: c.name, 
           slug: c.slug 
