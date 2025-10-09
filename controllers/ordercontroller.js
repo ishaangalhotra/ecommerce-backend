@@ -6,6 +6,8 @@ const asyncHandler = require('../middleware/asyncHandler');
 const mongoose = require('mongoose');
 const { AbortController } = require('node-abort-controller');
 const logger = require('../utils/logger');
+const orderProcessingEngine = require('../services/orderProcessingEngine');
+const orderStatusManager = require('../services/orderStatusManager');
 
 // @desc    Create order (OPTIMIZED & RENDER-SAFE VERSION)
 // @route   POST /api/v1/orders
