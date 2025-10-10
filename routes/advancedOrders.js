@@ -378,6 +378,80 @@ router.post('/:id/cancel', hybridProtect, asyncHandler(async (req, res, next) =>
 }));
 
 // ========================
+// PUBLIC TRACKING ROUTES
+// ========================
+
+/**
+ * @route   GET /api/v1/orders/track/:orderNumber
+ * @desc    Public order tracking (no authentication required)
+ * @access  Public
+ */
+router.get('/track/:orderNumber', asyncHandler(async (req, res, next) => {
+  const Order = mongoose.model('Order');
+  const orderNumber = req.params.orderNumber;
+  
+  try {
+    // Find order by order number (public endpoint - limited info)
+    const order = await Order.findOne({
+      $or: [
+        { orderNumber: orderNumber },
+        { orderNumber: `#${orderNumber}` },
+        { _id: mongoose.isValidObjectId(orderNumber) ? orderNumber : null }
+      ]
+    })
+    .select('orderNumber status createdAt pricing.totalPrice deliveryTracking statusHistory timeline')
+    .lean();
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found',
+        error: 'order_not_found'
+      });
+    }
+
+    // Build public timeline (no sensitive information)
+    const publicTimeline = orderStatusManager.getOrderTimeline(order).map(item => ({
+      status: item.status,
+      timestamp: item.timestamp,
+      description: item.description,
+      completed: item.completed
+    }));
+
+    // Public order information
+    const publicOrderInfo = {
+      orderNumber: order.orderNumber,
+      orderId: order._id,
+      status: order.status,
+      createdAt: order.createdAt,
+      totalAmount: order.pricing?.totalPrice || 0,
+      timeline: publicTimeline,
+      statusMeta: orderStatusManager.getStatusMeta(order.status),
+      estimatedDelivery: order.deliveryTracking?.estimatedDeliveryDate,
+      isDelivered: order.deliveryTracking?.isDelivered || false
+    };
+
+    res.json({
+      success: true,
+      order: publicOrderInfo,
+      message: 'Order tracking information retrieved successfully'
+    });
+
+  } catch (error) {
+    logger.error('Public order tracking failed', {
+      orderNumber,
+      error: error.message
+    });
+    
+    res.status(500).json({
+      success: false,
+      message: 'Unable to retrieve order tracking information',
+      error: 'tracking_service_error'
+    });
+  }
+}));
+
+// ========================
 // RETURNS ROUTES
 // ========================
 
